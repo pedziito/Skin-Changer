@@ -1,6 +1,18 @@
 # CS2 Skin Changer
 
-A client-side skin changer for Counter-Strike 2 that modifies weapon skin appearances locally on the user's machine.
+A client-side skin changer for Counter-Strike 2 with both **web-based dashboard** and **desktop application** for managing weapon skin appearances locally.
+
+## 🌐 NEW: Web-Based Interface
+
+Manage your CS2 skin configurations through a beautiful web dashboard with user authentication!
+
+- **Web Dashboard**: Modern, responsive interface with login/signup
+- **API Token System**: Generate tokens for desktop client synchronization  
+- **Cloud Configuration**: Save and manage skin configs from anywhere
+- **Beautiful UI**: Gradient-based design with smooth animations
+- **Multi-Device**: Access from any device with a browser
+
+[See Web Interface Documentation](web/README.md)
 
 ## ⚠️ IMPORTANT DISCLAIMERS
 
@@ -17,6 +29,15 @@ The developers of this tool are not responsible for any bans, account suspension
 
 ## Features
 
+### Web Dashboard
+- 🔐 User authentication with JWT tokens
+- 🎨 Beautiful gradient-based modern UI
+- 📱 Fully responsive design (mobile & desktop)
+- 🔑 API token generation for desktop client
+- ☁️ Cloud-based configuration storage
+- 🚀 Real-time skin configuration management
+
+### Desktop Application
 - Client-side weapon skin modification
 - Real-time skin application while game is running
 - User-friendly Windows GUI interface
@@ -25,6 +46,7 @@ The developers of this tool are not responsible for any bans, account suspension
 - Configurable offsets for game updates
 - Safe process validation
 - Quick reset functionality
+- Web API synchronization support
 
 ## Technical Architecture
 
@@ -45,6 +67,29 @@ The application:
 3. Uses pattern scanning or static offsets to find game structures
 4. Writes skin paint kit values directly to weapon memory
 5. Modifications are client-side only and not visible to other players
+
+## Quick Start
+
+### Option 1: Web Dashboard (Recommended)
+
+1. **Start the web server**:
+   ```bash
+   cd web/backend
+   npm install
+   npm start
+   ```
+
+2. **Open your browser**: Navigate to `http://localhost:3000`
+
+3. **Create an account**: Sign up with username, email, and password
+
+4. **Configure skins**: Select weapon categories, weapons, and skins through the web interface
+
+5. **Generate API token**: Click "Generate Token" to create a token for the desktop client
+
+6. **Use desktop client** (optional): Configure the .exe with your API token to sync settings
+
+### Option 2: Desktop Application Only
 
 ## Build Requirements
 
