@@ -1,6 +1,14 @@
 # CS2 Skin Changer
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/pedziito/Skin-Changer?quickstart=1)
+
 A client-side skin changer for Counter-Strike 2 with both **web-based dashboard** and **desktop application** for managing weapon skin appearances locally.
+
+## 🚀 Quick Start
+
+**Want to start coding immediately?** Click the badge above to open in GitHub Codespaces with everything pre-configured!
+
+**Local development?** See [HOW_TO_OPEN.md](HOW_TO_OPEN.md) for detailed instructions.
 
 ## 🌐 NEW: Web-Based Interface
 
