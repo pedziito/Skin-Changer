@@ -92,9 +92,12 @@ uintptr_t SkinChanger::GetWeaponByIndex(int index) {
     }
     
     // Calculate entity address from handle
+    // CS2 entity handle format: lower 15 bits (0x7FFF) contain entity index
+    // Entity index is shifted right by 9 to get the list entry
     int entryIndex = (weaponHandle & 0x7FFF) >> 9;
     uintptr_t entityAddress = 0;
     
+    // Each entity list entry is 0x78 bytes
     if (!m_processManager->Read(entityListEntry + (entryIndex * 0x78), entityAddress)) {
         return 0;
     }

@@ -27,6 +27,12 @@ uintptr_t PatternScanner::FindPattern(const std::vector<int>& pattern) {
     }
     
     size_t patternSize = pattern.size();
+    
+    // Ensure we have enough data to scan
+    if (m_moduleData.size() < patternSize) {
+        return 0;
+    }
+    
     for (size_t i = 0; i < m_moduleData.size() - patternSize; ++i) {
         if (ComparePattern(&m_moduleData[i], pattern)) {
             return m_moduleBase + i;

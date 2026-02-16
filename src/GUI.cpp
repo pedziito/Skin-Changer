@@ -25,7 +25,8 @@ GUI::GUI()
       m_statusLabel(nullptr),
       m_applyButton(nullptr),
       m_resetButton(nullptr),
-      m_refreshButton(nullptr) {
+      m_refreshButton(nullptr),
+      m_warningFont(nullptr) {
 }
 
 GUI::~GUI() {
@@ -104,10 +105,10 @@ void GUI::CreateControls(HWND hwnd) {
         hwnd, nullptr, nullptr, nullptr
     );
     
-    HFONT hFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    m_warningFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
-    SendMessage(warningLabel, WM_SETFONT, (WPARAM)hFont, TRUE);
+    SendMessage(warningLabel, WM_SETFONT, (WPARAM)m_warningFont, TRUE);
     
     y += 60;
     
@@ -331,6 +332,11 @@ int GUI::Run() {
 }
 
 void GUI::Shutdown() {
+    if (m_warningFont) {
+        DeleteObject(m_warningFont);
+        m_warningFont = nullptr;
+    }
+    
     if (g_skinChanger) {
         g_skinChanger->Shutdown();
         g_skinChanger.reset();

@@ -28,6 +28,7 @@ private:
     HWND m_applyButton;
     HWND m_resetButton;
     HWND m_refreshButton;
+    HFONT m_warningFont;
     
     std::string m_selectedCategory;
     std::string m_selectedWeapon;

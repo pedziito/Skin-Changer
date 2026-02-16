@@ -15,7 +15,8 @@ bool ProcessManager::AttachToProcess(const std::wstring& processName) {
         return false;
     }
     
-    m_processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, m_processId);
+    m_processHandle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, 
+                                   FALSE, m_processId);
     return m_processHandle != nullptr;
 }
 
