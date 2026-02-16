@@ -1,0 +1,28 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "formulahendry.auto-close-tag",
+    "formulahendry.auto-rename-tag",
+    "ritwickdey.liveserver",
+    "eg2.vscode-npm-script",
+    "christian-kohler.npm-intellisense",
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "twxs.cmake",
+    "eamodio.gitlens",
+    "donjayamanne.githistory",
+    "yzhang.markdown-all-in-one",
+    "davidanson.vscode-markdownlint",
+    "alexcvzz.vscode-sqlite",
+    "aaron-bond.better-comments",
+    "wayou.vscode-todo-highlight",
+    "streetsidesoftware.code-spell-checker",
+    "gruntfuggly.todo-tree",
+    "github.copilot",
+    "github.copilot-chat",
+    "humao.rest-client",
+    "github.github-vscode-theme"
+  ],
+  "unwantedRecommendations": []
+}

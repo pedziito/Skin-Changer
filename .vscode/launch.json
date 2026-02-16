@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "🚀 Launch Web Server",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/web/backend/server.js",
+      "cwd": "${workspaceFolder}/web/backend",
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "outputCapture": "std",
+      "restart": true
+    },
+    {
+      "type": "node",
+      "request": "attach",
+      "name": "🔗 Attach to Server",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "🐛 Debug Current File",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${file}",
+      "cwd": "${fileDirname}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

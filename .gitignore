@@ -47,7 +47,8 @@ cmake_install.cmake
 *.app
 
 # IDE
-.vscode/
+# Keep .vscode for workspace configuration
+# .vscode/
 .idea/
 
 # Temporary files

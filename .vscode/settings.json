@@ -1,0 +1,39 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.associations": {
+    "*.yml": "yaml",
+    ".env.example": "properties"
+  },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/.git": false,
+    "**/*.db": true
+  },
+  "git.autofetch": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[cpp]": {
+    "editor.tabSize": 4
+  },
+  "C_Cpp.default.cppStandard": "c++17",
+  "npm.enableScriptExplorer": true,
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "github.copilot.enable": {
+    "*": true
+  }
+}

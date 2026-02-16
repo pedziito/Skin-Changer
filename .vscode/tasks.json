@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📦 Install Dependencies",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}/web/backend"
+      },
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "🚀 Start Server",
+      "type": "shell",
+      "command": "node server.js",
+      "options": {
+        "cwd": "${workspaceFolder}/web/backend"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^(.*)$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*Starting.*$",
+          "endsPattern": "^.*running.*$|^.*listening.*$"
+        }
+      }
+    },
+    {
+      "label": "🧪 Test Connection",
+      "type": "shell",
+      "command": "curl -s http://localhost:3000/api/health && echo '✅ Server running!' || echo '❌ Not responding'",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "🌐 Open in Browser",
+      "type": "shell",
+      "command": "start http://localhost:3000 || xdg-open http://localhost:3000 || open http://localhost:3000",
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "📊 Full Setup",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Install Dependencies",
+        "🚀 Start Server",
+        "🧪 Test Connection"
+      ]
+    }
+  ]
+}
