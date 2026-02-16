@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const configRoutes = require('./routes/config');
 const adminRoutes = require('./routes/admin');
+const downloadsRoutes = require('./routes/downloads');
 const { initDatabase } = require('./database');
 
 const app = express();
@@ -24,6 +25,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/api/auth', authRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/downloads', downloadsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
