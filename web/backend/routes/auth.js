@@ -94,10 +94,6 @@ router.post('/register', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 // Login
 router.post('/login', (req, res) => {
