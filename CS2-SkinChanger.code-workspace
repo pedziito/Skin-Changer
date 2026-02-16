@@ -1,0 +1,372 @@
+{
+  "folders": [
+    {
+      "name": "🎮 CS2 Skin Changer (Root)",
+      "path": "."
+    },
+    {
+      "name": "🌐 Web Backend",
+      "path": "web/backend"
+    },
+    {
+      "name": "🎨 Web Frontend",
+      "path": "web/frontend"
+    },
+    {
+      "name": "⚙️ C++ Client Source",
+      "path": "src"
+    }
+  ],
+  "settings": {
+    // General Editor Settings
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": true,
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    
+    // Git Settings
+    "git.autofetch": true,
+    "git.enableSmartCommit": true,
+    "git.confirmSync": false,
+    
+    // File Associations
+    "files.associations": {
+      "*.yml": "yaml",
+      "*.yaml": "yaml",
+      "*.md": "markdown",
+      ".env.example": "properties"
+    },
+    
+    // Exclude files from search and explorer
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/build": true,
+      "**/.git": false,
+      "**/skinchanger.db": true,
+      "**/*.db": true
+    },
+    
+    // Search configuration
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/build": true,
+      "**/*.db": true
+    },
+    
+    // JavaScript/TypeScript Settings
+    "javascript.format.enable": true,
+    "javascript.updateImportsOnFileMove.enabled": "always",
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.formatOnSave": true
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[jsonc]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    
+    // HTML/CSS Settings
+    "[html]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
+      "editor.formatOnSave": true
+    },
+    "[css]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    
+    // Markdown Settings
+    "[markdown]": {
+      "editor.wordWrap": "on",
+      "editor.quickSuggestions": false
+    },
+    
+    // C++ Settings
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.compilerPath": "",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-x64",
+    "[cpp]": {
+      "editor.tabSize": 4,
+      "editor.formatOnSave": true
+    },
+    "[c]": {
+      "editor.tabSize": 4,
+      "editor.formatOnSave": true
+    },
+    
+    // Terminal Settings
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    
+    // Live Server Settings (for frontend development)
+    "liveServer.settings.root": "/web/frontend",
+    "liveServer.settings.port": 5500,
+    "liveServer.settings.CustomBrowser": "chrome",
+    
+    // Node.js Settings
+    "npm.enableScriptExplorer": true,
+    "npm.scriptExplorerAction": "run",
+    
+    // GitHub Copilot
+    "github.copilot.enable": {
+      "*": true,
+      "yaml": true,
+      "plaintext": false,
+      "markdown": true,
+      "javascript": true,
+      "typescript": true,
+      "cpp": true,
+      "c": true,
+      "json": true,
+      "html": true,
+      "css": true
+    },
+    
+    // Workspace specific paths
+    "eslint.workingDirectories": [
+      { "directory": "web/backend", "changeProcessCWD": true }
+    ],
+    
+    // Task Runner
+    "task.autoDetect": "on",
+    "task.quickOpen.detail": true,
+    "task.quickOpen.skip": false
+  },
+  "extensions": {
+    "recommendations": [
+      // Essential for Web Development
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "formulahendry.auto-close-tag",
+      "formulahendry.auto-rename-tag",
+      "ritwickdey.liveserver",
+      
+      // Node.js Development
+      "eg2.vscode-npm-script",
+      "christian-kohler.npm-intellisense",
+      
+      // C++ Development
+      "ms-vscode.cpptools",
+      "ms-vscode.cmake-tools",
+      "twxs.cmake",
+      
+      // Git Integration
+      "eamodio.gitlens",
+      "donjayamanne.githistory",
+      
+      // Markdown
+      "yzhang.markdown-all-in-one",
+      "davidanson.vscode-markdownlint",
+      
+      // Database
+      "alexcvzz.vscode-sqlite",
+      
+      // Utilities
+      "aaron-bond.better-comments",
+      "wayou.vscode-todo-highlight",
+      "streetsidesoftware.code-spell-checker",
+      "gruntfuggly.todo-tree",
+      
+      // GitHub Copilot (if available)
+      "github.copilot",
+      "github.copilot-chat",
+      
+      // REST API Testing
+      "humao.rest-client",
+      
+      // Theme (optional)
+      "github.github-vscode-theme"
+    ],
+    "unwantedRecommendations": []
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "🚀 Start Web Server",
+        "skipFiles": ["<node_internals>/**"],
+        "program": "${workspaceFolder}/web/backend/server.js",
+        "cwd": "${workspaceFolder}/web/backend",
+        "console": "integratedTerminal",
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "outputCapture": "std",
+        "restart": true,
+        "runtimeExecutable": "node"
+      },
+      {
+        "type": "node",
+        "request": "attach",
+        "name": "🔗 Attach to Running Server",
+        "port": 9229,
+        "restart": true,
+        "skipFiles": ["<node_internals>/**"]
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "🧪 Debug Backend Tests",
+        "skipFiles": ["<node_internals>/**"],
+        "program": "${workspaceFolder}/web/backend/node_modules/.bin/jest",
+        "args": ["--runInBand", "--no-cache"],
+        "cwd": "${workspaceFolder}/web/backend",
+        "console": "integratedTerminal"
+      }
+    ],
+    "compounds": []
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "📦 Install Backend Dependencies",
+        "type": "shell",
+        "command": "npm install",
+        "options": {
+          "cwd": "${workspaceFolder}/web/backend"
+        },
+        "group": "build",
+        "presentation": {
+          "reveal": "always",
+          "panel": "new",
+          "echo": true
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "🚀 Start Web Server",
+        "type": "shell",
+        "command": "node server.js",
+        "options": {
+          "cwd": "${workspaceFolder}/web/backend"
+        },
+        "isBackground": true,
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated",
+          "focus": false,
+          "echo": true
+        },
+        "problemMatcher": {
+          "pattern": {
+            "regexp": "^(.*)$",
+            "file": 1,
+            "location": 2,
+            "message": 3
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "^.*Starting.*$",
+            "endsPattern": "^.*Server.*running.*$|^.*listening.*$"
+          }
+        },
+        "dependsOn": ["📦 Install Backend Dependencies"]
+      },
+      {
+        "label": "🛑 Stop Web Server",
+        "type": "shell",
+        "command": "pkill -f 'node server.js' || taskkill /F /IM node.exe /FI \"WINDOWTITLE eq server.js\" 2>nul || echo 'No server running'",
+        "options": {
+          "cwd": "${workspaceFolder}/web/backend"
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared",
+          "echo": true
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "🔄 Restart Web Server",
+        "dependsOrder": "sequence",
+        "dependsOn": ["🛑 Stop Web Server", "🚀 Start Web Server"],
+        "problemMatcher": []
+      },
+      {
+        "label": "🧪 Test Server Connection",
+        "type": "shell",
+        "command": "curl -f http://localhost:3000/api/health || echo 'Server not responding'",
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared",
+          "echo": true
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "🌐 Open Website",
+        "type": "shell",
+        "command": "start http://localhost:3000 || xdg-open http://localhost:3000 || open http://localhost:3000",
+        "presentation": {
+          "reveal": "never",
+          "panel": "shared"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "🔨 Build C++ Client (Windows)",
+        "type": "shell",
+        "command": "cmake",
+        "args": [
+          "-B",
+          "build",
+          "-G",
+          "Visual Studio 17 2022",
+          "-A",
+          "x64",
+          "&&",
+          "cmake",
+          "--build",
+          "build",
+          "--config",
+          "Release"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "dedicated",
+          "echo": true
+        },
+        "problemMatcher": ["$msCompile"]
+      },
+      {
+        "label": "🧹 Clean Build",
+        "type": "shell",
+        "command": "rm -rf build || rmdir /s /q build",
+        "options": {
+          "cwd": "${workspaceFolder}"
+        },
+        "presentation": {
+          "reveal": "always",
+          "panel": "shared",
+          "echo": true
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "📊 Run All Checks",
+        "dependsOrder": "sequence",
+        "dependsOn": [
+          "📦 Install Backend Dependencies",
+          "🧪 Test Server Connection"
+        ],
+        "problemMatcher": []
+      }
+    ]
+  }
+}
