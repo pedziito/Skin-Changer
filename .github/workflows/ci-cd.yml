@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-4-cores
     
     steps:
     - name: Checkout code
@@ -38,7 +38,7 @@ jobs:
         npm audit --audit-level=high || true
 
   build-cpp-client:
-    runs-on: windows-latest
+    runs-on: windows-latest-8-cores
     
     steps:
     - name: Checkout code
@@ -69,7 +69,7 @@ jobs:
         if-no-files-found: warn
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-4-cores
     needs: [build-and-test]
     if: github.ref == 'refs/heads/main'
     
