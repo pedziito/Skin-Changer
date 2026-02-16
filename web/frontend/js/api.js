@@ -44,10 +44,10 @@ async function apiRequest(endpoint, options = {}) {
 
 // Auth API calls
 const AuthAPI = {
-    async register(username, email, password) {
+    async register(username, email, password, licenseKey) {
         return await apiRequest('/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ username, email, password })
+            body: JSON.stringify({ username, email, password, license_key: licenseKey })
         });
     },
 

@@ -8,11 +8,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'cs2-skin-changer-secret-key-change
 
 // Register new user
 router.post('/register', async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, license_key } = req.body;
 
   // Validation
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'All fields are required' });
+  if (!username || !email || !password || !license_key) {
+    return res.status(400).json({ error: 'All fields including license key are required' });
   }
 
   if (password.length < 6) {
@@ -22,42 +22,78 @@ router.post('/register', async (req, res) => {
   try {
     const db = getDatabase();
     
-    // Check if user already exists
-    db.get('SELECT id FROM users WHERE username = ? OR email = ?', [username, email], async (err, row) => {
+    // Check if license key is valid
+    db.get('SELECT * FROM license_keys WHERE key = ? AND is_used = 0', [license_key], async (err, licenseRow) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
       
-      if (row) {
-        return res.status(400).json({ error: 'Username or email already exists' });
+      if (!licenseRow) {
+        return res.status(400).json({ error: 'Invalid or already used license key' });
       }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Insert user
-      db.run('INSERT INTO users (username, email, password) VALUES (?, ?, ?)', 
-        [username, email, hashedPassword], 
-        function(err) {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to create user' });
-          }
-
-          // Generate JWT token
-          const token = jwt.sign({ userId: this.lastID, username }, JWT_SECRET, { expiresIn: '7d' });
-
-          res.status(201).json({
-            message: 'User registered successfully',
-            token,
-            user: {
-              id: this.lastID,
-              username,
-              email
-            }
-          });
+      
+      // Check if license is expired
+      if (licenseRow.expires_at) {
+        const expiryDate = new Date(licenseRow.expires_at);
+        if (expiryDate < new Date()) {
+          return res.status(400).json({ error: 'License key has expired' });
         }
-      );
+      }
+    
+      // Check if user already exists
+      db.get('SELECT id FROM users WHERE username = ? OR email = ?', [username, email], async (err, row) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (row) {
+          return res.status(400).json({ error: 'Username or email already exists' });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert user with license key
+        db.run('INSERT INTO users (username, email, password, license_key) VALUES (?, ?, ?, ?)', 
+          [username, email, hashedPassword, license_key], 
+          function(err) {
+            if (err) {
+              return res.status(500).json({ error: 'Failed to create user' });
+            }
+
+            const userId = this.lastID;
+            
+            // Mark license key as used
+            db.run(
+              'UPDATE license_keys SET is_used = 1, used_by = ?, used_at = CURRENT_TIMESTAMP WHERE key = ?',
+              [userId, license_key],
+              (err) => {
+                if (err) {
+                  console.error('Failed to update license key:', err);
+                }
+              }
+            );
+
+            // Generate JWT token
+            const token = jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: '7d' });
+
+            res.status(201).json({
+              message: 'User registered successfully',
+              token,
+              user: {
+                id: userId,
+                username,
+                email
+              }
+            });
+          }
+        );
+      });
     });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -82,6 +118,11 @@ router.post('/login', (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if user is active
+    if (user.is_active !== 1) {
+      return res.status(403).json({ error: 'Account has been deactivated. Contact administrator.' });
+    }
+
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     
@@ -101,7 +142,8 @@ router.post('/login', (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        is_admin: user.is_admin === 1
       }
     });
   });

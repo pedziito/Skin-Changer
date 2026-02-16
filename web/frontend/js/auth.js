@@ -71,13 +71,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = document.getElementById('registerUsername').value;
         const email = document.getElementById('registerEmail').value;
         const password = document.getElementById('registerPassword').value;
+        const licenseKey = document.getElementById('registerLicenseKey').value;
         
         const submitBtn = registerForm.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="loading"></span> Creating account...';
 
         try {
-            const response = await AuthAPI.register(username, email, password);
+            const response = await AuthAPI.register(username, email, password, licenseKey);
             setToken(response.token);
             localStorage.setItem('username', response.user.username);
             

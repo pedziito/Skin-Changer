@@ -30,8 +30,12 @@ function initDatabase() {
           username TEXT UNIQUE NOT NULL,
           email TEXT UNIQUE NOT NULL,
           password TEXT NOT NULL,
+          license_key TEXT,
+          is_admin INTEGER DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          last_login DATETIME
+          last_login DATETIME,
+          FOREIGN KEY (license_key) REFERENCES license_keys(key)
         )
       `, (err) => {
         if (err) reject(err);
@@ -67,10 +71,45 @@ function initDatabase() {
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
       `, (err) => {
+        if (err) reject(err);
+      });
+
+      // License keys table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS license_keys (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          key TEXT UNIQUE NOT NULL,
+          is_used INTEGER DEFAULT 0,
+          used_by INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          used_at DATETIME,
+          expires_at DATETIME,
+          notes TEXT,
+          FOREIGN KEY (used_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `, (err) => {
         if (err) {
           reject(err);
         } else {
           console.log('✅ Database tables initialized');
+          
+          // Create default admin account if it doesn't exist
+          db.get('SELECT id FROM users WHERE username = ?', ['admin'], (err, row) => {
+            if (!row) {
+              const bcrypt = require('bcryptjs');
+              const adminPassword = bcrypt.hashSync('admin123', 10);
+              db.run(
+                'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
+                ['admin', 'admin@skinchanger.local', adminPassword, 1],
+                (err) => {
+                  if (!err) {
+                    console.log('✅ Default admin account created (username: admin, password: admin123)');
+                  }
+                }
+              );
+            }
+          });
+          
           resolve();
         }
       });
