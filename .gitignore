@@ -56,3 +56,6 @@ cmake_install.cmake
 *.bak
 *.swp
 *~
+
+# CodeQL
+_codeql_*
