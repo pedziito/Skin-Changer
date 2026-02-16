@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2024-01-01",
+  "offsets": {
+    "dwLocalPlayerPawn": "0x17370B8",
+    "dwEntityList": "0x18BBDC8",
+    "m_pClippingWeapon": "0x1308",
+    "m_AttributeManager": "0x1110",
+    "m_Item": "0x50",
+    "m_iItemDefinitionIndex": "0x1FA",
+    "m_iItemIDHigh": "0x1F0",
+    "m_iItemIDLow": "0x1F4",
+    "m_nFallbackPaintKit": "0x31C",
+    "m_nFallbackSeed": "0x320",
+    "m_flFallbackWear": "0x324",
+    "m_nFallbackStatTrak": "0x328"
+  },
+  "patterns": {
+    "dwLocalPlayerPawn": "48 8B 05 ? ? ? ? 48 85 C0 74 ? 8B 88",
+    "dwEntityList": "48 8B 0D ? ? ? ? 48 89 7C 24 ? 8B FA"
+  },
+  "clientDll": "client.dll",
+  "notes": "These offsets are for CS2. Update them after game patches."
+}
