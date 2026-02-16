@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS2 Skin Changer - Web Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="auth-page">
+        <div class="auth-container">
+            <div class="auth-header">
+                <div class="logo">
+                    <svg width="50" height="50" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="25" cy="25" r="23" stroke="url(#gradient)" stroke-width="4"/>
+                        <path d="M25 10L35 25L25 40L15 25L25 10Z" fill="url(#gradient)"/>
+                        <defs>
+                            <linearGradient id="gradient" x1="0" y1="0" x2="50" y2="50">
+                                <stop offset="0%" stop-color="#667eea"/>
+                                <stop offset="100%" stop-color="#764ba2"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h1>CS2 Skin Changer</h1>
+                <p>Sign in to manage your weapon skins</p>
+            </div>
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required autocomplete="current-password">
+                </div>
+                <div class="error-message" id="loginError"></div>
+                <button type="submit" class="btn btn-primary">Sign In</button>
+                <div class="auth-switch">
+                    Don't have an account? <a href="#" id="showRegister">Sign Up</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Register Page -->
+    <div id="registerPage" class="auth-page" style="display: none;">
+        <div class="auth-container">
+            <div class="auth-header">
+                <div class="logo">
+                    <svg width="50" height="50" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="25" cy="25" r="23" stroke="url(#gradient2)" stroke-width="4"/>
+                        <path d="M25 10L35 25L25 40L15 25L25 10Z" fill="url(#gradient2)"/>
+                        <defs>
+                            <linearGradient id="gradient2" x1="0" y1="0" x2="50" y2="50">
+                                <stop offset="0%" stop-color="#667eea"/>
+                                <stop offset="100%" stop-color="#764ba2"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <h1>Create Account</h1>
+                <p>Join CS2 Skin Changer community</p>
+            </div>
+            <form id="registerForm" class="auth-form">
+                <div class="form-group">
+                    <label for="registerUsername">Username</label>
+                    <input type="text" id="registerUsername" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="registerEmail">Email</label>
+                    <input type="email" id="registerEmail" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" required minlength="6" autocomplete="new-password">
+                    <small>Minimum 6 characters</small>
+                </div>
+                <div class="error-message" id="registerError"></div>
+                <button type="submit" class="btn btn-primary">Create Account</button>
+                <div class="auth-switch">
+                    Already have an account? <a href="#" id="showLogin">Sign In</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display: none;">
+        <nav class="navbar">
+            <div class="navbar-brand">
+                <svg width="35" height="35" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="25" cy="25" r="23" stroke="url(#gradient3)" stroke-width="4"/>
+                    <path d="M25 10L35 25L25 40L15 25L25 10Z" fill="url(#gradient3)"/>
+                    <defs>
+                        <linearGradient id="gradient3" x1="0" y1="0" x2="50" y2="50">
+                            <stop offset="0%" stop-color="#667eea"/>
+                            <stop offset="100%" stop-color="#764ba2"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span>CS2 Skin Changer</span>
+            </div>
+            <div class="navbar-user">
+                <span id="usernameDisplay"></span>
+                <button class="btn btn-outline" id="logoutBtn">Logout</button>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- Warning Banner -->
+            <div class="warning-banner">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div>
+                    <strong>Important:</strong> Using this tool violates Valve's ToS and will likely result in a VAC ban. Use at your own risk. Educational purposes only.
+                </div>
+            </div>
+
+            <!-- API Token Section -->
+            <div class="card">
+                <h2>🔑 API Token for Desktop Client</h2>
+                <p>Generate an API token to use with the CS2 Skin Changer .exe client</p>
+                <div class="api-token-section">
+                    <div id="apiTokenDisplay" class="token-display">
+                        <span id="apiTokenText">Click generate to create a token</span>
+                    </div>
+                    <button class="btn btn-secondary" id="generateTokenBtn">Generate Token</button>
+                    <button class="btn btn-outline" id="copyTokenBtn" style="display: none;">Copy Token</button>
+                </div>
+                <div class="info-box">
+                    <strong>How to use:</strong> Copy this token and paste it into the CS2 Skin Changer .exe settings. The client will sync your skin configurations automatically.
+                </div>
+            </div>
+
+            <!-- Skin Configuration Section -->
+            <div class="card">
+                <h2>🎨 Skin Configuration</h2>
+                <p>Select your weapon and preferred skin</p>
+                
+                <div class="skin-selector">
+                    <div class="form-group">
+                        <label for="categorySelect">Weapon Category</label>
+                        <select id="categorySelect" class="form-select">
+                            <option value="">-- Select Category --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="weaponSelect">Weapon</label>
+                        <select id="weaponSelect" class="form-select" disabled>
+                            <option value="">-- Select Weapon --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="skinSelect">Skin</label>
+                        <select id="skinSelect" class="form-select" disabled>
+                            <option value="">-- Select Skin --</option>
+                        </select>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" id="applySkinBtn" disabled>Apply Skin</button>
+                        <button class="btn btn-danger" id="resetAllBtn">Reset All</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Configurations -->
+            <div class="card">
+                <h2>📋 Your Active Configurations</h2>
+                <div id="configsList" class="configs-list">
+                    <p class="empty-state">No configurations yet. Start by selecting a weapon and skin above.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

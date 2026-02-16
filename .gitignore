@@ -59,3 +59,19 @@ cmake_install.cmake
 
 # CodeQL
 _codeql_*
+
+# Node.js / Web Backend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.local
