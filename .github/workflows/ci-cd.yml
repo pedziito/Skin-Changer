@@ -62,7 +62,7 @@ jobs:
         cmake --build . --config Release
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: CS2SkinChanger-Windows
         path: build/bin/Release/CS2SkinChanger.exe
@@ -96,7 +96,7 @@ jobs:
         cp .env.example .env
         
     - name: Archive deployment
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: web-deployment
         path: deploy/
