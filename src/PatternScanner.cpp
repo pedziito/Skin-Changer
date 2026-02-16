@@ -6,9 +6,14 @@ PatternScanner::PatternScanner(HANDLE processHandle, uintptr_t moduleBase, size_
     
     // Read module data into memory
     m_moduleData.resize(moduleSize);
-    SIZE_T bytesRead;
-    ReadProcessMemory(processHandle, reinterpret_cast<LPCVOID>(moduleBase), 
-                     m_moduleData.data(), moduleSize, &bytesRead);
+    SIZE_T bytesRead = 0;
+    
+    if (!ReadProcessMemory(processHandle, reinterpret_cast<LPCVOID>(moduleBase), 
+                          m_moduleData.data(), moduleSize, &bytesRead) || 
+        bytesRead != moduleSize) {
+        // Failed to read module memory, clear the buffer
+        m_moduleData.clear();
+    }
 }
 
 uintptr_t PatternScanner::FindPattern(const std::string& pattern) {
