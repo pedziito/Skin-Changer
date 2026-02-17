@@ -1,6 +1,6 @@
 // ============================================================================
-//  AC Changer – Loader  (Clean Rewrite)
-//  600x600 dark square window
+//  AC Changer – Loader  (NL-style design)
+//  Matches the dark subscription-panel look
 // ============================================================================
 #include <windows.h>
 #include <wingdi.h>
@@ -12,7 +12,15 @@
 #include <ctime>
 #include "GameMenu.h"
 
-// Debug logger – writes to ac_debug.log
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "msimg32.lib")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
+
+// ============================================================================
+//  Debug logger
+// ============================================================================
 static void DbgLog(const char* fmt, ...) {
     FILE* f = nullptr;
     fopen_s(&f, "ac_debug.log", "a");
@@ -28,42 +36,39 @@ static void DbgLog(const char* fmt, ...) {
     fclose(f);
 }
 
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "msimg32.lib")
-#pragma comment(lib, "advapi32.lib")
-#pragma comment(lib, "shell32.lib")
-
 // ============================================================================
 //  Layout
 // ============================================================================
-#define WIN_W    600
-#define WIN_H    600
-#define MARGIN   60
-#define FIELD_W  (WIN_W - MARGIN * 2)
-#define FIELD_H  42
-#define GAP      14
-#define BTN_H    46
-#define TITLE_H  38
+#define WIN_W       500
+#define WIN_H       400
+#define SIDEBAR_W   130
+#define TITLE_H     0     // no separate title bar – integrated
+#define CONTENT_X   SIDEBAR_W
+#define CONTENT_W   (WIN_W - SIDEBAR_W)
 
 // ============================================================================
-//  Colors
+//  Colors – dark navy theme matching the reference
 // ============================================================================
-#define C_BG       RGB(12, 12, 14)
-#define C_PANEL    RGB(20, 20, 24)
-#define C_FIELD    RGB(26, 26, 30)
-#define C_FIELD_BR RGB(44, 44, 50)
-#define C_FIELD_FC RGB(80, 160, 240)
-#define C_BTN      RGB(80, 160, 240)
-#define C_BTN_HOV  RGB(100, 180, 255)
-#define C_BTN_TXT  RGB(255, 255, 255)
-#define C_GREEN    RGB(45, 200, 120)
-#define C_RED      RGB(210, 60, 60)
-#define C_TEXT     RGB(200, 200, 210)
-#define C_TEXT2    RGB(120, 120, 130)
-#define C_TEXT3    RGB(60, 60, 68)
-#define C_BORDER   RGB(36, 36, 42)
-#define C_WHITE    RGB(235, 235, 240)
+#define C_BG         RGB(15, 17, 26)
+#define C_SIDEBAR    RGB(15, 17, 26)
+#define C_SIDEBAR_BR RGB(30, 34, 50)
+#define C_CARD       RGB(24, 28, 42)
+#define C_CARD_HOV   RGB(30, 35, 52)
+#define C_CARD_BR    RGB(40, 46, 65)
+#define C_ACCENT     RGB(70, 130, 220)
+#define C_ACCENT_L   RGB(100, 160, 245)
+#define C_GREEN      RGB(45, 200, 120)
+#define C_RED        RGB(210, 60, 60)
+#define C_TEXT       RGB(200, 205, 220)
+#define C_TEXT2      RGB(120, 128, 150)
+#define C_TEXT3      RGB(70, 76, 95)
+#define C_WHITE      RGB(235, 238, 245)
+#define C_FIELD      RGB(24, 28, 42)
+#define C_FIELD_BR   RGB(45, 50, 70)
+#define C_FIELD_FC   RGB(70, 130, 220)
+#define C_BTN_BG     RGB(55, 110, 200)
+#define C_BTN_HOV    RGB(70, 130, 220)
+#define C_ICON_CS    RGB(220, 165, 40)
 
 // ============================================================================
 //  State
@@ -77,9 +82,13 @@ static bool      g_signupMode = false;
 static bool      g_dragging   = false;
 static POINT     g_dragPt;
 static int       g_focus      = -1;
-static bool      g_btnHover   = false;
-static bool      g_linkHover  = false;
-static bool      g_closeHover = false;
+
+static bool g_btnHover   = false;
+static bool g_linkHover  = false;
+static bool g_closeHover = false;
+static bool g_minHover   = false;
+static bool g_cardHover  = false;
+static bool g_sideHover[3] = {};
 
 static std::string g_user, g_pass, g_license, g_hwid;
 static std::string g_status;
@@ -94,8 +103,11 @@ static int     g_fieldCount    = 0;
 static HitRect g_btnRect   = {};
 static HitRect g_linkRect  = {};
 static HitRect g_closeRect = {};
+static HitRect g_minRect   = {};
+static HitRect g_cardRect  = {};
+static HitRect g_sideRects[3] = {};
 
-static HFONT fTitle, fBody, fSmall, fBtn;
+static HFONT fTitle, fBody, fSmall, fBtn, fLogo, fNav;
 
 // Overlay
 static OverlayWindow* g_pOverlayWnd  = nullptr;
@@ -106,6 +118,7 @@ static volatile bool  g_overlayRunning = false;
 // ============================================================================
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void Paint(HDC);
+void PaintSidebar(HDC, RECT&);
 void PaintLogin(HDC, RECT&);
 void PaintDash(HDC, RECT&);
 void RRect(HDC, int, int, int, int, int, COLORREF, COLORREF);
@@ -157,16 +170,22 @@ DWORD WINAPI OverlayThreadProc(LPVOID param) {
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
     g_hInst = hInst;
 
-    fTitle = CreateFont(24, 0, 0, 0, FW_BOLD,     0, 0, 0, DEFAULT_CHARSET,
+    fLogo  = CreateFont(28, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
                         OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                         0, "Segoe UI");
-    fBody  = CreateFont(15, 0, 0, 0, FW_NORMAL,   0, 0, 0, DEFAULT_CHARSET,
+    fTitle = CreateFont(20, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
                         OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                         0, "Segoe UI");
-    fSmall = CreateFont(12, 0, 0, 0, FW_NORMAL,   0, 0, 0, DEFAULT_CHARSET,
+    fNav   = CreateFont(13, 0, 0, 0, FW_NORMAL,   0, 0, 0, DEFAULT_CHARSET,
                         OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                         0, "Segoe UI");
-    fBtn   = CreateFont(15, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
+    fBody  = CreateFont(13, 0, 0, 0, FW_NORMAL,   0, 0, 0, DEFAULT_CHARSET,
+                        OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                        0, "Segoe UI");
+    fSmall = CreateFont(11, 0, 0, 0, FW_NORMAL,   0, 0, 0, DEFAULT_CHARSET,
+                        OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                        0, "Segoe UI");
+    fBtn   = CreateFont(13, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
                         OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                         0, "Segoe UI");
 
@@ -183,9 +202,9 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
 
     g_hWnd = CreateWindowEx(WS_EX_LAYERED, "ACLDR", "AC Changer",
         WS_POPUP, sx, sy, WIN_W, WIN_H, NULL, NULL, hInst, NULL);
-    SetLayeredWindowAttributes(g_hWnd, 0, 245, LWA_ALPHA);
+    SetLayeredWindowAttributes(g_hWnd, 0, 248, LWA_ALPHA);
 
-    HRGN rgn = CreateRoundRectRgn(0, 0, WIN_W + 1, WIN_H + 1, 20, 20);
+    HRGN rgn = CreateRoundRectRgn(0, 0, WIN_W + 1, WIN_H + 1, 16, 16);
     SetWindowRgn(g_hWnd, rgn, TRUE);
 
     ShowWindow(g_hWnd, nShow);
@@ -202,8 +221,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
         DispatchMessage(&msg);
     }
 
-    DeleteObject(fTitle); DeleteObject(fBody);
-    DeleteObject(fSmall); DeleteObject(fBtn);
+    DeleteObject(fLogo); DeleteObject(fTitle); DeleteObject(fNav);
+    DeleteObject(fBody); DeleteObject(fSmall); DeleteObject(fBtn);
     return (int)msg.wParam;
 }
 
@@ -234,11 +253,11 @@ int DrawField(HDC hdc, int x, int y, int w, int editIdx,
               const char* placeholder, bool isPwd) {
     bool focused = (g_focus == editIdx);
     COLORREF brd = focused ? C_FIELD_FC : C_FIELD_BR;
-    RRect(hdc, x, y, w, FIELD_H, 8, C_FIELD, brd);
+    RRect(hdc, x, y, w, 36, 6, C_FIELD, brd);
 
     SelectObject(hdc, fBody);
     SetBkMode(hdc, TRANSPARENT);
-    RECT tR = { x + 16, y, x + w - 16, y + FIELD_H };
+    RECT tR = { x + 14, y, x + w - 14, y + 36 };
 
     const char* text = g_bufs[editIdx];
     if (strlen(text) == 0) {
@@ -253,18 +272,18 @@ int DrawField(HDC hdc, int x, int y, int w, int editIdx,
         DrawText(hdc, text, -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
 
-    g_fieldRects[g_fieldCount] = { x, y, w, FIELD_H };
+    g_fieldRects[g_fieldCount] = { x, y, w, 36 };
     g_fieldIdx[g_fieldCount]   = editIdx;
     g_fieldCount++;
-    return y + FIELD_H;
+    return y + 36;
 }
 
 void DrawButton(HDC hdc, int x, int y, int w, int h,
                 const char* text, bool hover) {
-    COLORREF bg = hover ? C_BTN_HOV : C_BTN;
-    RRect(hdc, x, y, w, h, 8, bg, bg);
+    COLORREF bg = hover ? C_BTN_HOV : C_BTN_BG;
+    RRect(hdc, x, y, w, h, 6, bg, bg);
     SelectObject(hdc, fBtn);
-    SetTextColor(hdc, C_BTN_TXT);
+    SetTextColor(hdc, RGB(255, 255, 255));
     SetBkMode(hdc, TRANSPARENT);
     RECT r = { x, y, x + w, y + h };
     DrawText(hdc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -289,7 +308,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g_status    = "Velkommen tilbage, " + g_user + "!";
             g_statusClr = C_GREEN;
         }
-        g_closeRect = { WIN_W - 44, 6, 32, 26 };
+        g_closeRect = { WIN_W - 34, 8, 22, 22 };
+        g_minRect   = { WIN_W - 60, 8, 22, 22 };
         break;
 
     case WM_PAINT: {
@@ -311,10 +331,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_LBUTTONDOWN: {
         int mx = (short)LOWORD(lp), my = (short)HIWORD(lp);
         if (HitTest(g_closeRect, mx, my)) { PostQuitMessage(0); return 0; }
-        if (my < TITLE_H && mx < WIN_W - 44) {
+        if (HitTest(g_minRect, mx, my)) { ShowWindow(hwnd, SW_MINIMIZE); return 0; }
+
+        // Drag from top area or sidebar
+        if (my < 40 || mx < SIDEBAR_W) {
             g_dragging = true; g_dragPt = { mx, my };
             SetCapture(hwnd); return 0;
         }
+
         if (!g_loggedIn) {
             bool hit = false;
             for (int i = 0; i < g_fieldCount; i++) {
@@ -338,7 +362,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (!hit) { g_focus = -1; SetFocus(hwnd); }
         } else {
-            if (HitTest(g_btnRect, mx, my)) {
+            if (HitTest(g_cardRect, mx, my)) {
                 EnableWindow(hwnd, FALSE);
                 LaunchGame(hwnd);
                 EnableWindow(hwnd, TRUE);
@@ -359,9 +383,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         bool bh = HitTest(g_btnRect, mx, my);
         bool ch = HitTest(g_closeRect, mx, my);
+        bool mh = HitTest(g_minRect, mx, my);
         bool lh = HitTest(g_linkRect, mx, my);
-        if (bh != g_btnHover || ch != g_closeHover || lh != g_linkHover) {
-            g_btnHover = bh; g_closeHover = ch; g_linkHover = lh;
+        bool crh = g_loggedIn && HitTest(g_cardRect, mx, my);
+        bool sh[3] = {};
+        for (int i = 0; i < 3; i++) sh[i] = HitTest(g_sideRects[i], mx, my);
+
+        bool changed = (bh != g_btnHover || ch != g_closeHover ||
+                        mh != g_minHover || lh != g_linkHover || crh != g_cardHover);
+        for (int i = 0; i < 3; i++) if (sh[i] != g_sideHover[i]) changed = true;
+
+        if (changed) {
+            g_btnHover = bh; g_closeHover = ch; g_minHover = mh;
+            g_linkHover = lh; g_cardHover = crh;
+            for (int i = 0; i < 3; i++) g_sideHover[i] = sh[i];
             InvalidateRect(hwnd, NULL, FALSE);
         }
         TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
@@ -370,7 +405,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     case WM_MOUSELEAVE:
-        g_btnHover = g_closeHover = g_linkHover = false;
+        g_btnHover = g_closeHover = g_minHover = g_linkHover = g_cardHover = false;
+        for (int i = 0; i < 3; i++) g_sideHover[i] = false;
         InvalidateRect(hwnd, NULL, FALSE); break;
 
     case WM_LBUTTONUP:
@@ -409,7 +445,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (HitTest(g_fieldRects[i], pt.x, pt.y)) { field = true; break; }
         bool hand = HitTest(g_btnRect, pt.x, pt.y) ||
                     HitTest(g_closeRect, pt.x, pt.y) ||
-                    HitTest(g_linkRect, pt.x, pt.y);
+                    HitTest(g_minRect, pt.x, pt.y) ||
+                    HitTest(g_linkRect, pt.x, pt.y) ||
+                    (g_loggedIn && HitTest(g_cardRect, pt.x, pt.y));
+        for (int i = 0; i < 3; i++)
+            if (HitTest(g_sideRects[i], pt.x, pt.y)) hand = true;
         SetCursor(LoadCursor(NULL, field ? IDC_IBEAM : (hand ? IDC_HAND : IDC_ARROW)));
         return TRUE;
     }
@@ -421,159 +461,264 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 // ============================================================================
+//  Sidebar
+// ============================================================================
+void PaintSidebar(HDC hdc, RECT& rc) {
+    // Sidebar background
+    RECT sb = { 0, 0, SIDEBAR_W, rc.bottom };
+    HBRUSH sbr = CreateSolidBrush(C_SIDEBAR);
+    FillRect(hdc, &sb, sbr);
+    DeleteObject(sbr);
+
+    // Right border line
+    HPEN bp = CreatePen(PS_SOLID, 1, C_SIDEBAR_BR);
+    HPEN obp = (HPEN)SelectObject(hdc, bp);
+    MoveToEx(hdc, SIDEBAR_W - 1, 0, NULL);
+    LineTo(hdc, SIDEBAR_W - 1, rc.bottom);
+    SelectObject(hdc, obp);
+    DeleteObject(bp);
+
+    SetBkMode(hdc, TRANSPARENT);
+
+    // "AC" logo – top left
+    SelectObject(hdc, fLogo);
+    SetTextColor(hdc, C_ACCENT);
+    RECT lr = { 18, 14, SIDEBAR_W, 50 };
+    DrawText(hdc, "AC", -1, &lr, DT_LEFT | DT_SINGLELINE);
+
+    // Navigation items
+    const char* navItems[] = { "Website", "Support", "Market" };
+    int ny = 80;
+    for (int i = 0; i < 3; i++) {
+        g_sideRects[i] = { 0, ny, SIDEBAR_W - 1, 30 };
+        if (g_sideHover[i]) {
+            RECT hr = { 4, ny, SIDEBAR_W - 5, ny + 30 };
+            HBRUSH hb = CreateSolidBrush(RGB(25, 30, 45));
+            FillRect(hdc, &hr, hb);
+            DeleteObject(hb);
+        }
+        SelectObject(hdc, fNav);
+        SetTextColor(hdc, g_sideHover[i] ? C_WHITE : C_TEXT2);
+        RECT nr = { 22, ny, SIDEBAR_W - 8, ny + 30 };
+        DrawText(hdc, navItems[i], -1, &nr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        ny += 32;
+    }
+
+    // User avatar + name at bottom
+    int avatarY = rc.bottom - 48;
+    // Circle avatar
+    HBRUSH ab = CreateSolidBrush(RGB(50, 55, 75));
+    HPEN   ap = CreatePen(PS_SOLID, 1, RGB(50, 55, 75));
+    SelectObject(hdc, ab); SelectObject(hdc, ap);
+    Ellipse(hdc, 16, avatarY, 16 + 30, avatarY + 30);
+    DeleteObject(ab); DeleteObject(ap);
+
+    // User initial in circle
+    SelectObject(hdc, fBtn);
+    SetTextColor(hdc, C_WHITE);
+    RECT ir = { 16, avatarY, 46, avatarY + 30 };
+    if (!g_user.empty()) {
+        char init[2] = { (char)toupper(g_user[0]), 0 };
+        DrawText(hdc, init, -1, &ir, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    // Username
+    SelectObject(hdc, fSmall);
+    SetTextColor(hdc, C_TEXT);
+    RECT ur = { 52, avatarY, SIDEBAR_W - 8, avatarY + 30 };
+    const char* displayName = g_loggedIn ? g_user.c_str() : "Ikke logget ind";
+    DrawText(hdc, displayName, -1, &ur, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+}
+
+// ============================================================================
 //  Paint
 // ============================================================================
 void Paint(HDC hdc) {
     RECT rc; GetClientRect(g_hWnd, &rc);
 
+    // Background
     HBRUSH bg = CreateSolidBrush(C_BG);
     FillRect(hdc, &rc, bg);
     DeleteObject(bg);
 
     SetBkMode(hdc, TRANSPARENT);
 
-    // Title bar
-    RECT tb = { 0, 0, rc.right, TITLE_H };
-    HBRUSH tbr = CreateSolidBrush(RGB(8, 8, 10));
-    FillRect(hdc, &tb, tbr);
-    DeleteObject(tbr);
+    // Sidebar
+    PaintSidebar(hdc, rc);
 
-    HPEN sp = CreatePen(PS_SOLID, 1, C_BORDER);
-    HPEN osp = (HPEN)SelectObject(hdc, sp);
-    MoveToEx(hdc, 0, TITLE_H, NULL);
-    LineTo(hdc, rc.right, TITLE_H);
-    SelectObject(hdc, osp);
-    DeleteObject(sp);
-
-    SelectObject(hdc, fSmall);
-    SetTextColor(hdc, C_TEXT3);
-    RECT tR = { 16, 0, 200, TITLE_H };
-    DrawText(hdc, "AC Changer", -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-    // Close button
-    if (g_closeHover) {
-        RRect(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h,
-              6, RGB(60, 15, 15), RGB(60, 15, 15));
+    // Window buttons (min / close) – top right
+    // Minimize "–"
+    if (g_minHover) {
+        RRect(hdc, g_minRect.x - 2, g_minRect.y - 2,
+              g_minRect.w + 4, g_minRect.h + 4, 4,
+              RGB(30, 35, 52), RGB(30, 35, 52));
     }
     SelectObject(hdc, fBody);
-    SetTextColor(hdc, g_closeHover ? C_RED : C_TEXT3);
-    RECT xR = { g_closeRect.x, g_closeRect.y,
-                g_closeRect.x + g_closeRect.w, g_closeRect.y + g_closeRect.h };
-    DrawText(hdc, "X", -1, &xR, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SetTextColor(hdc, g_minHover ? C_WHITE : C_TEXT3);
+    RECT mnR = { g_minRect.x, g_minRect.y, g_minRect.x + g_minRect.w, g_minRect.y + g_minRect.h };
+    DrawText(hdc, "\xE2\x80\x93", -1, &mnR, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
+    // Close "x"
+    if (g_closeHover) {
+        RRect(hdc, g_closeRect.x - 2, g_closeRect.y - 2,
+              g_closeRect.w + 4, g_closeRect.h + 4, 4,
+              RGB(60, 20, 20), RGB(60, 20, 20));
+    }
+    SetTextColor(hdc, g_closeHover ? C_RED : C_TEXT3);
+    RECT clR = { g_closeRect.x, g_closeRect.y, g_closeRect.x + g_closeRect.w, g_closeRect.y + g_closeRect.h };
+    DrawText(hdc, "x", -1, &clR, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    // Content
     if (g_loggedIn) PaintDash(hdc, rc);
     else            PaintLogin(hdc, rc);
 }
 
 // ============================================================================
-//  Login
+//  Login (shown in right content area)
 // ============================================================================
 void PaintLogin(HDC hdc, RECT& rc) {
-    int y = TITLE_H + 100;
+    int cx = CONTENT_X + CONTENT_W / 2;
+    int lx = CONTENT_X + 30;
+    int rw = CONTENT_W - 60;
+    int y = 60;
     g_fieldCount = 0;
 
     SelectObject(hdc, fTitle);
     SetTextColor(hdc, C_WHITE);
-    RECT tR = { 0, y, rc.right, y + 30 };
-    DrawText(hdc, "AC CHANGER", -1, &tR, DT_CENTER | DT_SINGLELINE);
-    y += 36;
+    RECT tR = { CONTENT_X, y, rc.right, y + 28 };
+    DrawText(hdc, g_signupMode ? "Opret Konto" : "Log Ind", -1, &tR,
+             DT_CENTER | DT_SINGLELINE);
+    y += 32;
 
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_TEXT2);
-    RECT sR = { 0, y, rc.right, y + 18 };
-    DrawText(hdc, g_signupMode ? "Opret ny konto" : "Log ind for at forts\xE6tte",
+    RECT sR = { CONTENT_X, y, rc.right, y + 16 };
+    DrawText(hdc, g_signupMode ? "Opret en ny konto" : "Log ind p\xE5 din konto",
              -1, &sR, DT_CENTER | DT_SINGLELINE);
-    y += 50;
+    y += 40;
 
     if (g_signupMode) {
-        y = DrawField(hdc, MARGIN, y, FIELD_W, 0, "License key (AC-XXXX)", false);
-        y += GAP;
+        y = DrawField(hdc, lx, y, rw, 0, "License key (AC-XXXX)", false);
+        y += 10;
     }
-    y = DrawField(hdc, MARGIN, y, FIELD_W, 1, "Brugernavn", false);
-    y += GAP;
-    y = DrawField(hdc, MARGIN, y, FIELD_W, 2, "Adgangskode", true);
-    y += 28;
+    y = DrawField(hdc, lx, y, rw, 1, "Brugernavn", false);
+    y += 10;
+    y = DrawField(hdc, lx, y, rw, 2, "Adgangskode", true);
+    y += 24;
 
-    DrawButton(hdc, MARGIN, y, FIELD_W, BTN_H,
+    DrawButton(hdc, lx, y, rw, 38,
                g_signupMode ? "Opret Konto" : "Log Ind", g_btnHover);
-    g_btnRect = { MARGIN, y, FIELD_W, BTN_H };
-    y += BTN_H + 20;
+    g_btnRect = { lx, y, rw, 38 };
+    y += 38 + 16;
 
     SelectObject(hdc, fSmall);
-    SetTextColor(hdc, g_linkHover ? C_BTN : C_TEXT2);
-    RECT lR = { 0, y, rc.right, y + 16 };
+    SetTextColor(hdc, g_linkHover ? C_ACCENT_L : C_TEXT2);
+    RECT lR = { CONTENT_X, y, rc.right, y + 16 };
     DrawText(hdc, g_signupMode ? "Har du en konto? Log ind" :
              "Ingen konto? Opret her", -1, &lR, DT_CENTER | DT_SINGLELINE);
-    g_linkRect = { 0, y, rc.right, 16 };
-    y += 30;
+    g_linkRect = { CONTENT_X, y, CONTENT_W, 16 };
+    y += 26;
 
     if (!g_status.empty()) {
         SelectObject(hdc, fSmall);
         SetTextColor(hdc, g_statusClr);
-        RECT stR = { MARGIN, y, WIN_W - MARGIN, y + 40 };
+        RECT stR = { lx, y, lx + rw, y + 36 };
         DrawText(hdc, g_status.c_str(), -1, &stR, DT_CENTER | DT_WORDBREAK);
     }
 }
 
 // ============================================================================
-//  Dashboard
+//  Dashboard – subscription panel
 // ============================================================================
 void PaintDash(HDC hdc, RECT& rc) {
-    int y = TITLE_H + 70;
+    int lx = CONTENT_X + 24;
+    int rw = CONTENT_W - 48;
+    int y = 22;
 
+    // Title: "Subscription"
     SelectObject(hdc, fTitle);
     SetTextColor(hdc, C_WHITE);
-    RECT tR = { 0, y, rc.right, y + 30 };
-    DrawText(hdc, "AC CHANGER", -1, &tR, DT_CENTER | DT_SINGLELINE);
-    y += 34;
+    RECT tR = { lx, y, lx + rw, y + 26 };
+    DrawText(hdc, "Subscription", -1, &tR, DT_LEFT | DT_SINGLELINE);
+    y += 26;
 
+    // Subtitle
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_TEXT2);
-    RECT sR = { 0, y, rc.right, y + 18 };
-    DrawText(hdc, "CS2 Skin Changer", -1, &sR, DT_CENTER | DT_SINGLELINE);
-    y += 50;
+    RECT sR = { lx, y, lx + rw, y + 16 };
+    DrawText(hdc, "Available subscriptions", -1, &sR, DT_LEFT | DT_SINGLELINE);
+    y += 36;
 
-    // Status card
-    RRect(hdc, MARGIN, y, FIELD_W, 52, 8, C_PANEL, C_BORDER);
+    // ── CS2 Card ──
+    int cardH = 64;
+    COLORREF ccBg = g_cardHover ? C_CARD_HOV : C_CARD;
+    COLORREF ccBr = g_cardHover ? C_ACCENT : C_CARD_BR;
+    RRect(hdc, lx, y, rw, cardH, 8, ccBg, ccBr);
+    g_cardRect = { lx, y, rw, cardH };
+
+    // CS2 icon circle (orange/gold)
+    int iconX = lx + rw - 50;
+    int iconY = y + (cardH - 34) / 2;
+    HBRUSH ib = CreateSolidBrush(C_ICON_CS);
+    HPEN   ip = CreatePen(PS_SOLID, 1, C_ICON_CS);
+    SelectObject(hdc, ib); SelectObject(hdc, ip);
+    Ellipse(hdc, iconX, iconY, iconX + 34, iconY + 34);
+    DeleteObject(ib); DeleteObject(ip);
+
+    // "CS" text in icon
+    SelectObject(hdc, fBtn);
+    SetTextColor(hdc, RGB(20, 15, 5));
+    RECT icR = { iconX, iconY, iconX + 34, iconY + 34 };
+    DrawText(hdc, "CS", -1, &icR, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    // Game name
+    SelectObject(hdc, fBtn);
+    SetTextColor(hdc, C_WHITE);
+    RECT gnR = { lx + 16, y + 12, iconX - 8, y + 30 };
+    DrawText(hdc, "Counter-Strike 2", -1, &gnR, DT_LEFT | DT_SINGLELINE);
+
+    // Expiry
+    SelectObject(hdc, fSmall);
+    SetTextColor(hdc, C_TEXT2);
+    RECT exR = { lx + 16, y + 32, iconX - 8, y + 48 };
+    DrawText(hdc, "Expires in 16 days", -1, &exR, DT_LEFT | DT_SINGLELINE);
+
+    y += cardH + 14;
+
+    // ── Status info card ──
+    RRect(hdc, lx, y, rw, 50, 8, C_CARD, C_CARD_BR);
     SelectObject(hdc, fBody);
     SetTextColor(hdc, C_TEXT2);
-    RECT lb1 = { MARGIN + 18, y, MARGIN + 160, y + 52 };
-    DrawText(hdc, "Status:", -1, &lb1, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    RECT stlR = { lx + 16, y, lx + 120, y + 50 };
+    DrawText(hdc, "Status:", -1, &stlR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(hdc, C_GREEN);
-    RECT rb1 = { MARGIN + 18, y, WIN_W - MARGIN - 18, y + 52 };
-    DrawText(hdc, "UNDETECTED", -1, &rb1, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    y += 52 + GAP;
+    RECT strR = { lx + 16, y, lx + rw - 16, y + 50 };
+    DrawText(hdc, "UNDETECTED", -1, &strR, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    y += 50 + 14;
 
-    // User card
-    RRect(hdc, MARGIN, y, FIELD_W, 52, 8, C_PANEL, C_BORDER);
+    // ── User info card ──
+    RRect(hdc, lx, y, rw, 50, 8, C_CARD, C_CARD_BR);
     SetTextColor(hdc, C_TEXT2);
-    RECT lb2 = { MARGIN + 18, y, MARGIN + 160, y + 52 };
-    DrawText(hdc, "Bruger:", -1, &lb2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    RECT ulR = { lx + 16, y, lx + 120, y + 50 };
+    DrawText(hdc, "Bruger:", -1, &ulR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(hdc, C_WHITE);
-    RECT rb2 = { MARGIN + 18, y, WIN_W - MARGIN - 18, y + 52 };
-    DrawText(hdc, g_user.c_str(), -1, &rb2, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    y += 52 + GAP;
+    RECT urR = { lx + 16, y, lx + rw - 16, y + 50 };
+    DrawText(hdc, g_user.c_str(), -1, &urR, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    y += 50 + 20;
 
-    // Expiry card
-    RRect(hdc, MARGIN, y, FIELD_W, 52, 8, C_PANEL, C_BORDER);
-    SetTextColor(hdc, C_TEXT2);
-    RECT lb3 = { MARGIN + 18, y, MARGIN + 200, y + 52 };
-    DrawText(hdc, "Udl\xF8" "bsdato:", -1, &lb3, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    SetTextColor(hdc, C_GREEN);
-    RECT rb3 = { MARGIN + 18, y, WIN_W - MARGIN - 18, y + 52 };
-    DrawText(hdc, "2026-12-31", -1, &rb3, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    y += 52 + 30;
+    // Click instruction
+    SelectObject(hdc, fSmall);
+    SetTextColor(hdc, C_TEXT3);
+    RECT crR = { lx, y, lx + rw, y + 16 };
+    DrawText(hdc, "Klik p\xE5 CS2-kortet for at starte", -1, &crR,
+             DT_CENTER | DT_SINGLELINE);
+    y += 24;
 
-    // Launch button
-    DrawButton(hdc, MARGIN, y, FIELD_W, BTN_H + 4,
-               "Start CS2 & Load Cheat", g_btnHover);
-    g_btnRect = { MARGIN, y, FIELD_W, BTN_H + 4 };
-    y += BTN_H + 4 + 24;
-
+    // Status
     if (!g_status.empty()) {
         SelectObject(hdc, fSmall);
         SetTextColor(hdc, g_statusClr);
-        RECT stR = { MARGIN, y, WIN_W - MARGIN, y + 50 };
+        RECT stR = { lx, y, lx + rw, y + 40 };
         DrawText(hdc, g_status.c_str(), -1, &stR, DT_CENTER | DT_WORDBREAK);
     }
 }
@@ -745,7 +890,6 @@ bool LaunchGame(HWND hwnd) {
     if (!h) { SetStat("Fejl: K\xF8r som administrator!", C_RED); return false; }
     CloseHandle(h);
 
-    // Check what windows exist before creating overlay
     DbgLog("Checking for CS2 window before overlay thread...");
     HWND testHwnd = FindWindowA(nullptr, "Counter-Strike 2");
     DbgLog("Pre-check FindWindowA('Counter-Strike 2') => %p", (void*)testHwnd);
