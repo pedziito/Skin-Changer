@@ -12,9 +12,12 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # ============================================================================
 # CORE LIBRARY - Shared game manipulation logic
 # ============================================================================
-file(GLOB_RECURSE CORE_SOURCES 
+file(GLOB CORE_SOURCES 
     "src/*.cpp"
 )
+
+# Exclude main.cpp from library (it's only for old builds)
+list(FILTER CORE_SOURCES EXCLUDE REGEX "main\\.cpp$")
 
 file(GLOB_RECURSE CORE_HEADERS 
     "include/*.h"
@@ -30,33 +33,41 @@ target_include_directories(CS2Core PUBLIC
 )
 
 target_link_libraries(CS2Core PUBLIC
+    ws2_32
     comctl32
 )
 
 # ============================================================================
 # INJECTOR LIBRARY - Game hook compiled as static lib
 # ============================================================================
-file(GLOB_RECURSE INJECTOR_SOURCES 
-    "injector/*.cpp"
-)
-
-file(GLOB_RECURSE INJECTOR_HEADERS 
-    "injector/*.h"
-)
-
-add_library(CS2Injector STATIC
-    ${INJECTOR_SOURCES}
-    ${INJECTOR_HEADERS}
-)
-
-target_include_directories(CS2Injector PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/injector
-)
-
-target_link_libraries(CS2Injector PRIVATE
-    CS2Core
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/injector")
+    file(GLOB INJECTOR_SOURCES 
+        "injector/*.cpp"
+    )
+    
+    if(INJECTOR_SOURCES)
+        add_library(CS2Injector STATIC
+            ${INJECTOR_SOURCES}
+        )
+        
+        target_include_directories(CS2Injector PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/injector
+        )
+        
+        target_link_libraries(CS2Injector PRIVATE
+            CS2Core
+        )
+        
+        set(INJECTOR_LIBS CS2Injector)
+    else()
+        message(WARNING "No injector source files found, building without injector")
+        set(INJECTOR_LIBS "")
+    endif()
+else()
+    message(WARNING "Injector directory not found")
+    set(INJECTOR_LIBS "")
+endif()
 
 # ============================================================================
 # SINGLE EXECUTABLE - Everything compiled in (no separate DLL)
@@ -73,7 +84,7 @@ target_include_directories(cs2inventory PRIVATE
 
 target_link_libraries(cs2inventory PRIVATE
     CS2Core
-    CS2Injector
+    ${INJECTOR_LIBS}
 )
 
 set_target_properties(cs2inventory PROPERTIES
@@ -83,20 +94,33 @@ set_target_properties(cs2inventory PROPERTIES
 # ============================================================================
 # ADMIN CLI TOOL
 # ============================================================================
-add_executable(cs2admin
-    admin/main.cpp
-)
-
-target_include_directories(cs2admin PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/admin
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/admin/main.cpp")
+    add_executable(cs2admin
+        admin/main.cpp
+    )
+    
+    target_include_directories(cs2admin PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/admin
+    )
+    
+    message(STATUS "Admin tool: cs2admin.exe (enabled)")
+else()
+    message(WARNING "Admin tool source not found, skipping cs2admin.exe build")
+endif()
 
 # ============================================================================
 # Copy config files
 # ============================================================================
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/skins.json COPYONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/offsets.json COPYONLY)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/skins.json COPYONLY)
+    message(STATUS "Config: skins.json (copied)")
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/offsets.json COPYONLY)
+    message(STATUS "Config: offsets.json (copied)")
+endif()
 
 # ============================================================================
 # Build Summary
