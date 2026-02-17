@@ -118,7 +118,7 @@ namespace {
             bool clicked = hovered && ctx.input.mouseClicked[0];
 
             float target   = active ? 1.0f : (hovered ? 0.5f : 0.0f);
-            float& anim    = ctx.SmoothAnim(id, target);
+            float  anim    = ctx.SmoothAnim(id, target);
 
             // hover / active bg
             if (anim > 0.01f) {
@@ -282,7 +282,7 @@ namespace {
                 }
 
                 float target   = hovered ? 1.0f : (selected ? 0.7f : 0.0f);
-                float& anim    = ctx.SmoothAnim(cId, target);
+                float  anim    = ctx.SmoothAnim(cId, target);
 
                 // bg
                 uint32_t bg = selected ? ACETheme::CardBgActive
@@ -393,7 +393,7 @@ namespace {
             bool bHov    = ctx.input.IsMouseInRect(btnX, btnY,
                                                     btnX + btnW, btnY + btnH);
             bool bClk    = bHov && ctx.input.mouseClicked[0];
-            float& bAnim = ctx.SmoothAnim(bId, bHov ? 1.0f : 0.0f);
+            float  bAnim = ctx.SmoothAnim(bId, bHov ? 1.0f : 0.0f);
 
             if (equipped) {
                 uint32_t bg = ACE_COL32(248,113,113, (int)(180 + 75*bAnim));
@@ -492,7 +492,7 @@ namespace {
 
                 uint32_t iId = ctx.GetID(preset.c_str());
                 bool hov = ctx.input.IsMouseInRect(iX, iY, iX+iW, iY+iH);
-                float& anim = ctx.SmoothAnim(iId, hov ? 1.0f : 0.0f);
+                float  anim = ctx.SmoothAnim(iId, hov ? 1.0f : 0.0f);
 
                 uint32_t bg = ACE_COL32(22,22,30, (int)(180 + 75*anim));
                 ctx.drawList.AddRectFilled(iX, iY, iX+iW, iY+iH, bg, 6.0f);

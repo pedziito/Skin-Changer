@@ -257,8 +257,8 @@ namespace Hooks {
         oPresent = (PresentFn)scVtable[8];
         oResizeBuffers = (ResizeBuffersFn)scVtable[13];
 
-        presentHook.Hook(scVtable, 8, (void*)HookedPresent);
-        resizeHook.Hook(scVtable, 13, (void*)HookedResizeBuffers);
+        presentHook.Hook(scVtable, 8, reinterpret_cast<void*>(HookedPresent));
+        resizeHook.Hook(scVtable, 13, reinterpret_cast<void*>(HookedResizeBuffers));
 
         LogMsg("DX11 hooks installed (Present @ 8, ResizeBuffers @ 13) — ACE pipeline");
 
