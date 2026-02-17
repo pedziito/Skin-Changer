@@ -1411,12 +1411,16 @@ bool OverlayWindow::Create(HMODULE hModule, DWORD cs2Pid) {
     m_initPhase = 0;
     m_initDone  = false;
 
-    DbgLog("Overlay created: hwnd=%p  size=%dx%d", (void*)m_hwnd, w, h);
+    // Critical: WndProc uses g_pOverlay for all rendering
+    g_pOverlay = this;
+
+    DbgLog("Overlay created: hwnd=%p  size=%dx%d  g_pOverlay=%p", (void*)m_hwnd, w, h, (void*)g_pOverlay);
     return true;
 }
 
 void OverlayWindow::Destroy() {
     m_running = false;
+    g_pOverlay = nullptr;
     if (m_splashFont)  { DeleteObject(m_splashFont);  m_splashFont  = nullptr; }
     if (m_splashSmall) { DeleteObject(m_splashSmall); m_splashSmall = nullptr; }
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
