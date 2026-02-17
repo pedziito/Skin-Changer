@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(CS2InventoryChanger VERSION 1.0.0 LANGUAGES CXX)
+project(CS2SkinChanger VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,131 +10,131 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ============================================================================
-# CORE LIBRARY - Shared game manipulation logic
+# IMGUI STATIC LIBRARY
 # ============================================================================
-file(GLOB CORE_SOURCES 
-    "src/*.cpp"
+set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
+
+add_library(ImGui STATIC
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/imgui_impl_win32.cpp
+    ${IMGUI_DIR}/imgui_impl_dx11.cpp
 )
 
-# Exclude main.cpp from library (it's only for old builds)
-list(FILTER CORE_SOURCES EXCLUDE REGEX "main\\.cpp$")
-
-file(GLOB_RECURSE CORE_HEADERS 
-    "include/*.h"
-    "include/*.hpp"
-)
-
-add_library(CS2Core STATIC
-    ${CORE_SOURCES}
-)
-
-target_include_directories(CS2Core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-target_link_libraries(CS2Core PUBLIC
-    ws2_32
-    comctl32
+target_include_directories(ImGui PUBLIC
+    ${IMGUI_DIR}
 )
 
 # ============================================================================
-# INJECTOR LIBRARY - Overlay menu system (static lib linked into loader)
+# SKIN CHANGER DLL (injected into cs2.exe)
 # ============================================================================
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/injector")
-    file(GLOB INJECTOR_SOURCES 
-        "injector/*.cpp"
-    )
-    
-    # Exclude dllmain.cpp – not needed when linking statically
-    list(FILTER INJECTOR_SOURCES EXCLUDE REGEX "dllmain\\.cpp$")
-    
-    if(INJECTOR_SOURCES)
-        add_library(CS2Injector STATIC
-            ${INJECTOR_SOURCES}
-        )
-        
-        target_include_directories(CS2Injector PUBLIC
-            ${CMAKE_CURRENT_SOURCE_DIR}/include
-            ${CMAKE_CURRENT_SOURCE_DIR}/injector
-        )
-        
-        target_link_libraries(CS2Injector PUBLIC
-            gdi32
-            user32
-            msimg32
-        )
-        
-        set(INJECTOR_LIBS CS2Injector)
-    else()
-        message(WARNING "No injector source files found, building without injector")
-        set(INJECTOR_LIBS "")
-    endif()
+add_library(skin_changer SHARED
+    dll/dllmain.cpp
+    dll/hooks.cpp
+    dll/offsets.cpp
+    dll/netvars.cpp
+    dll/inventory.cpp
+    dll/menu.cpp
+    dll/config.cpp
+    dll/render.cpp
+    dll/skindb.cpp
+)
+
+target_include_directories(skin_changer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/dll
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/json
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor
+)
+
+target_link_libraries(skin_changer PRIVATE
+    ImGui
+    d3d11
+    dxgi
+    dxguid
+    dwmapi
+    wininet
+    shell32
+    user32
+    gdi32
+)
+
+# Enable SEH for __try/__except in inventory.cpp
+if(MSVC)
+    target_compile_options(skin_changer PRIVATE /EHa)
 else()
-    message(WARNING "Injector directory not found")
-    set(INJECTOR_LIBS "")
+    target_compile_definitions(skin_changer PRIVATE _WIN32_WINNT=0x0A00)
 endif()
 
-# ============================================================================
-# LOADER EXECUTABLE - GUI + overlay (everything in one exe)
-# ============================================================================
-add_executable(cs2inventory
-    loader/gui_loader.cpp
+set_target_properties(skin_changer PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "skin_changer"
+    SUFFIX ".dll"
 )
 
-target_include_directories(cs2inventory PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/loader
-    ${CMAKE_CURRENT_SOURCE_DIR}/injector
+# ============================================================================
+# LOADER EXECUTABLE (injects DLL into cs2.exe)
+# ============================================================================
+add_executable(ac_loader
+    loader/loader.cpp
 )
 
-target_link_libraries(cs2inventory PRIVATE
-    CS2Core
-    ${INJECTOR_LIBS}
+target_link_libraries(ac_loader PRIVATE
     advapi32
     shell32
-    msimg32
+    user32
 )
 
-set_target_properties(cs2inventory PROPERTIES
-    WIN32_EXECUTABLE TRUE
+set_target_properties(ac_loader PROPERTIES
+    WIN32_EXECUTABLE FALSE
+    OUTPUT_NAME "AC_Loader"
 )
 
 # ============================================================================
-# ADMIN CLI TOOL
+# ADMIN CLI TOOL (optional)
 # ============================================================================
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/admin/main.cpp")
     add_executable(cs2admin
         admin/main.cpp
     )
-    
     target_include_directories(cs2admin PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/admin
     )
-    
     message(STATUS "Admin tool: cs2admin.exe (enabled)")
-else()
-    message(WARNING "Admin tool source not found, skipping cs2admin.exe build")
 endif()
 
 # ============================================================================
-# Copy config files
+# Copy config files to output
 # ============================================================================
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json")
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/skins.json COPYONLY)
-    message(STATUS "Config: skins.json (copied)")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/skins.json
+        COPYONLY
+    )
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json")
-    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/offsets.json COPYONLY)
-    message(STATUS "Config: offsets.json (copied)")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json
+        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/config/offsets.json
+        COPYONLY
+    )
 endif()
 
 # ============================================================================
 # Build Summary
 # ============================================================================
-message(STATUS "CS2 Inventory Changer Build Configuration")
-message(STATUS "  Executable: cs2inventory.exe (loader + overlay)")
-message(STATUS "  Admin Tool: cs2admin.exe")
+message(STATUS "")
+message(STATUS "=== CS2 Skin Changer v2.0.0 Build ===")
+message(STATUS "  DLL:    skin_changer.dll (injected into cs2.exe)")
+message(STATUS "  Loader: AC_Loader.exe (DLL injector)")
+message(STATUS "  ImGui:  v1.91.8 (Win32 + DX11)")
+message(STATUS "  Engine: Custom ACRender rendering engine")
 message(STATUS "  Output: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "======================================")
+message(STATUS "")
 

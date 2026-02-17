@@ -1,10 +1,10 @@
-# CS2 Inventory Changer
+# CS2 Skin Changer v2.0
 
 [![GitHub release](https://img.shields.io/github/v/release/pedziito/Skin-Changer?style=flat-square)](https://github.com/pedziito/Skin-Changer/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/pedziito/Skin-Changer/blob/main/LICENSE)
 [![Windows](https://img.shields.io/badge/platform-Windows%2064bit-brightgreen?style=flat-square)](https://github.com/pedziito/Skin-Changer)
 
-A modern, single-file executable for modifying Counter-Strike 2 inventory items. Features credential-based authentication with hardware locking and automatic game launching.
+A CS2 skin changer with a **custom rendering engine** built on Dear ImGui + DirectX 11. Injects directly into CS2 and writes skins to your in-game inventory using the fallback paint kit system.
 
 ## ⚠️ **CRITICAL: VAC BAN WARNING** ⚠️
 
@@ -13,41 +13,49 @@ A modern, single-file executable for modifying Counter-Strike 2 inventory items.
 - **VAC DETECTION**: This tool is detectable by VAC (Valve Anti-Cheat)
 - **PERMANENT BAN**: VAC bans cannot be appealed and are permanent
 - **ACCOUNT LOSS**: All games and items on your Steam account will be lost
-- **IP BLOCKING**: Your IP may be blocked from playing VAC-secured games
 - **FOR EDUCATIONAL USE ONLY**: This is a proof-of-concept for learning purposes
 
 **DO NOT USE ON YOUR MAIN ACCOUNT**
 
-The developers assume NO responsibility for bans or account loss. Use entirely at your own risk.
-
 ---
+
+## Architecture
+
+### Custom Rendering Engine (`ACRender`)
+- Built on top of Dear ImGui's `ImDrawList` for GPU-accelerated rendering
+- Gradient rectangles, glow effects, animated widgets
+- Skin cards with rarity color bars and hover animations
+- Wear slider with visual FN/MW/FT/WW/BS zones
+- Toggle switches, tab bars, sidebar navigation with smooth transitions
+- Loading spinners, notifications, search inputs
+- NEVERLOSE-inspired dark theme with blue accent palette
+
+### DLL Injection Architecture
+- **`skin_changer.dll`** — Injected into cs2.exe via LoadLibrary
+- **`AC_Loader.exe`** — Console-based injector with admin check
+- Hooks DX11 `IDXGISwapChain::Present` to render ImGui overlay
+- Hooks `WndProc` to capture input when menu is open
+- Auto-fetches offsets from [a2x/cs2-dumper](https://github.com/a2x/cs2-dumper) with pattern scan fallback
+
+### CS2 Inventory Writing
+- Sets `m_iItemIDHigh = -1` to force fallback skin mode
+- Writes `m_nFallbackPaintKit`, `m_nFallbackSeed`, `m_flFallbackWear`, `m_nFallbackStatTrak`
+- Knife changer: changes `m_iItemDefinitionIndex` and sets entity quality to ★(3)
+- Glove changer: same approach with quality 4
+- **Skins appear in your CS2 inventory** just like real items
 
 ## Features
 
-### All-in-One Executable (cs2inventory.exe)
-- 🔐 License-based sign-up on first run
-- 🔑 Credential login on subsequent runs
-- 🛡️ Hardware ID (HWID) device locking
-- 🎮 Automatic Steam & CS2 launching
-- 💉 Automatic DLL injection into game process
-- ⌨️ In-game menu accessible via INS key
-- 📁 Portable - all data stored locally in config file
-
-### In-Game Inventory Menu
-- 🎨 Overlay menu interface (Press INS to toggle)
-- 🎯 Real-time inventory item modification
-- 🔧 Configuration options
-- ⌨️ Keyboard navigation
-
-### Authentication System
-- 📝 Sign-up with valid CS2 license key (format: CS2-*)
-- 🔒 Credential-based login on subsequent runs
-- 🔐 HWID-locked to prevent account sharing across devices
-- 💾 Local config storage (user_config.txt)
-
-## Installation
-
-### Requirements
+- 🎨 **Custom rendering engine** with animated UI widgets
+- 🎯 **800+ skins** across 70+ weapons with real paint kit IDs
+- 🔪 **20+ knives** (Karambit, Butterfly, M9 Bayonet, etc.)
+- 🧤 **8 glove types** with all finishes
+- 📊 **Wear slider** with visual condition zones
+- 🎲 **Pattern seed** control (0-1000)
+- 📈 **StatTrak** toggle with custom kill counter
+- 💾 **Preset system** — save/load skin configurations
+- 🔑 **INSERT** to toggle menu, **END** to unload
+- 📡 **Auto-updating offsets** from GitHub
 - Windows 10 or later (x64)
 - Administrator privileges required
 - GPU that supports DirectX 11
