@@ -7,7 +7,26 @@
 #include <tlhelp32.h>
 #include <string>
 #include <fstream>
+#include <cstdio>
+#include <cstdarg>
+#include <ctime>
 #include "GameMenu.h"
+
+// Debug logger – writes to ac_debug.log
+static void DbgLog(const char* fmt, ...) {
+    FILE* f = nullptr;
+    fopen_s(&f, "ac_debug.log", "a");
+    if (!f) return;
+    time_t now = time(nullptr);
+    struct tm t; localtime_s(&t, &now);
+    fprintf(f, "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fprintf(f, "\n");
+    fclose(f);
+}
 
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "user32.lib")
@@ -108,19 +127,24 @@ bool  LaunchGame(HWND);
 //  Overlay thread
 // ============================================================================
 DWORD WINAPI OverlayThreadProc(LPVOID param) {
+    DbgLog("=== OverlayThreadProc START ===");
     HINSTANCE hInst = (HINSTANCE)param;
     g_pOverlayWnd = new OverlayWindow();
+    DbgLog("Calling OverlayWindow::Create...");
     if (!g_pOverlayWnd->Create((HMODULE)hInst)) {
+        DbgLog("ERROR: OverlayWindow::Create FAILED");
         delete g_pOverlayWnd;
         g_pOverlayWnd = nullptr;
         g_overlayRunning = false;
         return 1;
     }
+    DbgLog("OverlayWindow::Create succeeded, starting render loop");
     g_overlayRunning = true;
     while (g_overlayRunning) {
         g_pOverlayWnd->RunFrame();
         Sleep(16);
     }
+    DbgLog("Render loop ended, destroying overlay");
     g_pOverlayWnd->Destroy();
     delete g_pOverlayWnd;
     g_pOverlayWnd = nullptr;
@@ -710,32 +734,49 @@ bool LaunchGame(HWND hwnd) {
     }
     if (!cs2) { SetStat("Fejl: CS2 ikke fundet!", C_RED); return false; }
 
+    DbgLog("CS2 fundet! PID=%d", (int)cs2);
     SetStat("CS2 fundet! Forbereder...", C_TEXT2);
     Sleep(5000);
 
     SetStat("Injicerer overlay...", C_TEXT2);
 
     HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, cs2);
+    DbgLog("OpenProcess(cs2 PID=%d) => %p (LastError=%d)", (int)cs2, (void*)h, (int)GetLastError());
     if (!h) { SetStat("Fejl: K\xF8r som administrator!", C_RED); return false; }
     CloseHandle(h);
 
+    // Check what windows exist before creating overlay
+    DbgLog("Checking for CS2 window before overlay thread...");
+    HWND testHwnd = FindWindowA(nullptr, "Counter-Strike 2");
+    DbgLog("Pre-check FindWindowA('Counter-Strike 2') => %p", (void*)testHwnd);
+    if (testHwnd) {
+        RECT wr; GetWindowRect(testHwnd, &wr);
+        DbgLog("  CS2 window rect=(%d,%d,%d,%d)", wr.left, wr.top, wr.right, wr.bottom);
+    }
+
+    DbgLog("Creating overlay thread...");
     HANDLE hThread = CreateThread(NULL, 0, OverlayThreadProc, (LPVOID)g_hInst, 0, NULL);
     if (!hThread) {
+        DbgLog("ERROR: CreateThread failed! LastError=%d", (int)GetLastError());
         SetStat("Fejl: Kunne ikke starte overlay!", C_RED);
         return false;
     }
+    DbgLog("Overlay thread created, waiting 2s...");
     CloseHandle(hThread);
 
-    Sleep(1500);
+    Sleep(2000);
 
+    DbgLog("After wait: g_overlayRunning=%d g_pOverlayWnd=%p", (int)g_overlayRunning, (void*)g_pOverlayWnd);
     if (!g_overlayRunning) {
-        SetStat("Fejl: Overlay kunne ikke finde CS2-vinduet!", C_RED);
+        DbgLog("ERROR: Overlay did not start successfully!");
+        SetStat("Fejl: Overlay kunne ikke starte! Se ac_debug.log", C_RED);
         return false;
     }
 
+    DbgLog("=== Overlay ready! ===");
     SetStat("Overlay aktiv! Tryk O for menu.", C_GREEN);
     MessageBox(hwnd,
-        "Overlay er aktivt!\n\nMenuen vises automatisk.\nTryk O for at \xE5" "bne/lukke.",
+        "Overlay er aktivt!\n\nMenuen vises automatisk.\nTryk O for at \xE5" "bne/lukke.\n\nDebug log: ac_debug.log",
         "AC Changer", MB_OK | MB_ICONINFORMATION);
     return true;
 }

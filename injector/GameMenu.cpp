@@ -5,8 +5,30 @@
 #include "GameMenu.h"
 #include <iostream>
 #include <algorithm>
+#include <cstdio>
+#include <cstdarg>
+#include <ctime>
 
 #pragma comment(lib, "gdi32.lib")
+
+// ============================================================================
+//  Debug logger – writes to ac_debug.log next to the exe
+// ============================================================================
+static void DbgLog(const char* fmt, ...) {
+    FILE* f = nullptr;
+    fopen_s(&f, "ac_debug.log", "a");
+    if (!f) return;
+    // Timestamp
+    time_t now = time(nullptr);
+    struct tm t; localtime_s(&t, &now);
+    fprintf(f, "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fprintf(f, "\n");
+    fclose(f);
+}
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "msimg32.lib")
 
@@ -494,24 +516,42 @@ OverlayWindow::~OverlayWindow() {
 bool OverlayWindow::Create(HMODULE hModule) {
     m_hModule = hModule;
     g_pOverlay = this;
+    DbgLog("=== OverlayWindow::Create START ===");
 
     // Find CS2 window
     m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
+    DbgLog("FindWindowA(title='Counter-Strike 2') => %p", (void*)m_gameHwnd);
     if (!m_gameHwnd) {
-        // Try alternative class name
         m_gameHwnd = FindWindowA("SDL_app", nullptr);
+        DbgLog("FindWindowA(class='SDL_app') => %p", (void*)m_gameHwnd);
     }
     if (!m_gameHwnd) {
-        // Enumerate windows for partial title match
+        DbgLog("Trying EnumWindows fallback...");
         EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
-            char title[256];
+            char title[256] = {};
             GetWindowTextA(hwnd, title, 256);
-            if (strstr(title, "Counter-Strike") || strstr(title, "CS2")) {
+            if (strlen(title) > 0 && (strstr(title, "Counter-Strike") || strstr(title, "CS2"))) {
+                DbgLog("  EnumWindows match: hwnd=%p title='%s'", (void*)hwnd, title);
                 *(HWND*)lp = hwnd;
                 return FALSE;
             }
             return TRUE;
         }, (LPARAM)&m_gameHwnd);
+        DbgLog("EnumWindows result => %p", (void*)m_gameHwnd);
+    }
+
+    if (!m_gameHwnd) {
+        DbgLog("ERROR: Could not find CS2 window! Proceeding with default 1920x1080.");
+    } else {
+        char cls[128] = {}, ttl[256] = {};
+        GetClassNameA(m_gameHwnd, cls, 128);
+        GetWindowTextA(m_gameHwnd, ttl, 256);
+        RECT wr; GetWindowRect(m_gameHwnd, &wr);
+        DbgLog("CS2 window: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
+               (void*)m_gameHwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom);
+        LONG style = GetWindowLong(m_gameHwnd, GWL_STYLE);
+        LONG exstyle = GetWindowLong(m_gameHwnd, GWL_EXSTYLE);
+        DbgLog("CS2 style=0x%08X exstyle=0x%08X", style, exstyle);
     }
 
     // Register overlay window class
@@ -521,7 +561,8 @@ bool OverlayWindow::Create(HMODULE hModule) {
     wc.lpszClassName  = "AC_Overlay";
     wc.hCursor        = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground  = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    RegisterClassExA(&wc);
+    ATOM regResult = RegisterClassExA(&wc);
+    DbgLog("RegisterClassExA => %d (LastError=%d)", regResult, (int)GetLastError());
 
     // Get game window position / size
     RECT gameRect = { 0, 0, 1920, 1080 };
@@ -530,6 +571,7 @@ bool OverlayWindow::Create(HMODULE hModule) {
     }
     int gw = gameRect.right  - gameRect.left;
     int gh = gameRect.bottom - gameRect.top;
+    DbgLog("Overlay size: %dx%d at (%d,%d)", gw, gh, gameRect.left, gameRect.top);
 
     // Create transparent layered window
     m_hwnd = CreateWindowExA(
@@ -539,20 +581,31 @@ bool OverlayWindow::Create(HMODULE hModule) {
         gameRect.left, gameRect.top, gw, gh,
         nullptr, nullptr, hModule, nullptr);
 
-    if (!m_hwnd) return false;
+    if (!m_hwnd) {
+        DbgLog("ERROR: CreateWindowExA FAILED! LastError=%d", (int)GetLastError());
+        return false;
+    }
+    DbgLog("Overlay window created: hwnd=%p", (void*)m_hwnd);
 
     // Make window transparent (magenta is the transparent colour key)
-    SetLayeredWindowAttributes(m_hwnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
+    BOOL layerOk = SetLayeredWindowAttributes(m_hwnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
+    DbgLog("SetLayeredWindowAttributes => %d", (int)layerOk);
 
     // Initialise menu
-    if (!m_menu.Initialize(hModule)) return false;
+    if (!m_menu.Initialize(hModule)) {
+        DbgLog("ERROR: GameMenu::Initialize failed!");
+        return false;
+    }
+    DbgLog("GameMenu initialized OK");
 
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
     SetForegroundWindow(m_hwnd);
     BringWindowToTop(m_hwnd);
+    DbgLog("Overlay window shown and brought to front");
 
     m_running = true;
+    DbgLog("=== OverlayWindow::Create SUCCESS ===");
     return true;
 }
 
@@ -567,6 +620,7 @@ void OverlayWindow::Destroy() {
 }
 
 void OverlayWindow::ShowMenu() {
+    DbgLog("ShowMenu() called, m_visible was %d", (int)m_menu.IsVisible());
     if (!m_menu.IsVisible()) {
         m_menu.Toggle();
     }
@@ -574,6 +628,7 @@ void OverlayWindow::ShowMenu() {
     LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
     ex &= ~WS_EX_TRANSPARENT;
     SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
+    DbgLog("ShowMenu() done, m_visible=%d exstyle=0x%08X", (int)m_menu.IsVisible(), (int)GetWindowLong(m_hwnd, GWL_EXSTYLE));
 }
 
 void OverlayWindow::UpdatePosition() {
@@ -600,7 +655,22 @@ void OverlayWindow::RunFrame() {
     // Auto-show menu on first frame
     if (m_autoShow) {
         m_autoShow = false;
+        DbgLog("Auto-show: showing menu on first frame");
         ShowMenu();
+        DbgLog("Auto-show complete. m_hwnd=%p visible=%d", (void*)m_hwnd, (int)IsWindowVisible(m_hwnd));
+    }
+
+    // Periodic debug (every ~5 seconds = 300 frames)
+    static int frameCount = 0;
+    frameCount++;
+    if (frameCount % 300 == 1) {
+        DbgLog("Frame %d: m_hwnd=%p gameHwnd=%p menuVisible=%d hwndVisible=%d",
+               frameCount, (void*)m_hwnd, (void*)m_gameHwnd,
+               (int)m_menu.IsVisible(), (int)IsWindowVisible(m_hwnd));
+        RECT wr; GetWindowRect(m_hwnd, &wr);
+        DbgLog("  overlay rect=(%d,%d,%d,%d) size=%dx%d",
+               wr.left, wr.top, wr.right, wr.bottom,
+               wr.right-wr.left, wr.bottom-wr.top);
     }
 
     // Check O key to toggle menu
