@@ -92,6 +92,34 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/admin/main.cpp")
 endif()
 
 # ============================================================================
+# LICENSE GENERATOR GUI (standalone DX11 app, same ACE theme)
+# ============================================================================
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/admin/license_gui.cpp")
+    add_executable(ac_license_gen WIN32
+        admin/license_gui.cpp
+        engine/ace_renderer.cpp
+        engine/ace_ui.cpp
+    )
+    target_include_directories(ac_license_gen PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor
+    )
+    target_link_libraries(ac_license_gen PRIVATE
+        d3d11
+        dxgi
+        d3dcompiler
+        user32
+        gdi32
+        shell32
+    )
+    set_target_properties(ac_license_gen PROPERTIES
+        OUTPUT_NAME "AC_LicenseGen"
+    )
+    message(STATUS "License GUI: AC_LicenseGen.exe (enabled)")
+endif()
+
+# ============================================================================
 # Copy config files to output
 # ============================================================================
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/skins.json")
@@ -115,9 +143,10 @@ endif()
 # ============================================================================
 message(STATUS "")
 message(STATUS "=== CS2 Skin Changer v3.0.0 Build ===")
-message(STATUS "  DLL:    skin_changer.dll (injected into cs2.exe)")
-message(STATUS "  Loader: AC_Loader.exe (DLL injector)")
-message(STATUS "  Engine: ACE Custom Rendering Engine (zero ImGui)")
+message(STATUS "  DLL:      skin_changer.dll (injected into cs2.exe)")
+message(STATUS "  Loader:   AC_Loader.exe (DLL injector)")
+message(STATUS "  License:  AC_LicenseGen.exe (admin GUI)")
+message(STATUS "  Engine:   ACE Custom Rendering Engine (zero ImGui)")
 message(STATUS "  Shader: HLSL compiled at runtime via D3DCompile")
 message(STATUS "  Font:   stb_truetype (system TTF loading)")
 message(STATUS "  Output: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")

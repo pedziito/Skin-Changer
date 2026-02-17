@@ -1,4 +1,4 @@
-name: Build CS2 Inventory Changer
+name: Build CS2 Skin Changer
 
 on:
   push:
@@ -47,16 +47,24 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       uses: ncipollo/release-action@v1
       with:
-        artifacts: "build/bin/Release/cs2inventory.exe"
+        artifacts: |
+          build/bin/Release/skin_changer.dll
+          build/bin/Release/AC_Loader.exe
+          build/bin/Release/AC_LicenseGen.exe
+          build/bin/Release/cs2admin.exe
         token: ${{ secrets.GITHUB_TOKEN }}
         draft: false
         prerelease: false
 
-    - name: Upload artifact (for debugging)
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: cs2inventory-exe
-        path: build/bin/Release/cs2inventory.exe
+        name: cs2-skin-changer-v3
+        path: |
+          build/bin/Release/skin_changer.dll
+          build/bin/Release/AC_Loader.exe
+          build/bin/Release/AC_LicenseGen.exe
+          build/bin/Release/cs2admin.exe
         retention-days: 30
 
