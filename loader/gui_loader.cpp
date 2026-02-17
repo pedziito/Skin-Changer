@@ -7,6 +7,7 @@
 #include <tlhelp32.h>
 #include <string>
 #include <fstream>
+#include "GameMenu.h"
 
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "user32.lib")
@@ -109,6 +110,36 @@ std::string GetHWID();
 DWORD FindProc(const char*);
 bool KillProc(const char*);
 bool LaunchGame(HWND);
+
+// Overlay state
+static OverlayWindow* g_pOverlayWnd = nullptr;
+static volatile bool  g_overlayRunning = false;
+
+// Overlay thread – creates the transparent window over CS2 and runs the render loop
+DWORD WINAPI OverlayThreadProc(LPVOID param) {
+    HINSTANCE hInst = (HINSTANCE)param;
+
+    g_pOverlayWnd = new OverlayWindow();
+    if (!g_pOverlayWnd->Create((HMODULE)hInst)) {
+        delete g_pOverlayWnd;
+        g_pOverlayWnd = nullptr;
+        g_overlayRunning = false;
+        return 1;
+    }
+
+    g_overlayRunning = true;
+
+    // Render loop (~60 fps) – menu auto-shows on first frame
+    while (g_overlayRunning) {
+        g_pOverlayWnd->RunFrame();
+        Sleep(16);
+    }
+
+    g_pOverlayWnd->Destroy();
+    delete g_pOverlayWnd;
+    g_pOverlayWnd = nullptr;
+    return 0;
+}
 
 // ============================================================================
 // ENTRY
@@ -983,13 +1014,31 @@ bool LaunchGame(HWND hwnd) {
     SetStat("CS2 fundet! Forbereder...", C_ACCENT);
     Sleep(5000);
 
-    SetStat("Injicerer...", C_ACCENT);
-    HANDLE h = OpenProcess(PROCESS_ALL_ACCESS, FALSE, cs2);
-    if (!h) { SetStat("Fejl: K\xF8" "r som administrator!", C_RED); return false; }
-    Sleep(2000); CloseHandle(h);
+    SetStat("Injicerer overlay...", C_ACCENT);
 
-    SetStat("Injection udf\xF8" "rt! Tryk INSERT.", C_GREEN);
-    MessageBox(hwnd, "Injection udf\xF8" "rt!\n\nTryk INSERT i CS2 for at \xE5" "bne menuen.",
+    // Verify we can access the CS2 process
+    HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, cs2);
+    if (!h) { SetStat("Fejl: K\xF8" "r som administrator!", C_RED); return false; }
+    CloseHandle(h);
+
+    // Start the overlay window on a background thread
+    HANDLE hThread = CreateThread(NULL, 0, OverlayThreadProc, (LPVOID)g_hInst, 0, NULL);
+    if (!hThread) {
+        SetStat("Fejl: Kunne ikke starte overlay!", C_RED);
+        return false;
+    }
+    CloseHandle(hThread);
+
+    // Wait briefly for overlay to initialise
+    Sleep(1500);
+
+    if (!g_overlayRunning) {
+        SetStat("Fejl: Overlay kunne ikke finde CS2-vinduet!", C_RED);
+        return false;
+    }
+
+    SetStat("Overlay aktiv! Tryk INSERT.", C_GREEN);
+    MessageBox(hwnd, "Overlay er aktivt!\n\nMenuen vises automatisk.\nTryk INSERT for at \xE5" "bne/lukke.",
         "AC Changer", MB_OK | MB_ICONINFORMATION);
     return true;
 }

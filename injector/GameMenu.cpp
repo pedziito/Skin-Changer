@@ -483,7 +483,8 @@ OverlayWindow::OverlayWindow()
     : m_hwnd(nullptr)
     , m_gameHwnd(nullptr)
     , m_hModule(nullptr)
-    , m_running(false) {
+    , m_running(false)
+    , m_autoShow(true) {
 }
 
 OverlayWindow::~OverlayWindow() {
@@ -551,6 +552,16 @@ void OverlayWindow::Destroy() {
     g_pOverlay = nullptr;
 }
 
+void OverlayWindow::ShowMenu() {
+    if (!m_menu.IsVisible()) {
+        m_menu.Toggle();
+    }
+    // Make overlay interactive (remove click-through)
+    LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
+    ex &= ~WS_EX_TRANSPARENT;
+    SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
+}
+
 void OverlayWindow::UpdatePosition() {
     if (!m_gameHwnd || !IsWindow(m_gameHwnd)) {
         m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
@@ -572,21 +583,24 @@ void OverlayWindow::RunFrame() {
     // Follow game window position
     UpdatePosition();
 
+    // Auto-show menu on first frame
+    if (m_autoShow) {
+        m_autoShow = false;
+        ShowMenu();
+    }
+
     // Check INSERT key (VK_INSERT = 0x2D)
     static bool insWasDown = false;
     bool insDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
     if (insDown && !insWasDown) {
-        m_menu.Toggle();
-
         if (m_menu.IsVisible()) {
-            // Remove WS_EX_TRANSPARENT so we can interact
-            LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
-            ex &= ~WS_EX_TRANSPARENT;
-            SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
-        } else {
+            // Hide menu, make window click-through
+            m_menu.Toggle();
             LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
             ex |= WS_EX_TRANSPARENT;
             SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
+        } else {
+            ShowMenu();
         }
     }
     insWasDown = insDown;

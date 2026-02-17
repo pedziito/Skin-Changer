@@ -38,25 +38,30 @@ target_link_libraries(CS2Core PUBLIC
 )
 
 # ============================================================================
-# INJECTOR LIBRARY - Game hook compiled as static lib
+# INJECTOR LIBRARY - Overlay menu system (static lib linked into loader)
 # ============================================================================
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/injector")
     file(GLOB INJECTOR_SOURCES 
         "injector/*.cpp"
     )
     
+    # Exclude dllmain.cpp – not needed when linking statically
+    list(FILTER INJECTOR_SOURCES EXCLUDE REGEX "dllmain\\.cpp$")
+    
     if(INJECTOR_SOURCES)
         add_library(CS2Injector STATIC
             ${INJECTOR_SOURCES}
         )
         
-        target_include_directories(CS2Injector PRIVATE
+        target_include_directories(CS2Injector PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/injector
         )
         
-        target_link_libraries(CS2Injector PRIVATE
-            CS2Core
+        target_link_libraries(CS2Injector PUBLIC
+            gdi32
+            user32
+            msimg32
         )
         
         set(INJECTOR_LIBS CS2Injector)
@@ -70,7 +75,7 @@ else()
 endif()
 
 # ============================================================================
-# SINGLE EXECUTABLE - Everything compiled in (no separate DLL)
+# LOADER EXECUTABLE - GUI + overlay (everything in one exe)
 # ============================================================================
 add_executable(cs2inventory
     loader/gui_loader.cpp
@@ -129,7 +134,7 @@ endif()
 # Build Summary
 # ============================================================================
 message(STATUS "CS2 Inventory Changer Build Configuration")
-message(STATUS "  Executable: cs2inventory.exe (single-file)")
+message(STATUS "  Executable: cs2inventory.exe (loader + overlay)")
 message(STATUS "  Admin Tool: cs2admin.exe")
 message(STATUS "  Output: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 

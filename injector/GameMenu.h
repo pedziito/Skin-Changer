@@ -115,6 +115,7 @@ public:
     bool Create(HMODULE hModule);
     void Destroy();
     void RunFrame();
+    void ShowMenu();   // Show menu and make window interactive
 
     GameMenu& GetMenu() { return m_menu; }
 
@@ -128,6 +129,7 @@ private:
     GameMenu  m_menu;
     HMODULE   m_hModule;
     bool      m_running;
+    bool      m_autoShow;    // auto-show menu on first frame
 };
 
 /**
