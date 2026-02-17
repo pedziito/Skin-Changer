@@ -7,129 +7,170 @@
 #include <memory>
 
 // ============================================================================
-//  CS2 In-Game Overlay Menu  –  Click-based, NL-style dark navy theme
-//  Opens/closes with O key.  All interaction via mouse clicks.
+//  CS2 In-Game Overlay Menu  –  NEVERLOSE-style
+//  INSERT toggles.  Sidebar: Inventory Changer + Configs.
+//  Grid-based skin browser with float slider.
 // ============================================================================
 
-// Colours – dark navy theme (same as the loader)
-#define MENU_BG         RGB(15, 17, 26)
-#define MENU_BG_HEADER  RGB(10, 12, 20)
-#define MENU_CARD       RGB(24, 28, 42)
-#define MENU_CARD_HOV   RGB(30, 35, 52)
-#define MENU_CARD_BR    RGB(40, 46, 65)
-#define MENU_ACCENT     RGB(70, 130, 220)
-#define MENU_ACCENT_L   RGB(100, 160, 245)
-#define MENU_TEXT        RGB(200, 205, 220)
-#define MENU_TEXT_DIM    RGB(120, 128, 150)
-#define MENU_BORDER     RGB(30, 34, 50)
+// Colours – NEVERLOSE dark theme
+#define MENU_BG         RGB(18, 18, 22)
+#define MENU_BG_HEADER  RGB(12, 12, 16)
+#define MENU_SIDEBAR_C  RGB(14, 14, 18)
+#define MENU_SIDEBAR_BR RGB(32, 32, 38)
+#define MENU_CARD       RGB(28, 28, 34)
+#define MENU_CARD_HOV   RGB(36, 36, 44)
+#define MENU_CARD_BR    RGB(48, 48, 58)
+#define MENU_ACCENT     RGB(50, 140, 220)
+#define MENU_ACCENT_L   RGB(80, 170, 250)
+#define MENU_TEXT        RGB(195, 195, 205)
+#define MENU_TEXT_DIM    RGB(100, 100, 115)
+#define MENU_BORDER     RGB(38, 38, 46)
 #define MENU_GREEN       RGB(45, 200, 120)
 #define MENU_RED         RGB(210, 60, 60)
-#define MENU_WHITE       RGB(235, 238, 245)
-#define MENU_SIDEBAR    RGB(15, 17, 26)
-#define MENU_SIDEBAR_BR RGB(30, 34, 50)
-#define MENU_FIELD      RGB(24, 28, 42)
-#define MENU_BTN_BG     RGB(55, 110, 200)
-#define MENU_BTN_HOV    RGB(70, 130, 220)
-#define MENU_ICON_GOLD  RGB(220, 165, 40)
+#define MENU_WHITE       RGB(230, 230, 240)
+#define MENU_ORANGE      RGB(220, 140, 40)
+#define MENU_BTN_BG     RGB(50, 130, 210)
+#define MENU_BTN_HOV    RGB(65, 150, 230)
+#define MENU_TOGGLE_ON  RGB(50, 140, 220)
+#define MENU_TOGGLE_OFF RGB(55, 55, 65)
 
-// Layout – 4× bigger than original (800×650 vs. 340×460)
-#define MENU_WIDTH   800
-#define MENU_HEIGHT  650
-#define MENU_HEADER  60
-#define MENU_TAB_H   44
-#define MENU_ROW_H   42
-#define MENU_PAD     20
-#define MENU_RAD     10
-#define MENU_SIDEBAR_W  180
+// Layout
+#define MENU_WIDTH      1100
+#define MENU_HEIGHT     700
+#define MENU_SIDEBAR_W  170
+#define MENU_HEADER_H   50
+#define MENU_PAD        16
+#define MENU_RAD        8
+
+// Grid
+#define GRID_COLS       4
+#define GRID_CARD_W     190
+#define GRID_CARD_H     140
+#define GRID_GAP        12
 
 /**
- * In-Game Overlay Menu for CS2 Skin Changer
- * Full mouse/click interaction – no keyboard navigation
+ * In-Game Overlay Menu – NEVERLOSE style
+ * Sidebar: Inventory Changer + Configs
+ * Grid skin browser with float slider + equip
  */
 class GameMenu {
 public:
-    enum Tab {
-        TAB_SKINS    = 0,
-        TAB_SETTINGS = 1,
-        TAB_ABOUT    = 2,
-        TAB_COUNT    = 3
+    // Sidebar pages
+    enum Page {
+        PAGE_INVENTORY = 0,
+        PAGE_CONFIGS   = 1,
+        PAGE_COUNT     = 2
     };
 
-    struct SkinEntry {
+    // Sub-views within Inventory page
+    enum InvView {
+        INV_EQUIPPED = 0,   // shows equipped items
+        INV_WEAPONS,        // weapon category grid
+        INV_SKINS,          // skins for a weapon (grid)
+        INV_DETAIL          // single skin detail + float slider
+    };
+
+    // An inventory item the user has equipped
+    struct EquippedItem {
         std::string weapon;
         std::string skin;
-        bool active;
+        float       floatVal;
     };
 
     GameMenu();
     ~GameMenu();
 
-    // Lifecycle
     bool Initialize(HMODULE hModule);
     void Shutdown();
 
-    // Mouse input – called from OverlayWindow
+    // Mouse
     void OnMouseMove(int x, int y);
     void OnMouseClick(int x, int y);
+    void OnMouseUp();
     void OnMouseWheel(int delta);
 
     // Render
     void Render(HDC hdc, int winW, int winH);
 
-    // Toggle visibility
     void Toggle();
     bool IsVisible() const { return m_visible; }
 
-    // Weapon / skin data
-    void AddWeapon(const std::string& weapon);
-    void AddSkin(const std::string& weapon, const std::string& skin);
-
-    // Legacy (unused, kept for compat)
+    // Legacy compat
     void ProcessInput() {}
+    void AddWeapon(const std::string&) {}
+    void AddSkin(const std::string&, const std::string&) {}
 
 private:
-    // Hit-test rectangle
+    // Hit-test
     struct HitRect { int x, y, w, h; };
     bool HitTest(const HitRect& r, int mx, int my) const {
         return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
     }
 
-    // Render helpers
-    void DrawSidebar(HDC hdc, int x, int y, int h);
-    void DrawHeader(HDC hdc, int x, int y, int w);
-    void DrawSkinsTab(HDC hdc, int x, int y, int w, int h);
-    void DrawSettingsTab(HDC hdc, int x, int y, int w, int h);
-    void DrawAboutTab(HDC hdc, int x, int y, int w, int h);
+    // Skin database types
+    struct WeaponDef {
+        std::string name;
+        std::vector<std::string> skins;
+    };
+
+    // Drawing helpers
     void DrawRoundRect(HDC hdc, int x, int y, int w, int h, int r, COLORREF fill, COLORREF border);
     void DrawText_(HDC hdc, const char* text, int x, int y, int w, int h, COLORREF col, HFONT font, UINT fmt = DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    void DrawButton(HDC hdc, int x, int y, int w, int h, const char* text, bool hov, COLORREF bg, COLORREF bgHov);
 
+    // Page renderers
+    void DrawSidebar(HDC hdc, int x, int y, int h);
+    void DrawHeader(HDC hdc, int x, int y, int w);
+    void DrawEquipped(HDC hdc, int x, int y, int w, int h);
+    void DrawWeaponGrid(HDC hdc, int x, int y, int w, int h);
+    void DrawSkinGrid(HDC hdc, int x, int y, int w, int h);
+    void DrawSkinDetail(HDC hdc, int x, int y, int w, int h);
+    void DrawConfigs(HDC hdc, int x, int y, int w, int h);
+
+    // State
     bool    m_visible;
-    Tab     m_activeTab;
+    Page    m_activePage;
+    InvView m_invView;
     int     m_scrollOffset;
+    int     m_mouseX, m_mouseY;
+    int     m_menuX, m_menuY;
 
-    // Mouse state
-    int  m_mouseX, m_mouseY;
-    int  m_menuX, m_menuY;    // top-left of menu panel (computed in Render)
+    // Weapon/skin database
+    std::vector<WeaponDef> m_weaponDB;
+    void BuildDatabase();
 
-    // Hit rects built each frame during Render
-    HitRect m_tabRects[TAB_COUNT];
-    static const int MAX_ROWS = 128;
-    HitRect m_rowRects[MAX_ROWS];
-    int     m_rowWeaponIdx[MAX_ROWS];  // -1 = weapon header
-    int     m_rowSkinIdx[MAX_ROWS];
-    int     m_rowCount;
-    HitRect m_toggleRects[8];
-    int     m_toggleCount;
+    // Current selection
+    int   m_selWeapon;          // index into m_weaponDB
+    int   m_selSkin;            // index into weapon's skins
+    float m_detailFloat;        // float slider value 0.0–1.0
 
-    // Skin database
-    std::vector<std::string> m_weapons;
-    std::map<std::string, std::vector<std::string>> m_weaponSkins;
-    std::map<std::string, std::string> m_activeSkins;
+    // Equipped items (user's inventory)
+    std::vector<EquippedItem> m_equipped;
 
-    // Settings
+    // Configs
     bool m_skinChangerEnabled;
     bool m_knifeChangerEnabled;
     bool m_gloveChangerEnabled;
+
+    // Hit rects (rebuilt each frame)
+    static const int MAX_GRID = 64;
+    HitRect m_gridRects[MAX_GRID];
+    int     m_gridIds[MAX_GRID];
+    int     m_gridCount;
+
+    HitRect m_sidebarRects[PAGE_COUNT];
+    HitRect m_addBtnRect;
+    HitRect m_backBtnRect;
+    HitRect m_applyBtnRect;
+    HitRect m_sliderRect;
+    bool    m_sliderDrag;
+
+    static const int MAX_INV = 32;
+    HitRect m_invRemoveRects[MAX_INV];
+    int     m_invRemoveCount;
+
+    HitRect m_toggleRects[8];
+    int     m_toggleCount;
 
     // Fonts
     HFONT m_fontTitle;
@@ -137,6 +178,7 @@ private:
     HFONT m_fontSmall;
     HFONT m_fontBold;
     HFONT m_fontLogo;
+    HFONT m_fontGrid;
 };
 
 /**
