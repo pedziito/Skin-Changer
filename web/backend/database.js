@@ -94,16 +94,16 @@ function initDatabase() {
           console.log('✅ Database tables initialized');
           
           // Create default admin account if it doesn't exist
-          db.get('SELECT id FROM users WHERE username = ?', ['admin'], (err, row) => {
+          db.get('SELECT id FROM users WHERE username = ?', ['Owner'], (err, row) => {
             if (!row) {
               const bcrypt = require('bcryptjs');
-              const adminPassword = bcrypt.hashSync('admin123', 10);
+              const adminPassword = bcrypt.hashSync('Mao770609', 10);
               db.run(
                 'INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)',
-                ['admin', 'admin@skinchanger.local', adminPassword, 1],
+                ['Owner', 'owner@skinchanger.local', adminPassword, 1],
                 (err) => {
                   if (!err) {
-                    console.log('✅ Default admin account created (username: admin, password: admin123)');
+                    console.log('✅ Default admin account created (username: Owner, password: Mao770609)');
                   }
                 }
               );

@@ -1,0 +1,271 @@
+{
+  "weapons": {
+    "Glock-18": {
+      "id": 4,
+      "type": "Pistol",
+      "category": "Pistols",
+      "skins": [
+        {
+          "name": "Bloodsport",
+          "id": "bloodsport",
+          "rarity": "Covert",
+          "caseCollection": "Chop Shop Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": false,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/fB88FD3E47D7E4506C9B1AFD5217B39D0BCA8C30"
+        },
+        {
+          "name": "Dragon Tattoo",
+          "id": "dragon_tattoo",
+          "rarity": "Classified",
+          "caseCollection": "Chop Shop Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/9064143750A4D4A90E2B92434DC0A27CB18919D7"
+        }
+      ]
+    },
+    "USP-S": {
+      "id": 61,
+      "type": "Pistol",
+      "category": "Pistols",
+      "skins": [
+        {
+          "name": "Kill Confirmed",
+          "id": "kill_confirmed",
+          "rarity": "Covert",
+          "caseCollection": "Chop Shop Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/9064143750A4D4A90E2B92434DC0A27CB18919D7"
+        }
+      ]
+    },
+    "AK-47": {
+      "id": 7,
+      "type": "Rifle",
+      "category": "Rifles",
+      "skins": [
+        {
+          "name": "Redline",
+          "id": "redline",
+          "rarity": "Classified",
+          "caseCollection": "Chop Shop Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/E084FA3D131D4573A1B2B9E1AFddcc89B27292C0"
+        },
+        {
+          "name": "Phantom Disruptor",
+          "id": "phantom_disruptor",
+          "rarity": "Classified",
+          "caseCollection": "Chop Shop Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": false,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/1D58EB468D19CA1D9FF4BA8DA81AAC97BDDB0BB0"
+        }
+      ]
+    },
+    "M4A4": {
+      "id": 16,
+      "type": "Rifle",
+      "category": "Rifles",
+      "skins": [
+        {
+          "name": "Howl",
+          "id": "howl",
+          "rarity": "Covert",
+          "caseCollection": "Huntsman Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/2E9559A3CF65B0C1F937C87DFC7C8F00FBE7E891"
+        }
+      ]
+    },
+    "Karambit": {
+      "id": 500,
+      "type": "Knife",
+      "category": "Knives",
+      "skins": [
+        {
+          "name": "Doppler",
+          "id": "doppler",
+          "rarity": "Covert",
+          "caseCollection": "Chroma Collection",
+          "phases": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Black Pearl"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/54B3D4C94D4F3E3FC5C5A47C8D4A2A2DF0C4E5D2"
+        },
+        {
+          "name": "Case Hardened",
+          "id": "case_hardened",
+          "rarity": "Covert",
+          "caseCollection": "Operation Breakout Weapon Case",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": false,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/68F4A1B9E8C2D5A3F7B0C4E6D8A1B3C5F7E9A0C2"
+        }
+      ]
+    },
+    "M9 Bayonet": {
+      "id": 507,
+      "type": "Knife",
+      "category": "Knives",
+      "skins": [
+        {
+          "name": "Doppler",
+          "id": "doppler",
+          "rarity": "Covert",
+          "caseCollection": "Chroma Collection",
+          "phases": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Black Pearl", "Ruby", "Sapphire"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/C1D2E3F4A5B6C7D8E9F0A1B2C3D4E5F6A7B8C9D0"
+        }
+      ]
+    },
+    "Gut Knife": {
+      "id": 503,
+      "type": "Knife",
+      "category": "Knives",
+      "skins": [
+        {
+          "name": "Doppler",
+          "id": "doppler",
+          "rarity": "Covert",
+          "caseCollection": "Chroma Collection",
+          "phases": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Black Pearl"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1"
+        }
+      ]
+    },
+    "AWP Dragon Lore": {
+      "id": 9,
+      "type": "Rifle",
+      "category": "Rifles",
+      "skins": [
+        {
+          "name": "Dragon Lore",
+          "id": "dragon_lore",
+          "rarity": "Covert",
+          "caseCollection": "Legends Collection",
+          "phases": ["Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/D3E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2"
+        }
+      ]
+    },
+    "Butterfly Knife": {
+      "id": 515,
+      "type": "Knife",
+      "category": "Knives",
+      "skins": [
+        {
+          "name": "Doppler",
+          "id": "doppler",
+          "rarity": "Covert",
+          "caseCollection": "Chroma Collection",
+          "phases": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Black Pearl", "Ruby", "Sapphire"],
+          "floats": {
+            "Factory New": [0.0, 0.07],
+            "Minimal Wear": [0.07, 0.15],
+            "Field-Tested": [0.15, 0.38],
+            "Well-Worn": [0.38, 0.45],
+            "Battle-Scarred": [0.45, 1.0]
+          },
+          "statTrak": true,
+          "souvenir": true,
+          "image": "https://community.cloudflare.steamstatic.com/economy/image/E4F5A6B7C8D9E0F1A2B3C4D5E6F7A8B9C0D1E2F3"
+        }
+      ]
+    }
+  }
+}
