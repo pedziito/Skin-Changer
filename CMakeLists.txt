@@ -73,7 +73,7 @@ endif()
 # SINGLE EXECUTABLE - Everything compiled in (no separate DLL)
 # ============================================================================
 add_executable(cs2inventory
-    loader/main.cpp
+    loader/gui_loader.cpp
 )
 
 target_include_directories(cs2inventory PRIVATE
@@ -88,7 +88,7 @@ target_link_libraries(cs2inventory PRIVATE
 )
 
 set_target_properties(cs2inventory PROPERTIES
-    WIN32_EXECUTABLE FALSE
+    WIN32_EXECUTABLE TRUE
 )
 
 # ============================================================================

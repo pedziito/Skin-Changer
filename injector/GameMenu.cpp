@@ -1,6 +1,30 @@
 #include "GameMenu.h"
 #include <iostream>
 #include <windows.h>
+#include <thread>
+
+// Global menu instance
+static GameMenu* g_pGameMenu = nullptr;
+static bool g_bInsertPressed = false;
+static bool g_bInsertWasDown = false;
+
+// Keyboard hook callback
+LRESULT CALLBACK KeyboardHook(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0) {
+        KBDLLHOOKSTRUCT* pKeyInfo = (KBDLLHOOKSTRUCT*)lParam;
+        
+        // VK_INSERT = 0x2D
+        if (pKeyInfo->vkCode == VK_INSERT) {
+            if (wParam == WM_KEYDOWN && !g_bInsertWasDown) {
+                g_bInsertPressed = true;
+                g_bInsertWasDown = true;
+            } else if (wParam == WM_KEYUP) {
+                g_bInsertWasDown = false;
+            }
+        }
+    }
+    return CallNextHookEx(NULL, nCode, wParam, lParam);
+}
 
 /**
  * GameMenu Implementation
@@ -17,8 +41,10 @@ GameMenu::~GameMenu() {
 }
 
 bool GameMenu::Initialize() {
-    // TODO: Initialize DirectX/ImGui for overlay rendering
     std::cout << "[+] Game Menu initialized\n";
+    
+    // Setup keyboard hook for INSERT key detection
+    SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHook, GetModuleHandle(NULL), 0);
 
     // Add default weapons
     AddWeapon("AK-47");
@@ -29,13 +55,14 @@ bool GameMenu::Initialize() {
     AddWeapon("Glock-18");
 
     // Add sample skins
-    AddSkin("AK-47", "Legion of Anubis");
-    AddSkin("AK-47", "Phantom Disruptor");
+    AddSkin("AK-47", "Dragon Lore");
+    AddSkin("AK-47", "Howl");
     AddSkin("AK-47", "Point Disarray");
-    AddSkin("AWP Dragon Lore", "Original");
+    AddSkin("AWP Dragon Lore", "Factory New");
     AddSkin("M4A4", "Asiimov");
     AddSkin("M4A4", "Howl");
 
+    g_pGameMenu = this;
     return true;
 }
 
@@ -44,9 +71,70 @@ void GameMenu::Shutdown() {
 }
 
 void GameMenu::Update() {
-    // Called every frame to update menu state
-    // TODO: Implement per-frame updates
+    // Check if INSERT key was pressed
+    if (g_bInsertPressed) {
+        m_state.isVisible = !m_state.isVisible;
+        g_bInsertPressed = false;
+        
+        if (m_state.isVisible) {
+            std::cout << "[+] Menu opened\n";
+            PlayNotificationSound();
+        } else {
+            std::cout << "[+] Menu closed\n";
+        }
+    }
+
+    if (!m_state.isVisible) return;
+
+    // Handle menu navigation
+    if (GetAsyncKeyState(VK_UP) & 0x8000) {
+        if (m_state.selectedOption > 0) m_state.selectedOption--;
+    }
+    if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
+        if (m_state.selectedOption < 8) m_state.selectedOption++;
+    }
+    if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
+        ApplySelectedSkin();
+    }
 }
+
+void GameMenu::Render() {
+    if (!m_state.isVisible) return;
+
+    // Simple text-based menu for now
+    // In real implementation, this would render with DirectX/ImGui
+
+    system("cls");
+    
+    std::cout << "\n";
+    std::cout << "╔════════════════════════════════════════════╗\n";
+    std::cout << "║        CS2 INVENTORY CHANGER MENU         ║\n";
+    std::cout << "╚════════════════════════════════════════════╝\n\n";
+    
+    std::cout << "WEAPONS & SKINS:\n";
+    for (size_t i = 0; i < m_weapons.size(); i++) {
+        if (i == m_state.selectedOption) {
+            std::cout << "  ► " << m_weapons[i] << "\n";
+        } else {
+            std::cout << "    " << m_weapons[i] << "\n";
+        }
+    }
+
+    std::cout << "\n";
+    std::cout << "  [↑↓] Navigate  [ENTER] Apply  [INS] Close\n";
+    std::cout << "\n";
+}
+
+void GameMenu::PlayNotificationSound() {
+    Beep(800, 100);
+}
+
+void GameMenu::ApplySelectedSkin() {
+    if (m_state.selectedOption < m_weapons.size()) {
+        std::cout << "[+] Applied: " << m_weapons[m_state.selectedOption] << "\n";
+    }
+}
+
 
 void GameMenu::Render() {
     if (!m_state.isVisible) {
