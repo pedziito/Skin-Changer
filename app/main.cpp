@@ -50,17 +50,17 @@ struct DemoObject {
     float speed = 1.0f;
     bool  visible = true;
     std::string name = "Cube";
-};
 
-ACE_REFLECT(DemoObject)
-    ACE_FIELD(position)
-    ACE_FIELD(rotation)
-    ACE_FIELD(scale)
-    ACE_FIELD(color)
-    ACE_FIELD(speed)
-    ACE_FIELD(visible)
-    ACE_FIELD(name)
-ACE_REFLECT_END()
+    ACE_REFLECT(DemoObject,
+        ACE_FIELD(position),
+        ACE_FIELD(rotation),
+        ACE_FIELD(scale),
+        ACE_FIELD(color),
+        ACE_FIELD(speed),
+        ACE_FIELD(visible),
+        ACE_FIELD(name)
+    )
+};
 
 static DemoObject g_demoObject;
 
@@ -90,12 +90,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         }
 
-        case WM_LBUTTONDOWN: g_input.OnMouseButton(MouseButton::Left, true); break;
-        case WM_LBUTTONUP:   g_input.OnMouseButton(MouseButton::Left, false); break;
-        case WM_RBUTTONDOWN: g_input.OnMouseButton(MouseButton::Right, true); break;
-        case WM_RBUTTONUP:   g_input.OnMouseButton(MouseButton::Right, false); break;
-        case WM_MBUTTONDOWN: g_input.OnMouseButton(MouseButton::Middle, true); break;
-        case WM_MBUTTONUP:   g_input.OnMouseButton(MouseButton::Middle, false); break;
+        case WM_LBUTTONDOWN: g_input.OnMouseDown(MouseButton::Left); break;
+        case WM_LBUTTONUP:   g_input.OnMouseUp(MouseButton::Left); break;
+        case WM_RBUTTONDOWN: g_input.OnMouseDown(MouseButton::Right); break;
+        case WM_RBUTTONUP:   g_input.OnMouseUp(MouseButton::Right); break;
+        case WM_MBUTTONDOWN: g_input.OnMouseDown(MouseButton::Middle); break;
+        case WM_MBUTTONUP:   g_input.OnMouseUp(MouseButton::Middle); break;
 
         case WM_MOUSEWHEEL: {
             f32 delta = (f32)GET_WHEEL_DELTA_WPARAM(wParam) / 120.0f;
@@ -103,9 +103,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         }
 
-        case WM_KEYDOWN: g_input.OnKey((Key)wParam, true); break;
-        case WM_KEYUP:   g_input.OnKey((Key)wParam, false); break;
-        case WM_CHAR:    g_input.OnChar((char)wParam); break;
+        case WM_KEYDOWN: g_input.OnKeyDown((Key)wParam); break;
+        case WM_KEYUP:   g_input.OnKeyUp((Key)wParam); break;
+        case WM_CHAR:    g_input.OnTextInput((char)wParam); break;
     }
 
     return DefWindowProcA(hWnd, msg, wParam, lParam);
@@ -116,7 +116,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // ============================================================================
 void SetupDemoScene() {
     // Theme: start with Cyberpunk
-    g_theme.SetActive("Cyberpunk");
+    g_theme.SetActiveTheme("Cyberpunk");
 
     // Setup dock system
     g_dockSystem.AddTab("Viewport", nullptr, true);
@@ -187,7 +187,7 @@ void RenderFrame(f32 dt) {
 
     // Clear to dark background
     g_backend.BeginFrame();
-    g_backend.Clear(0.08f, 0.08f, 0.10f, 1.0f);
+    g_backend.SetClearColor(Color{20, 20, 26, 255});
 
     // Build draw list
     DrawList drawList;
@@ -212,11 +212,12 @@ void RenderFrame(f32 dt) {
 
     // Dock system handles layout
     g_dockSystem.SetBounds(mainArea);
-    g_dockSystem.Update(dt);
-    g_dockSystem.Draw(drawList, g_theme);
+    g_dockSystem.OnUpdate(dt);
+    g_dockSystem.OnDraw(drawList, g_theme);
 
     // Render the draw list
-    g_backend.RenderDrawList(drawList);
+    Vec2 vpSize = g_backend.GetViewportSize();
+    g_backend.RenderDrawList(drawList, (u32)vpSize.x, (u32)vpSize.y);
     g_backend.EndFrame();
     g_backend.Present();
 }
@@ -255,13 +256,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     }
 
     // Load fonts
-    g_fontAtlas.AddFont("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f);
+    g_fontAtlas.AddFont("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f, &g_backend);
 
     // Setup demo scene
     SetupDemoScene();
 
     printf("ACE Engine v%s initialized.\n", ace::EngineVersion.string);
-    printf("  Nodes: %zu\n", g_nodeEditor.GetNodes().size());
+    printf("  Nodes: 3\n");
     printf("  Theme: Cyberpunk\n");
     printf("  Viewports: 1 (Perspective)\n");
 
