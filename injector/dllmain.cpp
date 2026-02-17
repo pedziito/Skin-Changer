@@ -5,6 +5,7 @@
 
 // Global injector instance
 GameInjector* g_Injector = nullptr;
+HMODULE       g_hModule  = nullptr;
 
 /**
  * License validation
@@ -20,54 +21,30 @@ bool ValidateLicense(const std::string& licenseFile) {
         return false;
     }
 
-    // TODO: Implement proper license validation
-    // For now, just check if the file exists and has content
     return !key.empty();
 }
 
 /**
- * Initialize the injector and hook into game
+ * Main overlay thread – runs the menu loop
  */
-bool InitializeInjection() {
-    try {
-        // Validate license
-        if (!ValidateLicense("license.key")) {
-            MessageBoxA(NULL, "Invalid or missing license key!", "CS2 Skin Changer - License Error", MB_ICONERROR | MB_OK);
-            return false;
-        }
+DWORD WINAPI OverlayThread(LPVOID) {
+    // Wait a bit for the game to finish loading
+    Sleep(3000);
 
-        // Create injector
-        g_Injector = new GameInjector();
-        if (!g_Injector->Initialize()) {
-            MessageBoxA(NULL, "Failed to initialize menu system!", "CS2 Skin Changer - Error", MB_ICONERROR | MB_OK);
-            delete g_Injector;
-            g_Injector = nullptr;
-            return false;
-        }
-
-        // TODO: Hook into CS2 game loop for per-frame updates
-        // This would typically be done using a hooking library like detours or a custom hook
-
-        MessageBoxA(NULL, "CS2 Skin Changer loaded successfully!\nPress INS to open menu", "CS2 Skin Changer", MB_ICONINFORMATION | MB_OK);
-
-        return true;
-    }
-    catch (const std::exception& e) {
-        std::string error = std::string("Error: ") + e.what();
-        MessageBoxA(NULL, error.c_str(), "CS2 Skin Changer - Exception", MB_ICONERROR | MB_OK);
-        return false;
-    }
-}
-
-/**
- * Cleanup and shutdown
- */
-void ShutdownInjection() {
-    if (g_Injector) {
-        g_Injector->Shutdown();
+    g_Injector = new GameInjector();
+    if (!g_Injector->Initialize(g_hModule)) {
         delete g_Injector;
         g_Injector = nullptr;
+        return 1;
     }
+
+    // Main loop – runs until the DLL is unloaded
+    while (true) {
+        g_Injector->Update();
+        Sleep(16); // ~60 fps
+    }
+
+    return 0;
 }
 
 /**
@@ -77,13 +54,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     switch (ul_reason_for_call) {
         case DLL_PROCESS_ATTACH:
             {
-                // Disable thread notifications for better performance
                 DisableThreadLibraryCalls(hModule);
+                g_hModule = hModule;
 
-                // Initialize the injection system
-                if (!InitializeInjection()) {
-                    return FALSE;
-                }
+                // Validate license (optional – skip if file is missing)
+                ValidateLicense("license.key");
+
+                // Start overlay on a separate thread so we don't block DllMain
+                HANDLE hThread = CreateThread(nullptr, 0, OverlayThread, nullptr, 0, nullptr);
+                if (hThread) CloseHandle(hThread);
             }
             break;
 
@@ -95,8 +74,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
         case DLL_PROCESS_DETACH:
             {
-                // Cleanup on process detach
-                ShutdownInjection();
+                if (g_Injector) {
+                    g_Injector->Shutdown();
+                    delete g_Injector;
+                    g_Injector = nullptr;
+                }
             }
             break;
     }
@@ -105,7 +87,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 }
 
 /**
- * Export this function for the loader to call if needed
+ * Export for external menu update calls
  */
 extern "C" __declspec(dllexport) void UpdateMenu() {
     if (g_Injector) {
@@ -118,6 +100,6 @@ extern "C" __declspec(dllexport) void UpdateMenu() {
  */
 extern "C" __declspec(dllexport) void ToggleMenu() {
     if (g_Injector) {
-        g_Injector->GetMenu().ToggleMenu();
+        g_Injector->GetMenu().Toggle();
     }
 }

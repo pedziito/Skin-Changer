@@ -27,25 +27,25 @@
 #define RAD      14
 #define TITLE_H  30
 
-// Dark / purple palette
-#define C_BG_TOP    RGB(14, 10, 22)
-#define C_BG_BOT    RGB(28, 16, 52)
-#define C_PANEL     RGB(24, 18, 36)
-#define C_FIELD_BG  RGB(30, 22, 44)
-#define C_FIELD_BR  RGB(52, 38, 72)
-#define C_FIELD_FOC RGB(120, 70, 200)
-#define C_BTN_BG    RGB(40, 30, 58)
-#define C_BTN_HOV   RGB(55, 40, 78)
-#define C_ACCENT    RGB(140, 80, 220)
-#define C_ACCENT_L  RGB(170, 110, 255)
+// Dark black/grey palette
+#define C_BG_TOP    RGB(8, 8, 8)
+#define C_BG_BOT    RGB(18, 18, 20)
+#define C_PANEL     RGB(16, 16, 18)
+#define C_FIELD_BG  RGB(22, 22, 24)
+#define C_FIELD_BR  RGB(42, 42, 46)
+#define C_FIELD_FOC RGB(100, 100, 110)
+#define C_BTN_BG    RGB(28, 28, 32)
+#define C_BTN_HOV   RGB(42, 42, 48)
+#define C_ACCENT    RGB(130, 130, 140)
+#define C_ACCENT_L  RGB(180, 180, 195)
 #define C_GREEN     RGB(45, 200, 120)
-#define C_GREEN_DIM RGB(25, 70, 50)
+#define C_GREEN_DIM RGB(20, 60, 40)
 #define C_RED       RGB(210, 60, 60)
-#define C_TEXT      RGB(210, 205, 225)
-#define C_TEXT2     RGB(120, 110, 145)
-#define C_TEXT3     RGB(65, 55, 85)
-#define C_BORDER    RGB(40, 32, 58)
-#define C_WHITE     RGB(240, 236, 250)
+#define C_TEXT      RGB(200, 200, 210)
+#define C_TEXT2     RGB(110, 110, 120)
+#define C_TEXT3     RGB(60, 60, 68)
+#define C_BORDER    RGB(35, 35, 40)
+#define C_WHITE     RGB(235, 235, 240)
 
 // ============================================================================
 // HIT AREAS – computed at paint time, consumed by click handling
@@ -128,7 +128,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
     wc.hInstance      = hInst;
     wc.lpszClassName  = "ACLDR";
     wc.hCursor        = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground  = CreateSolidBrush(C_BG_TOP);
+    wc.hbrBackground  = CreateSolidBrush(RGB(8, 8, 8));
     RegisterClassEx(&wc);
 
     int sx = (GetSystemMetrics(SM_CXSCREEN) - WIN_W) / 2;
@@ -179,8 +179,8 @@ void SetStat(const char* msg, COLORREF c) {
 
 void DrawGradient(HDC hdc, RECT& rc) {
     TRIVERTEX v[2];
-    v[0] = { rc.left,  rc.top,    (COLOR16)(14<<8), (COLOR16)(10<<8), (COLOR16)(26<<8), 0 };
-    v[1] = { rc.right, rc.bottom, (COLOR16)(28<<8), (COLOR16)(16<<8), (COLOR16)(52<<8), 0 };
+    v[0] = { rc.left,  rc.top,    (COLOR16)(8<<8), (COLOR16)(8<<8), (COLOR16)(8<<8), 0 };
+    v[1] = { rc.right, rc.bottom, (COLOR16)(18<<8), (COLOR16)(18<<8), (COLOR16)(20<<8), 0 };
     GRADIENT_RECT gr = { 0, 1 };
     GradientFill(hdc, v, 2, &gr, 1, GRADIENT_FILL_RECT_V);
 }
@@ -372,7 +372,7 @@ void Paint(HWND hwnd, HDC hdc) {
     SetBkMode(hdc, TRANSPARENT);
 
     // Title bar
-    RRectFill(hdc, 0, 0, rc.right, TITLE_H, 0, RGB(10, 8, 18));
+    RRectFill(hdc, 0, 0, rc.right, TITLE_H, 0, RGB(6, 6, 6));
 
     // Separator
     HPEN sp = CreatePen(PS_SOLID, 1, C_BORDER);
@@ -388,7 +388,7 @@ void Paint(HWND hwnd, HDC hdc) {
 
     // Close button
     if (g_closeHover)
-        RRectFill(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h, 6, RGB(60, 20, 20));
+        RRectFill(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h, 6, RGB(60, 15, 15));
     DrawGlyph(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h,
               0xE711, g_closeHover ? C_RED : C_TEXT3, 10);
 
@@ -481,7 +481,7 @@ void PaintLogin(HDC hdc, RECT& rc) {
 
     // Footer
     SelectObject(hdc, fSmall);
-    SetTextColor(hdc, RGB(40, 32, 55));
+    SetTextColor(hdc, RGB(35, 35, 40));
     RECT ft = { 0, rc.bottom - 16, rc.right, rc.bottom - 2 };
     DrawText(hdc, "AC Changer 2024-2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
 }
@@ -552,7 +552,7 @@ void PaintDash(HDC hdc, RECT& rc) {
     SelectObject(hdc, fBody);
     SetTextColor(hdc, C_TEXT2);
     RECT exL = { MARGIN + 28, y, MARGIN + 150, y + 34 };
-    DrawText(hdc, "Udloebsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawText(hdc, "Udl\xF8bsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(hdc, C_GREEN);
     RECT exV = { MARGIN + 10, y, WIN_W - MARGIN - 10, y + 34 };
     DrawText(hdc, "2026-12-31", -1, &exV, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
@@ -574,7 +574,7 @@ void PaintDash(HDC hdc, RECT& rc) {
 
     // Footer
     SelectObject(hdc, fSmall);
-    SetTextColor(hdc, RGB(40, 32, 55));
+    SetTextColor(hdc, RGB(35, 35, 40));
     RECT ft = { 0, rc.bottom - 16, rc.right, rc.bottom - 2 };
     DrawText(hdc, "AC Changer 2024-2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
 }
@@ -667,7 +667,7 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx,
 
     // Focus glow
     if (focused) {
-        HPEN gp = CreatePen(PS_SOLID, 1, RGB(100, 55, 160));
+        HPEN gp = CreatePen(PS_SOLID, 1, RGB(80, 80, 90));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
         SelectObject(hdc, gp);
         RoundRect(hdc, x - 1, y - 1, x + w + 1, y + FIELD_H + 1, RAD * 2 + 2, RAD * 2 + 2);
@@ -735,7 +735,7 @@ void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text,
     RRect(hdc, x, y, w, h, RAD, c, brd);
 
     if (hover) {
-        HPEN gp = CreatePen(PS_SOLID, 1, RGB(90, 50, 140));
+        HPEN gp = CreatePen(PS_SOLID, 1, RGB(70, 70, 80));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
         SelectObject(hdc, gp);
         RoundRect(hdc, x - 1, y - 1, x + w + 1, y + h + 1, RAD * 2 + 2, RAD * 2 + 2);
@@ -767,7 +767,7 @@ void DrawLogo(HDC hdc, int cx, int cy) {
 
     // Glow rings
     for (int i = 3; i >= 1; i--) {
-        HPEN gp = CreatePen(PS_SOLID, 1, RGB(60 + i*12, 30 + i*8, 100 + i*15));
+        HPEN gp = CreatePen(PS_SOLID, 1, RGB(40 + i*10, 40 + i*10, 45 + i*10));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
         SelectObject(hdc, gp);
         RoundRect(hdc, lx - i*2, ly - i*2, lx + sz + i*2, ly + sz + i*2,
@@ -781,14 +781,14 @@ void DrawLogo(HDC hdc, int cx, int cy) {
 
     TRIVERTEX v[2];
     v[0].x = lx;      v[0].y = ly;
-    v[0].Red   = (COLOR16)(110 << 8);
-    v[0].Green = (COLOR16)(40  << 8);
-    v[0].Blue  = (COLOR16)(210 << 8);
+    v[0].Red   = (COLOR16)(80  << 8);
+    v[0].Green = (COLOR16)(80  << 8);
+    v[0].Blue  = (COLOR16)(90  << 8);
     v[0].Alpha = 0;
     v[1].x = lx + sz; v[1].y = ly + sz;
-    v[1].Red   = (COLOR16)(210 << 8);
-    v[1].Green = (COLOR16)(90  << 8);
-    v[1].Blue  = (COLOR16)(170 << 8);
+    v[1].Red   = (COLOR16)(140 << 8);
+    v[1].Green = (COLOR16)(140 << 8);
+    v[1].Blue  = (COLOR16)(150 << 8);
     v[1].Alpha = 0;
 
     GRADIENT_RECT gr = { 0, 1 };
@@ -861,7 +861,7 @@ bool DoSignup() {
     }
 
     g_loggedIn = true;
-    SetStat("Konto oprettet! HWID laast.", C_GREEN);
+    SetStat("Konto oprettet! HWID l\xE5st.", C_GREEN);
     return true;
 }
 
@@ -963,18 +963,18 @@ bool LaunchGame(HWND hwnd) {
 
     if (!ok) { SetStat("Fejl: Steam ikke fundet!", C_RED); return false; }
 
-    SetStat("Venter paa Steam...", C_TEXT2);
+    SetStat("Venter p\xE5 Steam...", C_TEXT2);
     Sleep(8000);
 
     SetStat("Starter CS2...", C_TEXT2);
     ShellExecuteA(NULL, "open", "steam://rungameid/730", NULL, NULL, SW_SHOWNORMAL);
 
-    SetStat("Venter paa CS2...", C_TEXT2);
+    SetStat("Venter p\xE5 CS2...", C_TEXT2);
     DWORD cs2 = 0;
     for (int i = 0; i < 120 && !cs2; i++) {
         cs2 = FindProc("cs2.exe");
         if (!cs2) {
-            char m[64]; sprintf_s(m, "Venter paa CS2... %d sek", i + 1);
+            char m[64]; sprintf_s(m, "Venter p\xE5 CS2... %d sek", i + 1);
             SetStat(m, C_TEXT2); Sleep(1000);
         }
     }
@@ -985,11 +985,11 @@ bool LaunchGame(HWND hwnd) {
 
     SetStat("Injicerer...", C_ACCENT);
     HANDLE h = OpenProcess(PROCESS_ALL_ACCESS, FALSE, cs2);
-    if (!h) { SetStat("Fejl: Koer som administrator!", C_RED); return false; }
+    if (!h) { SetStat("Fejl: K\xF8r som administrator!", C_RED); return false; }
     Sleep(2000); CloseHandle(h);
 
-    SetStat("Injection udfaert! Tryk INSERT.", C_GREEN);
-    MessageBox(hwnd, "Injection udfaert!\n\nTryk INSERT i CS2 for at aabne menuen.",
+    SetStat("Injection udf\xF8rt! Tryk INSERT.", C_GREEN);
+    MessageBox(hwnd, "Injection udf\xF8rt!\n\nTryk INSERT i CS2 for at \xE5bne menuen.",
         "AC Changer", MB_OK | MB_ICONINFORMATION);
     return true;
 }
