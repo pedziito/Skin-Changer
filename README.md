@@ -1,53 +1,269 @@
 # CS2 Skin Changer
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/pedziito/Skin-Changer?quickstart=1)
+[![GitHub release](https://img.shields.io/github/v/release/pedziito/Skin-Changer?style=flat-square)](https://github.com/pedziito/Skin-Changer/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/pedziito/Skin-Changer/blob/main/LICENSE)
+[![Windows](https://img.shields.io/badge/platform-Windows%2064bit-brightgreen?style=flat-square)](https://github.com/pedziito/Skin-Changer)
 
-A client-side skin changer for Counter-Strike 2 with both **web-based dashboard** and **desktop application** for managing weapon skin appearances locally.
+A window-based skin changer for Counter-Strike 2 featuring a .exe loader with .dll injection and in-game menu overlay.
 
-## 🚀 Quick Start
+## ⚠️ **CRITICAL: VAC BAN WARNING** ⚠️
 
-**Want to start coding immediately?** Click the badge above to open in GitHub Codespaces with everything pre-configured!
+**THIS TOOL WILL RESULT IN A PERMANENT BAN**
 
-**Local development?** See [HOW_TO_OPEN.md](HOW_TO_OPEN.md) for detailed instructions.
+- **VAC DETECTION**: This tool is almost certainly detectable by VAC (Valve Anti-Cheat)
+- **PERMANENT BAN**: VAC bans cannot be appealed and are permanent
+- **ACCOUNT LOSS**: All games and items on your Steam account will be lost
+- **IP BLOCKING**: Your IP may be blocked from playing VAC-secured games
+- **FOR EDUCATIONAL USE ONLY**: This is a proof-of-concept, not for actual gameplay
 
-## 🌐 NEW: Web-Based Interface
+**DO NOT USE ON YOUR MAIN ACCOUNT**
 
-Manage your CS2 skin configurations through a beautiful web dashboard with user authentication!
+The developers assume NO responsibility for bans or account loss. Use entirely at your own risk.
 
-- **Web Dashboard**: Modern, responsive interface with login/signup
-- **API Token System**: Generate tokens for desktop client synchronization  
-- **Cloud Configuration**: Save and manage skin configs from anywhere
-- **Beautiful UI**: Gradient-based design with smooth animations
-- **Multi-Device**: Access from any device with a browser
-
-[See Web Interface Documentation](web/README.md)
-
-## ⚠️ IMPORTANT DISCLAIMERS
-
-**READ THIS BEFORE PROCEEDING:**
-
-- **This tool violates Valve's Terms of Service and Steam Subscriber Agreement**
-- **Using this tool WILL result in a permanent VAC (Valve Anti-Cheat) ban**
-- **VAC bans are permanent and irreversible**
-- **VAC bans affect ALL VAC-secured games on your Steam account**
-- **This project is for EDUCATIONAL PURPOSES ONLY**
-- **Use at your own risk - you assume ALL responsibility**
-
-The developers of this tool are not responsible for any bans, account suspensions, or other consequences resulting from its use.
+---
 
 ## Features
 
-### Web Dashboard
-- 🔐 User authentication with JWT tokens
-- 🎨 Beautiful gradient-based modern UI
-- 📱 Fully responsive design (mobile & desktop)
-- 🔑 API token generation for desktop client
-- ☁️ Cloud-based configuration storage
-- 🚀 Real-time skin configuration management
+### Loader Application (cs2loader.exe)
+- 🎮 Automatic CS2 process detection
+- 📦 Handles DLL injection reliably
+- 🔐 License verification
+- ⚠️ VAC warning display
+- 🔄 Automatic dependency management
 
-### Desktop Application
-- Client-side weapon skin modification
-- Real-time skin application while game is running
+### In-Game Overlay Menu
+- 🎨 Clean, intuitive menu interface (INS key to toggle)
+- 🎯 Real-time skin selection
+- 🔧 Multiple configuration options
+- 📊 Game memory integration
+- ⌨️ Keyboard-based navigation
+
+### License System
+- 🔐 User licensing requirements
+- ⏰ Time-based license expiry
+- 🛡️ License revocation support
+- 👨‍💼 Admin tool for license management
+
+## Installation
+
+### Requirements
+- Windows 7 or later (x64)
+- GPU that supports DirectX 11
+- Decent CPU for injection and overlay
+
+### Download
+Download the latest release from [GitHub Releases](https://github.com/pedziito/Skin-Changer/releases)
+
+Extract files:
+```
+CS2Changer/
+├── cs2loader.exe       (Main application)
+├── CS2Changer.dll      (Game hook)
+└── license.key         (User license)
+```
+
+### Setup
+
+1. **Obtain License**
+   - Contact admin at: [your-contact-info]
+   - You'll receive a `license.key` file
+
+2. **Place license.key**
+   - Copy `license.key` to the same folder as `cs2loader.exe`
+   - Ensures loader can verify your license
+
+3. **Run Loader**
+   ```
+   cs2loader.exe
+   ```
+   - Accept VAC warning
+   - Loader will wait for CS2 to start
+
+4. **Launch Counter-Strike 2**
+   - Start the game normally
+   - Loader automatically injects DLL
+   - Menu becomes available in-game
+
+5. **Use In-Game Menu**
+   - Press `INS` key to toggle menu
+   - Navigate with arrow keys
+   - Press `ENTER` to select
+   - Choose weapon → Choose skin → Apply
+
+## Admin Panel (License Management)
+
+### Launch Admin Tool
+```
+cs2admin.exe
+```
+
+### Admin Capabilities
+- Generate new licenses with expiry dates
+- Validate existing license files
+- Revoke compromised licenses
+- Set custom usernames per license
+
+### License Format
+```
+CS2-2026-A1B2C3D4-02-E5F6G7H8
+USERNAME=player_name
+CREATED=2026-02-17 12:34:56
+EXPIRY=2026-03-19 12:34:56
+ACTIVE=true
+```
+
+## Building from Source
+
+### Requirements
+- CMake 3.15+
+- Visual Studio 2019+ (MSVC compiler)
+- Windows SDK 10.0+
+- C++17 or later
+
+### Build Steps
+
+```bash
+# Clone repository
+git clone https://github.com/pedziito/Skin-Changer.git
+cd Skin-Changer
+
+# Create build directory
+mkdir build && cd build
+
+# Configure with CMake
+cmake .. -G "Visual Studio 16 2019"
+
+# Build Release
+cmake --build . --config Release
+
+# Built files in: build/bin/
+# - cs2loader.exe
+# - CS2Changer.dll
+# - cs2admin.exe
+```
+
+## Architecture
+
+The application consists of three main components:
+
+1. **Loader (cs2loader.exe)**
+   - Displays VAC warning
+   - Verifies license
+   - Waits for CS2 process
+   - Injects DLL using CreateRemoteThread
+
+2. **Game DLL (CS2Changer.dll)**
+   - Injected into CS2 process
+   - Provides in-game overlay menu
+   - Interfaces with game memory
+   - Applies skin modifications
+
+3. **Admin Tool (cs2admin.exe)**
+   - Password-protected license management
+   - Generate licenses with expiration
+   - Validate and revoke licenses
+   - User administration
+
+For detailed architecture information, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Configuration
+
+No manual configuration required! The loader uses:
+- Auto-detection of CS2 process
+- License file validation
+- Built-in skin database
+- Automatic menu initialization
+
+## Troubleshooting
+
+### "DLL not found"
+- Ensure `CS2Changer.dll` is in the same folder as `cs2loader.exe`
+
+### "License file not found"
+- Place `license.key` in the application directory
+- Contact admin for license file
+
+### Menu doesn't appear
+- Press INS key to toggle visibility
+- Ensure DLL was injected successfully
+- Check Windows UAC settings
+
+### DLL injection fails
+- Run as Administrator
+- Disable compatibility mode
+- Try different CS2 versions
+- Check antivirus software restrictions
+
+## FAQ
+
+### Is this detectable?
+Yes. VAC detection is very likely.
+
+### Will I get banned?
+Very likely. Do not use on accounts you care about.
+
+### Is it free?
+License keys are generated by admins only.
+
+### Can I modify it?
+Yes, source code is available. See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Security Notes
+
+- License keys contain embedded expiry information
+- Admin password is hardcoded (production: use external auth)
+- DLL injection uses standard Windows API
+- No external network calls (offline compatible)
+- Automatic VAC warning keeps users informed
+
+## Project Structure
+
+```
+Skin-Changer/
+├── loader/              # .exe loader
+├── injector/            # .dll game hook
+├── admin/               # License management CLI
+├── src/                 # Core game logic
+├── include/             # Header files
+├── config/              # Skin database
+└── CMakeLists.txt       # Build configuration
+```
+
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical architecture details
+- [HOW_TO_OPEN.md](HOW_TO_OPEN.md) - IDE setup guide
+- [BUILD.md](BUILD.md) - Detailed build instructions
+- [QUICKSTART.md](QUICKSTART.md) - Quick start guide
+
+## Disclaimer
+
+**This tool is provided "AS IS" without any warranty.** The authors and contributors are not responsible for any consequences, including but not limited to:
+
+- VAC bans
+- Account suspensions
+- Loss of games or items
+- IP bans
+- Loss of access to Steam services
+- Any other penalties imposed by Valve
+
+**Use entirely at your own risk.**
+
+## License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
+
+This project is for **EDUCATIONAL PURPOSES ONLY**. Unauthorized modification of commercial games may violate laws in your jurisdiction.
+
+## Author
+
+- **pedziito** - Project creator and maintainer
+
+## Acknowledgments
+
+- Counter-Strike 2 community
+- Game modifier enthusiasts
+- Open-source contributors
 - User-friendly Windows GUI interface
 - Weapon categorization (Rifles, Pistols, Knives, SMGs)
 - Extensive skin database with popular skins
