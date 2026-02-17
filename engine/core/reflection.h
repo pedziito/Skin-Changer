@@ -216,10 +216,11 @@ struct TypeAutoRegistrar {
 #define ACE_FIELD_2(member, desc)        ACE_FIELD_5(member, desc, ace::PropFlags::None, 0.0f, 1.0f)
 #define ACE_FIELD_1(member)              ACE_FIELD_2(member, "")
 
-// Overload selector
+// Overload selector (ACE_EXPAND works around MSVC legacy preprocessor __VA_ARGS__ bug)
+#define ACE_EXPAND_ARGS(...) __VA_ARGS__
 #define ACE_GET_FIELD_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
-#define ACE_FIELD(...) ACE_GET_FIELD_MACRO(__VA_ARGS__, ACE_FIELD_5, \
-    ACE_FIELD_UNUSED, ACE_FIELD_3, ACE_FIELD_2, ACE_FIELD_1)(__VA_ARGS__)
+#define ACE_FIELD(...) ACE_EXPAND_ARGS(ACE_GET_FIELD_MACRO(__VA_ARGS__, ACE_FIELD_5, \
+    ACE_FIELD_UNUSED, ACE_FIELD_3, ACE_FIELD_2, ACE_FIELD_1)(__VA_ARGS__))
 
 /**
  * ACE_REFLECT(StructName, properties...)

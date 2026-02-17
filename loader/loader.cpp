@@ -1,60 +1,114 @@
 /*
- * AC Loader — Professional GUI Launcher
- * Custom DX11 rendering engine. Login/Signup → Subscription → Launch.
- * "AC" branding: white bold text with blue shadow glow (no box).
- * Truly rounded window via SetWindowRgn. Professional dark UI.
+ * AC Loader — Professional DX11 Launcher
+ * Built on ACE Engine v2.0 — zero ImGui dependency.
+ * Login/Signup → Subscription → DLL Injection.
+ * Borderless rounded window with Neverlose-inspired dark UI.
  */
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
 #include <TlHelp32.h>
-#include <d3d11.h>
-#include <dxgi.h>
+#endif
+
+#include "../engine/ace_engine_v2.h"
+
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3dcompiler.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "shell32.lib")
+#ifdef _WIN32
 
-#include "../engine/ace_renderer.h"
-#include "../engine/ace_ui.h"
+using namespace ace;
 
 // ============================================================================
 // GLOBALS
 // ============================================================================
-static ID3D11Device*            g_device = nullptr;
-static ID3D11DeviceContext*     g_context = nullptr;
-static IDXGISwapChain*          g_swapChain = nullptr;
-static ID3D11RenderTargetView*  g_rtv = nullptr;
-static HWND                     g_hwnd = nullptr;
-static bool                     g_running = true;
-static int                      g_width = 480;
-static int                      g_height = 560;
-static constexpr int            CORNER_RADIUS = 14;
+static DX11Backend g_backend;
+static FontAtlas   g_fontAtlas;
+static InputSystem g_input;
+static ThemeEngine g_theme;
 
-static ACEFont      g_font;
-static ACERenderer  g_renderer;
-static ACEUIContext g_ui;
+static u32  g_font     = 0;   // 14pt regular
+static u32  g_fontBold = 0;   // 22pt for logo/headings
+
+static HWND g_hwnd    = nullptr;
+static bool g_running = true;
+static int  g_width   = 480;
+static int  g_height  = 580;
+static constexpr int CORNER_RADIUS = 14;
+
+// ============================================================================
+// ANIMATION HELPER — smooth lerp map
+// ============================================================================
+static std::unordered_map<u32, f32> g_anims;
+static f32 g_dt   = 0.016f;
+static f32 g_time = 0.0f;
+
+static f32 Anim(u32 id, f32 target, f32 speed = 10.0f) {
+    auto& v = g_anims[id];
+    v += (target - v) * (std::min)(1.0f, speed * g_dt);
+    if (std::abs(v - target) < 0.002f) v = target;
+    return v;
+}
+
+// ============================================================================
+// HIT TEST HELPER
+// ============================================================================
+static bool HitTest(f32 x, f32 y, f32 w, f32 h) {
+    Vec2 m = g_input.MousePos();
+    return m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + h;
+}
+
+// ============================================================================
+// COLOR HELPERS
+// ============================================================================
+static Color Fade(Color c, f32 alpha) {
+    return Color{c.r, c.g, c.b, u8(alpha * 255.0f)};
+}
+static Color Lerp(Color a, Color b, f32 t) {
+    return Color{
+        u8(a.r + (b.r - a.r) * t),
+        u8(a.g + (b.g - a.g) * t),
+        u8(a.b + (b.b - a.b) * t),
+        u8(a.a + (b.a - a.a) * t)};
+}
+
+// ============================================================================
+// THEME COLORS
+// ============================================================================
+namespace C {
+    constexpr Color WindowBg      {12,  12,  16,  255};
+    constexpr Color SidebarBg     {15,  15,  20,  255};
+    constexpr Color CardBg        {18,  20,  28,  255};
+    constexpr Color CardHover     {22,  24,  35,  255};
+    constexpr Color CardSelected  {25,  28,  42,  255};
+    constexpr Color InputBg       {18,  18,  26,  255};
+    constexpr Color AccentBlue    {59,  130, 246, 255};
+    constexpr Color AccentPurple  {139, 92,  246, 255};
+    constexpr Color AccentGreen   {74,  222, 128, 255};
+    constexpr Color AccentRed     {248, 113, 113, 255};
+    constexpr Color AccentYellow  {250, 204, 21,  255};
+    constexpr Color TextPrimary   {230, 230, 240, 255};
+    constexpr Color TextSecondary {140, 140, 160, 255};
+    constexpr Color TextDim       {80,  80,  100, 255};
+    constexpr Color Border        {40,  40,  55,  255};
+    constexpr Color BorderHover   {60,  60,  80,  255};
+}
 
 // ============================================================================
 // APP STATES
 // ============================================================================
-enum AppScreen {
-    SCREEN_LOGIN,
-    SCREEN_SIGNUP,
-    SCREEN_MAIN
-};
+enum AppScreen { SCREEN_LOGIN, SCREEN_SIGNUP, SCREEN_MAIN };
 static AppScreen g_screen = SCREEN_LOGIN;
 
 // ============================================================================
@@ -66,36 +120,28 @@ static char g_signupUser[64]  = "";
 static char g_signupPass[64]  = "";
 static char g_signupPass2[64] = "";
 static std::string g_authError;
-static float g_authErrorTimer = 0;
+static f32 g_authErrorTimer = 0;
 static std::string g_loggedUser;
-static float g_fadeAnim = 0.0f;
+static f32 g_fadeAnim = 0.0f;
+static u32 g_focusedItem = 0;
 
 // ============================================================================
-// LICENSE / SUBSCRIPTION DATA
+// SUBSCRIPTION DATA
 // ============================================================================
-struct LicenseData {
-    std::string key;
-    std::string username;
-    time_t      created;
-    time_t      expiry;
-    bool        active;
-};
-
 struct SubscriptionEntry {
     std::string name;
     std::string expiryText;
-    uint32_t    accentColor;
+    Color       accentColor;
     bool        active;
 };
-
 static std::vector<SubscriptionEntry> g_subscriptions;
-static int  g_selectedSub = -1;
+static int g_selectedSub = -1;
 
 // Injection state
 static bool g_injecting = false;
 static bool g_injected  = false;
 static std::string g_statusMsg;
-static float g_statusTimer = 0.0f;
+static f32 g_statusTimer = 0.0f;
 
 // ============================================================================
 // LICENSE FILE SYSTEM
@@ -110,12 +156,8 @@ static std::string GetLicensePath() {
 }
 
 static std::string HashPassword(const std::string& pass) {
-    // Simple hash for local storage (not cryptographic, but sufficient for local auth)
     uint32_t h = 0x811c9dc5;
-    for (char c : pass) {
-        h ^= (uint8_t)c;
-        h *= 0x01000193;
-    }
+    for (char c : pass) { h ^= (uint8_t)c; h *= 0x01000193; }
     char buf[16];
     snprintf(buf, sizeof(buf), "%08X", h);
     return buf;
@@ -137,7 +179,6 @@ struct UserRecord {
     time_t      expiry;
     bool        active;
 };
-
 static std::vector<UserRecord> g_users;
 
 static void LoadUsers() {
@@ -173,7 +214,7 @@ static bool DoSignup(const char* user, const char* pass) {
     u.passHash = HashPassword(pass);
     u.licenseKey = GenerateLicenseKey();
     u.created = time(nullptr);
-    u.expiry = u.created + 30 * 86400; // 30 day trial
+    u.expiry = u.created + 30 * 86400;
     u.active = true;
     g_users.push_back(u);
     SaveUsers();
@@ -187,16 +228,13 @@ static bool DoLogin(const char* user, const char* pass) {
             if (!u.active) { g_authError = "Account deactivated"; g_authErrorTimer = 3; return false; }
             if (time(nullptr) > u.expiry) { g_authError = "Subscription expired"; g_authErrorTimer = 3; return false; }
             g_loggedUser = user;
-            // Setup subscription entries
             g_subscriptions.clear();
             int daysLeft = (int)((u.expiry - time(nullptr)) / 86400);
             char expBuf[64];
             snprintf(expBuf, sizeof(expBuf), "Expires in %d days", daysLeft > 0 ? daysLeft : 0);
             g_subscriptions.push_back({
-                "Counter-Strike 2",
-                expBuf,
-                ACE_COL32(220, 160, 40, 255),
-                true
+                "Counter-Strike 2", expBuf,
+                Color{220, 160, 40, 255}, true
             });
             return true;
         }
@@ -238,11 +276,17 @@ static bool InjectDLL(DWORD processId, const char* dllPath) {
         CloseHandle(hProcess); return false;
     }
     LPVOID loadLib = (LPVOID)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
-    if (!loadLib) { VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE); CloseHandle(hProcess); return false; }
+    if (!loadLib) {
+        VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
+        CloseHandle(hProcess); return false;
+    }
     HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0,
                                          (LPTHREAD_START_ROUTINE)loadLib,
                                          remoteMem, 0, nullptr);
-    if (!hThread) { VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE); CloseHandle(hProcess); return false; }
+    if (!hThread) {
+        VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
+        CloseHandle(hProcess); return false;
+    }
     WaitForSingleObject(hThread, 10000);
     DWORD exitCode = 0;
     GetExitCodeThread(hThread, &exitCode);
@@ -281,70 +325,45 @@ static void DoInject() {
 }
 
 // ============================================================================
-// DX11 SETUP
-// ============================================================================
-static bool CreateDeviceD3D() {
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferCount = 2;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = g_hwnd;
-    sd.SampleDesc.Count = 1;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-    D3D_FEATURE_LEVEL fl;
-    D3D_FEATURE_LEVEL fls[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0 };
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-        fls, 2, D3D11_SDK_VERSION,
-        &sd, &g_swapChain, &g_device, &fl, &g_context);
-    if (FAILED(hr)) return false;
-    ID3D11Texture2D* bb = nullptr;
-    g_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb);
-    if (bb) { g_device->CreateRenderTargetView(bb, nullptr, &g_rtv); bb->Release(); }
-    return true;
-}
-
-static void CleanupDevice() {
-    if (g_rtv)       { g_rtv->Release();       g_rtv = nullptr; }
-    if (g_swapChain) { g_swapChain->Release();  g_swapChain = nullptr; }
-    if (g_context)   { g_context->Release();    g_context = nullptr; }
-    if (g_device)    { g_device->Release();     g_device = nullptr; }
-}
-
-static void CreateRenderTarget() {
-    ID3D11Texture2D* bb = nullptr;
-    g_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&bb);
-    if (bb) { g_device->CreateRenderTargetView(bb, nullptr, &g_rtv); bb->Release(); }
-}
-
-// ============================================================================
-// WNDPROC
+// WNDPROC — forward events to ACE InputSystem
 // ============================================================================
 static bool g_dragging = false;
 static POINT g_dragStart = {};
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    ACEProcessInput(g_ui, (void*)hWnd, msg, (unsigned long long)wParam, (long long)lParam);
     switch (msg) {
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        g_running = false;
+        return 0;
+
     case WM_SIZE:
-        if (g_device && wParam != SIZE_MINIMIZED) {
-            if (g_rtv) { g_rtv->Release(); g_rtv = nullptr; }
-            g_swapChain->ResizeBuffers(0, LOWORD(lParam), HIWORD(lParam),
-                                        DXGI_FORMAT_UNKNOWN, 0);
-            g_width = LOWORD(lParam);
+        if (wParam != SIZE_MINIMIZED) {
+            g_width  = LOWORD(lParam);
             g_height = HIWORD(lParam);
-            CreateRenderTarget();
-            // Update window region for rounded corners
+            if (g_width > 0 && g_height > 0)
+                g_backend.Resize((u32)g_width, (u32)g_height);
             HRGN rgn = CreateRoundRectRgn(0, 0, g_width + 1, g_height + 1,
                                            CORNER_RADIUS * 2, CORNER_RADIUS * 2);
             SetWindowRgn(hWnd, rgn, TRUE);
         }
         return 0;
+
+    case WM_MOUSEMOVE: {
+        f32 x = (f32)(short)LOWORD(lParam);
+        f32 y = (f32)(short)HIWORD(lParam);
+        g_input.OnMouseMove(x, y);
+        if (g_dragging) {
+            POINT pt;
+            GetCursorPos(&pt);
+            SetWindowPos(hWnd, nullptr, pt.x - g_dragStart.x, pt.y - g_dragStart.y,
+                         0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        }
+        return 0;
+    }
+
     case WM_LBUTTONDOWN: {
+        g_input.OnMouseDown(MouseButton::Left);
         POINT pt = { (SHORT)LOWORD(lParam), (SHORT)HIWORD(lParam) };
         if (pt.y < 44 && pt.x < g_width - 80) {
             g_dragging = true;
@@ -353,183 +372,211 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         return 0;
     }
-    case WM_MOUSEMOVE:
-        if (g_dragging) {
-            POINT pt;
-            GetCursorPos(&pt);
-            SetWindowPos(hWnd, nullptr,
-                         pt.x - g_dragStart.x, pt.y - g_dragStart.y,
-                         0, 0, SWP_NOSIZE | SWP_NOZORDER);
-        }
-        return 0;
     case WM_LBUTTONUP:
+        g_input.OnMouseUp(MouseButton::Left);
         if (g_dragging) { g_dragging = false; ReleaseCapture(); }
         return 0;
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        g_running = false;
+    case WM_RBUTTONDOWN: g_input.OnMouseDown(MouseButton::Right); return 0;
+    case WM_RBUTTONUP:   g_input.OnMouseUp(MouseButton::Right);   return 0;
+    case WM_MBUTTONDOWN: g_input.OnMouseDown(MouseButton::Middle); return 0;
+    case WM_MBUTTONUP:   g_input.OnMouseUp(MouseButton::Middle);   return 0;
+
+    case WM_MOUSEWHEEL: {
+        f32 delta = (f32)GET_WHEEL_DELTA_WPARAM(wParam) / 120.0f;
+        g_input.OnMouseScroll(delta);
+        return 0;
+    }
+
+    case WM_KEYDOWN: g_input.OnKeyDown((Key)(int)wParam); return 0;
+    case WM_KEYUP:   g_input.OnKeyUp((Key)(int)wParam);   return 0;
+    case WM_CHAR:
+        if (wParam >= 32 && wParam < 127)
+            g_input.OnTextInput((char)wParam);
         return 0;
     }
     return DefWindowProcA(hWnd, msg, wParam, lParam);
 }
 
 // ============================================================================
-// HELPER: Draw AC logo (white text + blue shadow/glow, standalone — no box)
+// DRAW HELPERS
 // ============================================================================
-static void DrawACLogo(ACEDrawList& dl, float cx, float cy) {
-    const char* logoText = "AC";
-    ACEVec2 ts = dl.font->CalcTextSize(logoText);
+static void DrawRoundedBorder(DrawList& dl, Rect r, Color bg, Color border,
+                               f32 radius, f32 thickness = 1.0f) {
+    // Border via two overlapping filled rects
+    dl.AddFilledRoundRect(
+        Rect{r.x - thickness, r.y - thickness, r.w + thickness * 2, r.h + thickness * 2},
+        border, radius + thickness, 12);
+    dl.AddFilledRoundRect(r, bg, radius, 12);
+}
 
-    // Multi-layer blue glow behind text
+static void DrawACLogo(DrawList& dl, f32 cx, f32 cy) {
+    // Multi-layer blue glow behind "AC" text
+    Vec2 ts = g_fontAtlas.MeasureText(g_fontBold, "AC");
+
+    // Glow layers
     for (int layer = 5; layer >= 1; layer--) {
-        float spread = (float)layer * 1.8f;
-        int alpha = (int)(30.0f * (1.0f - (float)layer / 6.0f));
-        uint32_t glowCol = ACE_COL32(59, 130, 246, alpha);
+        f32 spread = (f32)layer * 1.8f;
+        u8 alpha = (u8)(30.0f * (1.0f - (f32)layer / 6.0f));
+        Color glowCol{59, 130, 246, alpha};
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 if (dx == 0 && dy == 0) continue;
-                dl.AddText(cx - ts.x * 0.5f + dx * spread,
-                           cy - ts.y * 0.5f + dy * spread,
-                           glowCol, logoText);
+                g_fontAtlas.RenderText(dl, g_fontBold,
+                    Vec2{cx - ts.x * 0.5f + dx * spread, cy - ts.y * 0.5f + dy * spread},
+                    "AC", glowCol);
             }
         }
     }
 
-    // Core blue shadow (tight, directly behind)
-    dl.AddText(cx - ts.x * 0.5f + 0, cy - ts.y * 0.5f + 1, ACE_COL32(59, 130, 246, 120), logoText);
-    dl.AddText(cx - ts.x * 0.5f + 1, cy - ts.y * 0.5f + 0, ACE_COL32(59, 130, 246, 80), logoText);
-    dl.AddText(cx - ts.x * 0.5f - 1, cy - ts.y * 0.5f + 0, ACE_COL32(59, 130, 246, 80), logoText);
-    dl.AddText(cx - ts.x * 0.5f + 0, cy - ts.y * 0.5f - 1, ACE_COL32(59, 130, 246, 60), logoText);
+    // Tight blue shadow
+    g_fontAtlas.RenderText(dl, g_fontBold, Vec2{cx - ts.x*0.5f, cy - ts.y*0.5f + 1},
+                           "AC", Color{59, 130, 246, 120});
+    g_fontAtlas.RenderText(dl, g_fontBold, Vec2{cx - ts.x*0.5f + 1, cy - ts.y*0.5f},
+                           "AC", Color{59, 130, 246, 80});
 
     // White text on top
-    dl.AddText(cx - ts.x * 0.5f, cy - ts.y * 0.5f,
-               ACE_COL32(255, 255, 255, 255), logoText);
+    g_fontAtlas.RenderText(dl, g_fontBold, Vec2{cx - ts.x * 0.5f, cy - ts.y * 0.5f},
+                           "AC", Color{255, 255, 255, 255});
+}
+
+static void DrawText(DrawList& dl, f32 x, f32 y, Color c, const char* text, u32 fontId = 0) {
+    g_fontAtlas.RenderText(dl, fontId ? fontId : g_font, Vec2{x, y}, text, c);
+}
+
+static Vec2 TextSize(const char* text, u32 fontId = 0) {
+    return g_fontAtlas.MeasureText(fontId ? fontId : g_font, text);
+}
+
+static void DrawTextCentered(DrawList& dl, Rect area, Color c, const char* text, u32 fontId = 0) {
+    Vec2 ts = TextSize(text, fontId);
+    f32 x = area.x + (area.w - ts.x) * 0.5f;
+    f32 y = area.y + (area.h - ts.y) * 0.5f;
+    DrawText(dl, x, y, c, text, fontId);
 }
 
 // ============================================================================
-// HELPER: Animated button with glow
+// BUTTON WIDGET
 // ============================================================================
-static bool RenderButton(ACEUIContext& ctx, const char* label, float x, float y, float w, float h,
-                          uint32_t baseColor, bool enabled = true) {
-    uint32_t id = ctx.GetID(label);
-    bool hovered = enabled && ctx.input.IsMouseInRect(x, y, x + w, y + h);
-    bool clicked = hovered && ctx.input.mouseClicked[0];
-    float anim = ctx.SmoothAnim(id, hovered ? 1.0f : 0.0f);
-
-    uint8_t r = ACE_COL32_R(baseColor);
-    uint8_t g = ACE_COL32_G(baseColor);
-    uint8_t b = ACE_COL32_B(baseColor);
+static bool RenderButton(DrawList& dl, const char* label, Rect r,
+                          Color baseColor, bool enabled = true) {
+    u32 id = Hash(label);
+    bool hovered = enabled && HitTest(r.x, r.y, r.w, r.h);
+    bool clicked = hovered && g_input.IsMousePressed(MouseButton::Left);
+    f32 anim = Anim(id, hovered ? 1.0f : 0.0f);
 
     // Outer glow on hover
     if (anim > 0.01f) {
         for (int i = 3; i > 0; i--) {
-            uint32_t gc = ACE_COL32(r, g, b, (int)(12.0f * anim * (1.0f - (float)i / 4.0f)));
-            ctx.drawList.AddRectFilled(x - i, y - i, x + w + i, y + h + i, gc, 10.0f + i);
+            Color gc = Fade(baseColor, 0.05f * anim * (1.0f - (f32)i / 4.0f));
+            dl.AddFilledRoundRect(
+                Rect{r.x - i, r.y - i, r.w + i * 2, r.h + i * 2}, gc, 10.0f + i, 12);
         }
     }
 
-    int alpha = enabled ? (int)(200 + 55 * anim) : 100;
-    ctx.drawList.AddRectFilled(x, y, x + w, y + h,
-                                ACE_COL32(r, g, b, alpha), 8.0f);
+    u8 alpha = enabled ? (u8)(200 + 55 * anim) : 100;
+    Color bgCol{baseColor.r, baseColor.g, baseColor.b, alpha};
+    dl.AddFilledRoundRect(r, bgCol, 8.0f, 12);
 
     // Subtle top highlight
-    ctx.drawList.AddRectFilledMultiColor(
-        x + 1, y + 1, x + w - 1, y + h * 0.4f,
-        ACE_COL32(255, 255, 255, (int)(12 * anim)), ACE_COL32(255, 255, 255, (int)(12 * anim)),
-        ACE_COL32(255, 255, 255, 0), ACE_COL32(255, 255, 255, 0));
+    if (anim > 0.01f) {
+        dl.AddGradientRect(
+            Rect{r.x + 1, r.y + 1, r.w - 2, r.h * 0.4f},
+            Fade(Color{255,255,255,255}, 0.05f * anim),
+            Fade(Color{255,255,255,255}, 0.05f * anim),
+            Fade(Color{255,255,255,255}, 0.0f),
+            Fade(Color{255,255,255,255}, 0.0f));
+    }
 
-    ACEVec2 ts = ctx.drawList.font->CalcTextSize(label);
-    uint32_t textCol = enabled ? ACE_COL32(255, 255, 255, 255) : ACE_COL32(180, 180, 180, 180);
-    ctx.drawList.AddText(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f, textCol, label);
+    Color textCol = enabled ? C::TextPrimary : Color{180, 180, 180, 180};
+    DrawTextCentered(dl, r, textCol, label);
 
     return clicked && enabled;
 }
 
 // ============================================================================
-// HELPER: Input field with label
+// INPUT FIELD WIDGET
 // ============================================================================
-static void RenderInputField(ACEUIContext& ctx, const char* label, char* buf, int bufSize,
-                              float x, float y, float w, bool isPassword = false) {
-    float labelH = 16.0f;
-    float fieldH = 36.0f;
+static void RenderInputField(DrawList& dl, const char* label, char* buf, int bufSize,
+                              f32 x, f32 y, f32 w, bool isPassword = false) {
+    f32 labelH = 16.0f;
+    f32 fieldH = 36.0f;
 
     // Label
-    ctx.drawList.AddText(x, y, ACETheme::TextSecondary, label);
+    DrawText(dl, x, y, C::TextSecondary, label);
 
-    // Field background
-    float fy = y + labelH + 4;
-    uint32_t fieldId = ctx.GetID(label);
-    bool focused = ctx.focusedItem == fieldId;
-    bool hovered = ctx.input.IsMouseInRect(x, fy, x + w, fy + fieldH);
+    // Field
+    f32 fy = y + labelH + 4;
+    u32 fieldId = Hash(label);
+    bool focused = g_focusedItem == fieldId;
+    bool hovered = HitTest(x, fy, w, fieldH);
 
-    uint32_t borderCol = focused ? ACETheme::AccentBlue :
-                         hovered ? ACE_COL32(60, 60, 80, 255) :
-                                   ACE_COL32(40, 40, 55, 200);
+    Color borderCol = focused ? C::AccentBlue :
+                      hovered ? C::BorderHover : C::Border;
 
-    ctx.drawList.AddRectFilled(x, fy, x + w, fy + fieldH,
-                                ACE_COL32(18, 18, 26, 255), 8.0f);
-    ctx.drawList.AddRect(x, fy, x + w, fy + fieldH, borderCol, 8.0f, 1.0f);
+    // Border + background
+    DrawRoundedBorder(dl, Rect{x, fy, w, fieldH}, C::InputBg, borderCol, 8.0f);
 
     // Focus glow
     if (focused) {
         for (int i = 2; i > 0; i--) {
-            ctx.drawList.AddRect(x - i, fy - i, x + w + i, fy + fieldH + i,
-                                  ACE_COL32(59, 130, 246, (int)(20 * (3 - i))), 8.0f + i, 1.0f);
+            Color gc = Fade(C::AccentBlue, 0.08f * (3 - i));
+            dl.AddFilledRoundRect(
+                Rect{x - i - 1, fy - i - 1, w + (i + 1) * 2, fieldH + (i + 1) * 2},
+                gc, 9.0f + i, 12);
+            dl.AddFilledRoundRect(Rect{x - 1, fy - 1, w + 2, fieldH + 2},
+                                   C::InputBg, 8.0f, 12);
         }
+        // Redraw main after glow
+        DrawRoundedBorder(dl, Rect{x, fy, w, fieldH}, C::InputBg, C::AccentBlue, 8.0f);
     }
 
-    if (hovered && ctx.input.mouseClicked[0]) {
-        ctx.focusedItem = fieldId;
-    }
+    // Click to focus
+    if (hovered && g_input.IsMousePressed(MouseButton::Left))
+        g_focusedItem = fieldId;
 
     // Handle text input
     if (focused) {
         int len = (int)strlen(buf);
-        for (int i = 0; i < ctx.input.inputCharCount && len < bufSize - 1; i++) {
-            char c = ctx.input.inputChars[i];
-            if (c >= 32 && c < 127) {
+        std::string_view input = g_input.TextInput();
+        for (char c : input) {
+            if (c >= 32 && c < 127 && len < bufSize - 1) {
                 buf[len++] = c;
                 buf[len] = '\0';
             }
         }
-        if (ctx.input.keyPressed[VK_BACK] && len > 0) {
+        if (g_input.IsKeyPressed(Key::Backspace) && len > 0) {
             buf[len - 1] = '\0';
         }
     }
 
-    // Display text or placeholder
+    // Display text
+    f32 lineH = 14.0f; // approximate line height
+    const FontInstance* fi = g_fontAtlas.GetFont(g_font);
+    if (fi) lineH = fi->lineHeight;
+
     int slen = (int)strlen(buf);
     if (slen > 0) {
-        if (isPassword) {
-            std::string masked(slen, '*');
-            ctx.drawList.AddText(x + 12, fy + (fieldH - ctx.drawList.font->lineHeight) * 0.5f,
-                                  ACETheme::TextPrimary, masked.c_str());
-        } else {
-            ctx.drawList.AddText(x + 12, fy + (fieldH - ctx.drawList.font->lineHeight) * 0.5f,
-                                  ACETheme::TextPrimary, buf);
-        }
+        std::string displayText = isPassword ? std::string(slen, '*') : std::string(buf);
+        DrawText(dl, x + 12, fy + (fieldH - lineH) * 0.5f, C::TextPrimary, displayText.c_str());
+
         // Cursor blink
         if (focused) {
-            float blink = fmodf((float)ctx.time * 2.0f, 2.0f);
+            f32 blink = fmodf(g_time * 2.0f, 2.0f);
             if (blink < 1.0f) {
-                const char* displayText = isPassword ? std::string(slen, '*').c_str() : buf;
-                float tw = ctx.drawList.font->CalcTextSize(isPassword ? std::string(slen, '*').c_str() : buf).x;
-                ctx.drawList.AddRectFilled(x + 12 + tw + 1, fy + 8, x + 13 + tw + 1, fy + fieldH - 8,
-                                            ACETheme::TextPrimary, 0);
+                Vec2 tw = TextSize(displayText.c_str());
+                dl.AddFilledRect(Rect{x + 12 + tw.x + 1, fy + 8, 1.5f, fieldH - 16}, C::TextPrimary);
             }
         }
     } else {
         // Placeholder
         std::string ph = std::string("Enter ") + label;
         std::transform(ph.begin(), ph.end(), ph.begin(), ::tolower);
-        ctx.drawList.AddText(x + 12, fy + (fieldH - ctx.drawList.font->lineHeight) * 0.5f,
-                              ACE_COL32(60, 60, 80, 255), ph.c_str());
-        // Cursor
+        DrawText(dl, x + 12, fy + (fieldH - lineH) * 0.5f, C::TextDim, ph.c_str());
+
         if (focused) {
-            float blink = fmodf((float)ctx.time * 2.0f, 2.0f);
+            f32 blink = fmodf(g_time * 2.0f, 2.0f);
             if (blink < 1.0f) {
-                ctx.drawList.AddRectFilled(x + 12, fy + 8, x + 13, fy + fieldH - 8,
-                                            ACETheme::TextPrimary, 0);
+                dl.AddFilledRect(Rect{x + 12, fy + 8, 1.5f, fieldH - 16}, C::TextPrimary);
             }
         }
     }
@@ -538,113 +585,110 @@ static void RenderInputField(ACEUIContext& ctx, const char* label, char* buf, in
 // ============================================================================
 // WINDOW CONTROLS (minimize + close)
 // ============================================================================
-static void RenderWindowControls(ACEUIContext& ctx, float W) {
-    float btnSize = 18.0f;
-    float btnY = 14.0f;
-    float minX = W - 60;
-    float clsX = W - 32;
+static void RenderWindowControls(DrawList& dl, f32 W) {
+    f32 btnSize = 18.0f;
+    f32 btnY = 14.0f;
+    f32 minX = W - 60;
+    f32 clsX = W - 32;
 
     // Minimize
-    uint32_t minId = ctx.GetID("__min");
-    bool minHov = ctx.input.IsMouseInRect(minX, btnY, minX + btnSize, btnY + btnSize);
-    float minA = ctx.SmoothAnim(minId, minHov ? 1.0f : 0.0f);
-    if (minA > 0.01f)
-        ctx.drawList.AddCircleFilled(minX + btnSize * 0.5f, btnY + btnSize * 0.5f,
-                                      btnSize * 0.5f + 2, ACE_COL32(255, 255, 255, (int)(12 * minA)));
-    ctx.drawList.AddLine(minX + 3, btnY + btnSize * 0.5f,
-                         minX + btnSize - 3, btnY + btnSize * 0.5f,
-                         ACE_COL32(140, 140, 160, (int)(180 + 75 * minA)), 1.5f);
-    if (minHov && ctx.input.mouseClicked[0])
+    u32 minId = Hash("__wnd_min");
+    bool minHov = HitTest(minX, btnY, btnSize, btnSize);
+    f32 minA = Anim(minId, minHov ? 1.0f : 0.0f);
+    if (minA > 0.01f) {
+        f32 cr = btnSize * 0.5f + 2;
+        dl.AddFilledRoundRect(
+            Rect{minX + btnSize*0.5f - cr, btnY + btnSize*0.5f - cr, cr*2, cr*2},
+            Fade(Color{255,255,255,255}, 0.05f * minA), cr, 16);
+    }
+    dl.AddLine(Vec2{minX + 3, btnY + btnSize * 0.5f},
+               Vec2{minX + btnSize - 3, btnY + btnSize * 0.5f},
+               Color{140, 140, 160, (u8)(180 + 75 * minA)}, 1.5f);
+    if (minHov && g_input.IsMousePressed(MouseButton::Left))
         ShowWindow(g_hwnd, SW_MINIMIZE);
 
     // Close
-    uint32_t clsId = ctx.GetID("__cls");
-    bool clsHov = ctx.input.IsMouseInRect(clsX, btnY, clsX + btnSize, btnY + btnSize);
-    float clsA = ctx.SmoothAnim(clsId, clsHov ? 1.0f : 0.0f);
-    if (clsA > 0.01f)
-        ctx.drawList.AddCircleFilled(clsX + btnSize * 0.5f, btnY + btnSize * 0.5f,
-                                      btnSize * 0.5f + 2, ACE_COL32(255, 60, 60, (int)(30 * clsA)));
-    float ccx = clsX + btnSize * 0.5f, ccy = btnY + btnSize * 0.5f;
-    float cs = 4.0f;
-    uint32_t xCol = ACE_COL32(140, 140, 160, (int)(180 + 75 * clsA));
-    ctx.drawList.AddLine(ccx - cs, ccy - cs, ccx + cs, ccy + cs, xCol, 1.5f);
-    ctx.drawList.AddLine(ccx + cs, ccy - cs, ccx - cs, ccy + cs, xCol, 1.5f);
-    if (clsHov && ctx.input.mouseClicked[0])
+    u32 clsId = Hash("__wnd_cls");
+    bool clsHov = HitTest(clsX, btnY, btnSize, btnSize);
+    f32 clsA = Anim(clsId, clsHov ? 1.0f : 0.0f);
+    if (clsA > 0.01f) {
+        f32 cr = btnSize * 0.5f + 2;
+        dl.AddFilledRoundRect(
+            Rect{clsX + btnSize*0.5f - cr, btnY + btnSize*0.5f - cr, cr*2, cr*2},
+            Fade(C::AccentRed, 0.12f * clsA), cr, 16);
+    }
+    f32 ccx = clsX + btnSize * 0.5f, ccy = btnY + btnSize * 0.5f;
+    f32 cs = 4.0f;
+    Color xCol{140, 140, 160, (u8)(180 + 75 * clsA)};
+    dl.AddLine(Vec2{ccx - cs, ccy - cs}, Vec2{ccx + cs, ccy + cs}, xCol, 1.5f);
+    dl.AddLine(Vec2{ccx + cs, ccy - cs}, Vec2{ccx - cs, ccy + cs}, xCol, 1.5f);
+    if (clsHov && g_input.IsMousePressed(MouseButton::Left))
         g_running = false;
 }
 
 // ============================================================================
-// RENDER: LOGIN SCREEN
+// LOGIN SCREEN
 // ============================================================================
-static void RenderLoginScreen(ACEUIContext& ctx, float W, float H) {
+static void RenderLoginScreen(DrawList& dl, f32 W, f32 H) {
     // Background
-    ctx.drawList.AddRectFilled(0, 0, W, H, ACE_COL32(12, 12, 16, 255), (float)CORNER_RADIUS);
+    dl.AddFilledRoundRect(Rect{0, 0, W, H}, C::WindowBg, (f32)CORNER_RADIUS, 12);
 
-    // Subtle top gradient
-    ctx.drawList.AddRectFilledMultiColor(
-        0, 0, W, 120,
-        ACE_COL32(20, 25, 50, 80), ACE_COL32(20, 25, 50, 80),
-        ACE_COL32(12, 12, 16, 0), ACE_COL32(12, 12, 16, 0));
+    // Top gradient
+    dl.AddGradientRect(Rect{0, 0, W, 120},
+        Color{20, 25, 50, 80}, Color{20, 25, 50, 80},
+        Color{12, 12, 16, 0},  Color{12, 12, 16, 0});
 
-    // Border
-    ctx.drawList.AddRect(0, 0, W, H, ACE_COL32(40, 40, 60, 150), (float)CORNER_RADIUS, 1.0f);
+    // Window border
+    DrawRoundedBorder(dl, Rect{0, 0, W, H}, C::WindowBg, Color{40, 40, 60, 150},
+                       (f32)CORNER_RADIUS);
 
-    RenderWindowControls(ctx, W);
+    RenderWindowControls(dl, W);
 
-    // AC Logo — centered, standalone white text with blue glow
-    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f);
+    // AC Logo
+    DrawACLogo(dl, W * 0.5f, 65.0f);
 
     // Tagline
-    const char* tagline = "Skin Changer";
-    ACEVec2 tts = ctx.drawList.font->CalcTextSize(tagline);
-    ctx.drawList.AddText(W * 0.5f - tts.x * 0.5f, 90, ACE_COL32(100, 100, 130, 255), tagline);
+    Vec2 tts = TextSize("Skin Changer");
+    DrawText(dl, W * 0.5f - tts.x * 0.5f, 92, Color{100, 100, 130, 255}, "Skin Changer");
 
-    // Separator
-    float sepY = 115;
-    ctx.drawList.AddRectFilledMultiColor(
-        W * 0.15f, sepY, W * 0.85f, sepY + 1,
-        ACE_COL32(40, 40, 60, 0), ACE_COL32(59, 130, 246, 80),
-        ACE_COL32(59, 130, 246, 80), ACE_COL32(40, 40, 60, 0));
+    // Gradient separator
+    f32 sepY = 118.0f;
+    dl.AddGradientRect(Rect{W * 0.15f, sepY, W * 0.7f, 1},
+        Color{40, 40, 60, 0},   Color{59, 130, 246, 80},
+        Color{59, 130, 246, 80}, Color{40, 40, 60, 0});
 
     // Title
-    const char* title = "Sign in to your account";
-    ACEVec2 titleTs = ctx.drawList.font->CalcTextSize(title);
-    ctx.drawList.AddText(W * 0.5f - titleTs.x * 0.5f, 132,
-                          ACETheme::TextPrimary, title);
+    Vec2 titleTs = TextSize("Sign in to your account");
+    DrawText(dl, W * 0.5f - titleTs.x * 0.5f, 135, C::TextPrimary, "Sign in to your account");
 
-    // Form area
-    float formX = 40;
-    float formW = W - 80;
-    float formY = 162;
+    // Form
+    f32 formX = 40, formW = W - 80, formY = 168;
 
-    RenderInputField(ctx, "Username", g_loginUser, sizeof(g_loginUser),
+    RenderInputField(dl, "Username", g_loginUser, sizeof(g_loginUser),
                      formX, formY, formW, false);
-    RenderInputField(ctx, "Password", g_loginPass, sizeof(g_loginPass),
+    RenderInputField(dl, "Password", g_loginPass, sizeof(g_loginPass),
                      formX, formY + 66, formW, true);
 
     // Error message
     if (g_authErrorTimer > 0) {
-        g_authErrorTimer -= ctx.deltaTime;
-        float ea = g_authErrorTimer > 0.5f ? 1.0f : g_authErrorTimer / 0.5f;
-        ACEVec2 ets = ctx.drawList.font->CalcTextSize(g_authError.c_str());
-        ctx.drawList.AddText(W * 0.5f - ets.x * 0.5f, formY + 140,
-                              ACE_COL32(248, 113, 113, (int)(255 * ea)),
-                              g_authError.c_str());
+        g_authErrorTimer -= g_dt;
+        f32 ea = g_authErrorTimer > 0.5f ? 1.0f : g_authErrorTimer / 0.5f;
+        Vec2 ets = TextSize(g_authError.c_str());
+        DrawText(dl, W * 0.5f - ets.x * 0.5f, formY + 140,
+                 Fade(C::AccentRed, ea), g_authError.c_str());
     }
 
     // Login button
-    float btnY = formY + 160;
-    if (RenderButton(ctx, "SIGN IN", formX, btnY, formW, 40,
-                     ACETheme::AccentBlue, true)) {
-        // Handle Enter key too
+    f32 btnY = formY + 164;
+    if (RenderButton(dl, "SIGN IN", Rect{formX, btnY, formW, 42}, C::AccentBlue)) {
         if (DoLogin(g_loginUser, g_loginPass)) {
             g_screen = SCREEN_MAIN;
             g_fadeAnim = 0;
         }
     }
 
-    // Handle Enter key for login
-    if (ctx.input.keyPressed[VK_RETURN] && g_screen == SCREEN_LOGIN) {
+    // Enter key shortcut
+    if (g_input.IsKeyPressed(Key::Enter) && g_screen == SCREEN_LOGIN) {
         if (strlen(g_loginUser) > 0 && strlen(g_loginPass) > 0) {
             if (DoLogin(g_loginUser, g_loginPass)) {
                 g_screen = SCREEN_MAIN;
@@ -654,25 +698,22 @@ static void RenderLoginScreen(ACEUIContext& ctx, float W, float H) {
     }
 
     // Sign up link
-    const char* signupText = "Don't have an account?";
-    ACEVec2 sts = ctx.drawList.font->CalcTextSize(signupText);
-    ctx.drawList.AddText(W * 0.5f - sts.x * 0.5f, btnY + 54,
-                          ACETheme::TextDim, signupText);
+    Vec2 sts = TextSize("Don't have an account?");
+    DrawText(dl, W * 0.5f - sts.x * 0.5f, btnY + 56, C::TextDim, "Don't have an account?");
 
     const char* signupLink = "Create Account";
-    ACEVec2 slts = ctx.drawList.font->CalcTextSize(signupLink);
-    float slX = W * 0.5f - slts.x * 0.5f;
-    float slY = btnY + 72;
-    uint32_t slId = ctx.GetID("__signup_link");
-    bool slHov = ctx.input.IsMouseInRect(slX, slY, slX + slts.x, slY + slts.y + 4);
-    float slA = ctx.SmoothAnim(slId, slHov ? 1.0f : 0.0f);
-    ctx.drawList.AddText(slX, slY,
-                          ACE_COL32(59, 130, 246, (int)(180 + 75 * slA)), signupLink);
+    Vec2 slts = TextSize(signupLink);
+    f32 slX = W * 0.5f - slts.x * 0.5f;
+    f32 slY = btnY + 74;
+    u32 slId = Hash("__signup_link");
+    bool slHov = HitTest(slX, slY, slts.x, slts.y + 4);
+    f32 slA = Anim(slId, slHov ? 1.0f : 0.0f);
+    DrawText(dl, slX, slY, Color{59, 130, 246, (u8)(180 + 75 * slA)}, signupLink);
     if (slHov) {
-        ctx.drawList.AddRectFilled(slX, slY + slts.y + 1, slX + slts.x, slY + slts.y + 2,
-                                    ACE_COL32(59, 130, 246, (int)(120 * slA)), 0);
+        dl.AddFilledRect(Rect{slX, slY + slts.y + 1, slts.x, 1},
+                          Fade(C::AccentBlue, 0.5f * slA));
     }
-    if (slHov && ctx.input.mouseClicked[0]) {
+    if (slHov && g_input.IsMousePressed(MouseButton::Left)) {
         g_screen = SCREEN_SIGNUP;
         g_authError.clear();
         g_authErrorTimer = 0;
@@ -682,64 +723,58 @@ static void RenderLoginScreen(ACEUIContext& ctx, float W, float H) {
     }
 
     // Footer
-    ctx.drawList.AddText(W * 0.5f - 40, H - 28, ACE_COL32(50, 50, 65, 255), "AC v3.0");
+    Vec2 fts = TextSize("AC v3.0");
+    DrawText(dl, W * 0.5f - fts.x * 0.5f, H - 28, Color{50, 50, 65, 255}, "AC v3.0");
 }
 
 // ============================================================================
-// RENDER: SIGNUP SCREEN
+// SIGNUP SCREEN
 // ============================================================================
-static void RenderSignupScreen(ACEUIContext& ctx, float W, float H) {
-    ctx.drawList.AddRectFilled(0, 0, W, H, ACE_COL32(12, 12, 16, 255), (float)CORNER_RADIUS);
-    ctx.drawList.AddRectFilledMultiColor(
-        0, 0, W, 120,
-        ACE_COL32(20, 25, 50, 80), ACE_COL32(20, 25, 50, 80),
-        ACE_COL32(12, 12, 16, 0), ACE_COL32(12, 12, 16, 0));
-    ctx.drawList.AddRect(0, 0, W, H, ACE_COL32(40, 40, 60, 150), (float)CORNER_RADIUS, 1.0f);
+static void RenderSignupScreen(DrawList& dl, f32 W, f32 H) {
+    dl.AddFilledRoundRect(Rect{0, 0, W, H}, C::WindowBg, (f32)CORNER_RADIUS, 12);
+    dl.AddGradientRect(Rect{0, 0, W, 120},
+        Color{20, 25, 50, 80}, Color{20, 25, 50, 80},
+        Color{12, 12, 16, 0},  Color{12, 12, 16, 0});
+    DrawRoundedBorder(dl, Rect{0, 0, W, H}, C::WindowBg, Color{40, 40, 60, 150},
+                       (f32)CORNER_RADIUS);
 
-    RenderWindowControls(ctx, W);
+    RenderWindowControls(dl, W);
+    DrawACLogo(dl, W * 0.5f, 65.0f);
 
-    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f);
+    Vec2 tts = TextSize("Skin Changer");
+    DrawText(dl, W * 0.5f - tts.x * 0.5f, 92, Color{100, 100, 130, 255}, "Skin Changer");
 
-    const char* tagline = "Skin Changer";
-    ACEVec2 tts = ctx.drawList.font->CalcTextSize(tagline);
-    ctx.drawList.AddText(W * 0.5f - tts.x * 0.5f, 90, ACE_COL32(100, 100, 130, 255), tagline);
+    f32 sepY = 118.0f;
+    dl.AddGradientRect(Rect{W * 0.15f, sepY, W * 0.7f, 1},
+        Color{40, 40, 60, 0},   Color{59, 130, 246, 80},
+        Color{59, 130, 246, 80}, Color{40, 40, 60, 0});
 
-    float sepY = 115;
-    ctx.drawList.AddRectFilledMultiColor(
-        W * 0.15f, sepY, W * 0.85f, sepY + 1,
-        ACE_COL32(40, 40, 60, 0), ACE_COL32(59, 130, 246, 80),
-        ACE_COL32(59, 130, 246, 80), ACE_COL32(40, 40, 60, 0));
+    Vec2 titleTs = TextSize("Create your account");
+    DrawText(dl, W * 0.5f - titleTs.x * 0.5f, 135, C::TextPrimary, "Create your account");
 
-    const char* title = "Create your account";
-    ACEVec2 titleTs = ctx.drawList.font->CalcTextSize(title);
-    ctx.drawList.AddText(W * 0.5f - titleTs.x * 0.5f, 132, ACETheme::TextPrimary, title);
+    f32 formX = 40, formW = W - 80, formY = 168;
 
-    float formX = 40, formW = W - 80, formY = 162;
-
-    RenderInputField(ctx, "Username", g_signupUser, sizeof(g_signupUser),
+    RenderInputField(dl, "Username", g_signupUser, sizeof(g_signupUser),
                      formX, formY, formW, false);
-    RenderInputField(ctx, "Password", g_signupPass, sizeof(g_signupPass),
+    RenderInputField(dl, "Password", g_signupPass, sizeof(g_signupPass),
                      formX, formY + 66, formW, true);
-    RenderInputField(ctx, "Confirm Password", g_signupPass2, sizeof(g_signupPass2),
+    RenderInputField(dl, "Confirm Password", g_signupPass2, sizeof(g_signupPass2),
                      formX, formY + 132, formW, true);
 
     if (g_authErrorTimer > 0) {
-        g_authErrorTimer -= ctx.deltaTime;
-        float ea = g_authErrorTimer > 0.5f ? 1.0f : g_authErrorTimer / 0.5f;
-        ACEVec2 ets = ctx.drawList.font->CalcTextSize(g_authError.c_str());
-        ctx.drawList.AddText(W * 0.5f - ets.x * 0.5f, formY + 200,
-                              ACE_COL32(248, 113, 113, (int)(255 * ea)),
-                              g_authError.c_str());
+        g_authErrorTimer -= g_dt;
+        f32 ea = g_authErrorTimer > 0.5f ? 1.0f : g_authErrorTimer / 0.5f;
+        Vec2 ets = TextSize(g_authError.c_str());
+        DrawText(dl, W * 0.5f - ets.x * 0.5f, formY + 204,
+                 Fade(C::AccentRed, ea), g_authError.c_str());
     }
 
-    float btnY = formY + 218;
-    if (RenderButton(ctx, "CREATE ACCOUNT", formX, btnY, formW, 40,
-                     ACETheme::AccentBlue, true)) {
+    f32 btnY = formY + 224;
+    if (RenderButton(dl, "CREATE ACCOUNT", Rect{formX, btnY, formW, 42}, C::AccentBlue)) {
         if (strcmp(g_signupPass, g_signupPass2) != 0) {
             g_authError = "Passwords do not match";
             g_authErrorTimer = 3;
         } else if (DoSignup(g_signupUser, g_signupPass)) {
-            // Auto-login after signup
             if (DoLogin(g_signupUser, g_signupPass)) {
                 g_screen = SCREEN_MAIN;
                 g_fadeAnim = 0;
@@ -747,7 +782,7 @@ static void RenderSignupScreen(ACEUIContext& ctx, float W, float H) {
         }
     }
 
-    if (ctx.input.keyPressed[VK_RETURN] && g_screen == SCREEN_SIGNUP) {
+    if (g_input.IsKeyPressed(Key::Enter) && g_screen == SCREEN_SIGNUP) {
         if (strlen(g_signupUser) > 0 && strlen(g_signupPass) > 0) {
             if (strcmp(g_signupPass, g_signupPass2) != 0) {
                 g_authError = "Passwords do not match";
@@ -762,218 +797,201 @@ static void RenderSignupScreen(ACEUIContext& ctx, float W, float H) {
     }
 
     // Back to login
-    const char* backText = "Already have an account?";
-    ACEVec2 bts = ctx.drawList.font->CalcTextSize(backText);
-    ctx.drawList.AddText(W * 0.5f - bts.x * 0.5f, btnY + 54, ACETheme::TextDim, backText);
+    Vec2 bts = TextSize("Already have an account?");
+    DrawText(dl, W * 0.5f - bts.x * 0.5f, btnY + 56, C::TextDim, "Already have an account?");
 
     const char* backLink = "Sign In";
-    ACEVec2 blts = ctx.drawList.font->CalcTextSize(backLink);
-    float blX = W * 0.5f - blts.x * 0.5f;
-    float blY = btnY + 72;
-    uint32_t blId = ctx.GetID("__login_link");
-    bool blHov = ctx.input.IsMouseInRect(blX, blY, blX + blts.x, blY + blts.y + 4);
-    float blA = ctx.SmoothAnim(blId, blHov ? 1.0f : 0.0f);
-    ctx.drawList.AddText(blX, blY,
-                          ACE_COL32(59, 130, 246, (int)(180 + 75 * blA)), backLink);
-    if (blHov && ctx.input.mouseClicked[0]) {
+    Vec2 blts = TextSize(backLink);
+    f32 blX = W * 0.5f - blts.x * 0.5f;
+    f32 blY = btnY + 74;
+    u32 blId = Hash("__login_link");
+    bool blHov = HitTest(blX, blY, blts.x, blts.y + 4);
+    f32 blA = Anim(blId, blHov ? 1.0f : 0.0f);
+    DrawText(dl, blX, blY, Color{59, 130, 246, (u8)(180 + 75 * blA)}, backLink);
+    if (blHov && g_input.IsMousePressed(MouseButton::Left)) {
         g_screen = SCREEN_LOGIN;
         g_authError.clear();
         g_authErrorTimer = 0;
     }
 
-    ctx.drawList.AddText(W * 0.5f - 40, H - 28, ACE_COL32(50, 50, 65, 255), "AC v3.0");
+    Vec2 fts = TextSize("AC v3.0");
+    DrawText(dl, W * 0.5f - fts.x * 0.5f, H - 28, Color{50, 50, 65, 255}, "AC v3.0");
 }
 
 // ============================================================================
-// RENDER: MAIN / SUBSCRIPTION SCREEN
+// MAIN SCREEN — Sidebar + Subscriptions + Launch
 // ============================================================================
-static void RenderMainScreen(ACEUIContext& ctx, float W, float H) {
-    // Fade-in animation
-    g_fadeAnim += ctx.deltaTime * 3.0f;
+static void RenderMainScreen(DrawList& dl, f32 W, f32 H) {
+    g_fadeAnim += g_dt * 3.0f;
     if (g_fadeAnim > 1.0f) g_fadeAnim = 1.0f;
 
     // Background
-    ctx.drawList.AddRectFilled(0, 0, W, H, ACE_COL32(12, 12, 16, 255), (float)CORNER_RADIUS);
-    ctx.drawList.AddRect(0, 0, W, H, ACE_COL32(40, 40, 60, 150), (float)CORNER_RADIUS, 1.0f);
+    dl.AddFilledRoundRect(Rect{0, 0, W, H}, C::WindowBg, (f32)CORNER_RADIUS, 12);
+    DrawRoundedBorder(dl, Rect{0, 0, W, H}, C::WindowBg, Color{40, 40, 60, 150},
+                       (f32)CORNER_RADIUS);
 
     // ============================================================
     // SIDEBAR
     // ============================================================
-    constexpr float SIDEBAR_W = 120.0f;
+    constexpr f32 SIDEBAR_W = 120.0f;
 
-    // Sidebar bg (left portion — rounded on left only)
-    ctx.drawList.AddRectFilled(0, 0, SIDEBAR_W, H, ACE_COL32(15, 15, 20, 255), (float)CORNER_RADIUS);
-    ctx.drawList.AddRectFilled(SIDEBAR_W - CORNER_RADIUS, 0, SIDEBAR_W, H,
-                               ACE_COL32(15, 15, 20, 255), 0); // Fill right edge
+    dl.AddFilledRoundRect(Rect{0, 0, SIDEBAR_W, H}, C::SidebarBg, (f32)CORNER_RADIUS, 12);
+    // Fill right edge (not rounded)
+    dl.AddFilledRect(Rect{SIDEBAR_W - CORNER_RADIUS, 0, (f32)CORNER_RADIUS, H}, C::SidebarBg);
 
-    // Subtle right border
-    ctx.drawList.AddLine(SIDEBAR_W, CORNER_RADIUS, SIDEBAR_W, H - CORNER_RADIUS,
-                         ACE_COL32(40, 40, 55, 80), 1.0f);
+    // Right border line
+    dl.AddLine(Vec2{SIDEBAR_W, (f32)CORNER_RADIUS}, Vec2{SIDEBAR_W, H - (f32)CORNER_RADIUS},
+               Color{40, 40, 55, 80}, 1.0f);
 
-    // AC Logo in sidebar — white text, blue glow, no box
-    DrawACLogo(ctx.drawList, SIDEBAR_W * 0.5f, 36.0f);
+    // AC Logo in sidebar
+    DrawACLogo(dl, SIDEBAR_W * 0.5f, 36.0f);
 
-    // Separator under logo
-    float sepY = 56;
-    ctx.drawList.AddRectFilledMultiColor(
-        12, sepY, SIDEBAR_W - 12, sepY + 1,
-        ACE_COL32(40, 40, 60, 0), ACE_COL32(59, 130, 246, 50),
-        ACE_COL32(59, 130, 246, 50), ACE_COL32(40, 40, 60, 0));
+    // Separator
+    f32 sepY = 56;
+    dl.AddGradientRect(Rect{12, sepY, SIDEBAR_W - 24, 1},
+        Color{40, 40, 60, 0},   Color{59, 130, 246, 50},
+        Color{59, 130, 246, 50}, Color{40, 40, 60, 0});
 
     // Navigation items
     const char* navItems[] = { "Website", "Support", "Market" };
-    const char* navIcons[] = { ">", "?", "$" }; // Simple text icons
-    float navY = sepY + 14;
+    f32 navY = sepY + 14;
 
     for (int i = 0; i < 3; i++) {
-        float btnX = 8;
-        float btnW = SIDEBAR_W - 16;
-        float btnH = 32.0f;
-
-        uint32_t id = ctx.GetID(navItems[i]);
-        bool hovered = ctx.input.IsMouseInRect(btnX, navY, btnX + btnW, navY + btnH);
-        float anim = ctx.SmoothAnim(id, hovered ? 1.0f : 0.0f);
+        f32 btnX = 8, btnW = SIDEBAR_W - 16, btnH = 32.0f;
+        u32 id = Hash(navItems[i]);
+        bool hovered = HitTest(btnX, navY, btnW, btnH);
+        f32 anim = Anim(id, hovered ? 1.0f : 0.0f);
 
         if (anim > 0.01f) {
-            ctx.drawList.AddRectFilled(btnX, navY, btnX + btnW, navY + btnH,
-                                       ACE_COL32(59, 130, 246, (int)(15 * anim)), 6.0f);
+            dl.AddFilledRoundRect(Rect{btnX, navY, btnW, btnH},
+                                  Fade(C::AccentBlue, 0.06f * anim), 6.0f, 8);
         }
 
-        uint32_t tc = ACE_COL32(140, 140, 160, (int)(180 + 75 * anim));
-        float textX = btnX + 14;
-        ctx.drawList.AddText(textX, navY + (btnH - ctx.drawList.font->lineHeight) * 0.5f,
-                              tc, navItems[i]);
+        Color tc{140, 140, 160, (u8)(180 + 75 * anim)};
+        DrawText(dl, btnX + 14, navY + (btnH - 14.0f) * 0.5f, tc, navItems[i]);
 
         navY += btnH + 2;
     }
 
     // Bottom user area
-    float userY = H - 56;
-    ctx.drawList.AddRectFilledMultiColor(
-        12, userY - 8, SIDEBAR_W - 12, userY - 7,
-        ACE_COL32(40, 40, 55, 0), ACE_COL32(40, 40, 55, 80),
-        ACE_COL32(40, 40, 55, 80), ACE_COL32(40, 40, 55, 0));
+    f32 userY = H - 56;
+    dl.AddGradientRect(Rect{12, userY - 8, SIDEBAR_W - 24, 1},
+        Color{40, 40, 55, 0}, Color{40, 40, 55, 80},
+        Color{40, 40, 55, 80}, Color{40, 40, 55, 0});
 
-    // Avatar
-    float avCX = 26, avCY = userY + 18;
-    ctx.drawList.AddCircleFilled(avCX, avCY, 14.0f, ACE_COL32(30, 35, 55, 255));
-    ctx.drawList.AddCircle(avCX, avCY, 14.0f, ACE_COL32(50, 55, 75, 255), 0, 1.0f);
+    // Avatar (rounded rect as circle)
+    f32 avCX = 26, avCY = userY + 18;
+    f32 avR = 14.0f;
+    dl.AddFilledRoundRect(Rect{avCX - avR, avCY - avR, avR*2, avR*2},
+                          Color{30, 35, 55, 255}, avR, 16);
+    // Avatar border
+    dl.AddFilledRoundRect(Rect{avCX - avR - 1, avCY - avR - 1, avR*2 + 2, avR*2 + 2},
+                          Color{50, 55, 75, 255}, avR + 1, 16);
+    dl.AddFilledRoundRect(Rect{avCX - avR, avCY - avR, avR*2, avR*2},
+                          Color{30, 35, 55, 255}, avR, 16);
+
     // User initial
     if (!g_loggedUser.empty()) {
         char initial[2] = { (char)toupper(g_loggedUser[0]), '\0' };
-        ACEVec2 its = ctx.drawList.font->CalcTextSize(initial);
-        ctx.drawList.AddText(avCX - its.x * 0.5f, avCY - its.y * 0.5f,
-                              ACE_COL32(59, 130, 246, 255), initial);
+        Vec2 its = TextSize(initial);
+        DrawText(dl, avCX - its.x * 0.5f, avCY - its.y * 0.5f, C::AccentBlue, initial);
     }
 
-    // Username
-    ctx.drawList.AddText(avCX + 20, avCY - 8,
-                          ACETheme::TextPrimary, g_loggedUser.c_str());
-    ctx.drawList.AddText(avCX + 20, avCY + 4,
-                          ACE_COL32(74, 222, 128, 180), "Online");
+    // Username + status
+    DrawText(dl, avCX + 20, avCY - 8, C::TextPrimary, g_loggedUser.c_str());
+    DrawText(dl, avCX + 20, avCY + 4, Color{74, 222, 128, 180}, "Online");
 
     // ============================================================
     // MAIN CONTENT — right side
     // ============================================================
-    RenderWindowControls(ctx, W);
+    RenderWindowControls(dl, W);
 
-    float contentX = SIDEBAR_W + 20;
-    float contentY = 18;
-    float contentW = W - SIDEBAR_W - 40;
+    f32 contentX = SIDEBAR_W + 20;
+    f32 contentY = 18;
+    f32 contentW = W - SIDEBAR_W - 40;
 
     // Section title
-    ctx.drawList.AddTextShadow(contentX, contentY,
-                                ACE_COL32(240, 240, 250, 255), "Subscription");
+    DrawText(dl, contentX, contentY, Color{240, 240, 250, 255}, "Subscription", g_fontBold);
 
     // Subtitle
-    ctx.drawList.AddText(contentX, contentY + 20,
-                          ACE_COL32(100, 100, 130, 255), "Available subscriptions");
+    DrawText(dl, contentX, contentY + 24, Color{100, 100, 130, 255}, "Available subscriptions");
 
     // Separator
-    float cSepY = contentY + 40;
-    ctx.drawList.AddRectFilledMultiColor(
-        contentX, cSepY, contentX + contentW, cSepY + 1,
-        ACE_COL32(59, 130, 246, 60), ACE_COL32(139, 92, 246, 60),
-        ACE_COL32(139, 92, 246, 0), ACE_COL32(59, 130, 246, 0));
+    f32 cSepY = contentY + 44;
+    dl.AddGradientRect(Rect{contentX, cSepY, contentW, 1},
+        Color{59, 130, 246, 60},  Color{139, 92, 246, 60},
+        Color{139, 92, 246, 0},   Color{59, 130, 246, 0});
 
     // ============================================================
     // SUBSCRIPTION CARDS
     // ============================================================
-    float cardY = cSepY + 16;
-    float cardW = contentW;
-    float cardH = 68.0f;
-    float cardGap = 10.0f;
+    f32 cardY = cSepY + 16;
+    f32 cardW = contentW;
+    f32 cardH = 68.0f;
+    f32 cardGap = 10.0f;
 
     for (int i = 0; i < (int)g_subscriptions.size(); i++) {
         auto& sub = g_subscriptions[i];
-        float cX = contentX;
-        float cY = cardY + i * (cardH + cardGap);
+        f32 cX = contentX;
+        f32 cY = cardY + i * (cardH + cardGap);
 
-        uint32_t cardId = ctx.GetID(sub.name.c_str());
-        bool hovered = ctx.input.IsMouseInRect(cX, cY, cX + cardW, cY + cardH);
-        bool clicked = hovered && ctx.input.mouseClicked[0];
-        float anim = ctx.SmoothAnim(cardId, hovered ? 1.0f : 0.0f);
+        u32 cardId = Hash(sub.name.c_str());
+        bool hovered = HitTest(cX, cY, cardW, cardH);
+        bool clicked = hovered && g_input.IsMousePressed(MouseButton::Left);
+        f32 anim = Anim(cardId, hovered ? 1.0f : 0.0f);
 
         // Card bg
-        uint32_t bg = g_selectedSub == i ? ACE_COL32(25, 28, 42, 255)
-                    : hovered            ? ACE_COL32(22, 24, 35, 255)
-                                         : ACE_COL32(18, 20, 28, 255);
-
-        ctx.drawList.AddRectFilled(cX, cY, cX + cardW, cY + cardH, bg, 10.0f);
-
-        // Border
-        uint32_t border = g_selectedSub == i ? ACE_COL32(59, 130, 246, 120)
-                        : hovered            ? ACE_COL32(59, 130, 246, (int)(40 + 60 * anim))
-                                             : ACE_COL32(40, 40, 55, 120);
-        ctx.drawList.AddRect(cX, cY, cX + cardW, cY + cardH, border, 10.0f, 1.0f);
-
-        // Left accent bar on selected
-        if (g_selectedSub == i) {
-            ctx.drawList.AddRectFilled(cX + 1, cY + 8, cX + 4, cY + cardH - 8,
-                                        ACETheme::AccentBlue, 2.0f);
-        }
+        Color bg = g_selectedSub == i ? C::CardSelected :
+                   hovered ? C::CardHover : C::CardBg;
 
         // Selected glow
         if (g_selectedSub == i) {
             for (int gl = 4; gl > 0; gl--) {
-                uint32_t gc = ACE_COL32(59, 130, 246, (int)(8.0f * (1.0f - (float)gl / 5.0f)));
-                ctx.drawList.AddRect(cX - gl, cY - gl, cX + cardW + gl, cY + cardH + gl,
-                                     gc, 10.0f + gl, 1.0f);
+                Color gc = Fade(C::AccentBlue, 0.03f * (1.0f - (f32)gl / 5.0f));
+                dl.AddFilledRoundRect(
+                    Rect{cX - (f32)gl, cY - (f32)gl, cardW + gl * 2.0f, cardH + gl * 2.0f},
+                    gc, 10.0f + gl, 12);
             }
         }
 
+        // Card border
+        Color border = g_selectedSub == i ? Fade(C::AccentBlue, 0.47f) :
+                       hovered ? Fade(C::AccentBlue, 0.16f + 0.24f * anim) :
+                                 Color{40, 40, 55, 120};
+        DrawRoundedBorder(dl, Rect{cX, cY, cardW, cardH}, bg, border, 10.0f);
+
+        // Left accent bar on selected
+        if (g_selectedSub == i) {
+            dl.AddFilledRoundRect(Rect{cX + 2, cY + 8, 3, cardH - 16},
+                                  C::AccentBlue, 1.5f, 4);
+        }
+
         // Game icon
-        float iconSize = 40.0f;
-        float iconR = 10.0f;
-        float iconX = cX + 14;
-        float iconY = cY + (cardH - iconSize) * 0.5f;
-        ctx.drawList.AddRectFilled(iconX, iconY, iconX + iconSize, iconY + iconSize,
-                                   sub.accentColor, iconR);
-        ctx.drawList.AddRect(iconX, iconY, iconX + iconSize, iconY + iconSize,
-                             ACE_COL32(255, 255, 255, 20), iconR, 1.0f);
-        // CS2 text on icon
-        ACEVec2 icts = ctx.drawList.font->CalcTextSize("CS");
-        ctx.drawList.AddText(iconX + (iconSize - icts.x) * 0.5f,
-                             iconY + (iconSize - icts.y) * 0.5f,
-                             ACE_COL32(255, 255, 255, 220), "CS");
+        f32 iconSize = 40.0f;
+        f32 iconX = cX + 14;
+        f32 iconY = cY + (cardH - iconSize) * 0.5f;
+        dl.AddFilledRoundRect(Rect{iconX, iconY, iconSize, iconSize},
+                              sub.accentColor, 10.0f, 8);
+        // CS text on icon
+        DrawTextCentered(dl, Rect{iconX, iconY, iconSize, iconSize},
+                         Color{255, 255, 255, 220}, "CS");
 
         // Game name
-        ctx.drawList.AddText(cX + 14 + iconSize + 14, cY + 15,
-                              ACETheme::TextPrimary, sub.name.c_str());
+        DrawText(dl, cX + 14 + iconSize + 14, cY + 15, C::TextPrimary, sub.name.c_str());
 
         // Expiry text
-        ctx.drawList.AddText(cX + 14 + iconSize + 14, cY + 36,
-                              ACE_COL32(100, 100, 130, 255), sub.expiryText.c_str());
+        DrawText(dl, cX + 14 + iconSize + 14, cY + 36,
+                 Color{100, 100, 130, 255}, sub.expiryText.c_str());
 
         // Active badge
         if (sub.active) {
             const char* badge = "ACTIVE";
-            ACEVec2 bts = ctx.drawList.font->CalcTextSize(badge);
-            float bx = cX + cardW - bts.x - 20;
-            float by = cY + (cardH - 22) * 0.5f;
-            ctx.drawList.AddRectFilled(bx - 6, by - 2, bx + bts.x + 6, by + bts.y + 2,
-                                        ACE_COL32(74, 222, 128, 30), 4.0f);
-            ctx.drawList.AddText(bx, by, ACE_COL32(74, 222, 128, 255), badge);
+            Vec2 badgeTs = TextSize(badge);
+            f32 bx = cX + cardW - badgeTs.x - 20;
+            f32 by = cY + (cardH - 22) * 0.5f;
+            dl.AddFilledRoundRect(Rect{bx - 6, by - 2, badgeTs.x + 12, badgeTs.y + 4},
+                                  Fade(C::AccentGreen, 0.12f), 4.0f, 8);
+            DrawText(dl, bx, by, C::AccentGreen, badge);
         }
 
         if (clicked) g_selectedSub = i;
@@ -982,71 +1000,63 @@ static void RenderMainScreen(ACEUIContext& ctx, float W, float H) {
     // ============================================================
     // LAUNCH BUTTON
     // ============================================================
-    float launchY = cardY + (int)g_subscriptions.size() * (cardH + cardGap) + 16;
+    f32 launchY = cardY + (int)g_subscriptions.size() * (cardH + cardGap) + 16;
 
     if (g_selectedSub >= 0) {
-        uint32_t baseCol;
+        Color baseCol;
         const char* launchText;
 
         if (g_injected) {
-            baseCol = ACE_COL32(74, 222, 128, 255);
+            baseCol = C::AccentGreen;
             launchText = "LAUNCHED";
         } else if (g_injecting) {
-            baseCol = ACE_COL32(250, 204, 21, 255);
+            baseCol = C::AccentYellow;
             launchText = "INJECTING...";
         } else {
-            baseCol = ACETheme::AccentBlue;
+            baseCol = C::AccentBlue;
             launchText = "LAUNCH";
         }
 
-        if (RenderButton(ctx, launchText, contentX, launchY, cardW, 42,
+        if (RenderButton(dl, launchText, Rect{contentX, launchY, cardW, 42},
                           baseCol, !g_injecting && !g_injected)) {
             DoInject();
         }
     } else {
-        // Disabled hint
         const char* hint = "Select a subscription to continue";
-        ACEVec2 hts = ctx.drawList.font->CalcTextSize(hint);
-        ctx.drawList.AddText(contentX + (contentW - hts.x) * 0.5f, launchY + 10,
-                              ACE_COL32(60, 60, 80, 255), hint);
+        Vec2 hts = TextSize(hint);
+        DrawText(dl, contentX + (contentW - hts.x) * 0.5f, launchY + 10, C::TextDim, hint);
     }
 
     // ============================================================
     // STATUS TOAST
     // ============================================================
     if (g_statusTimer > 0) {
-        g_statusTimer -= ctx.deltaTime;
-        float a = g_statusTimer > 0.5f ? 1.0f : g_statusTimer / 0.5f;
+        g_statusTimer -= g_dt;
+        f32 a = g_statusTimer > 0.5f ? 1.0f : g_statusTimer / 0.5f;
         if (a > 0.01f) {
-            ctx.overlayDrawList.font = ctx.drawList.font;
-            float nW = 300, nH = 38;
-            float nX = contentX + (contentW - nW) * 0.5f;
-            float nY = H - 50;
+            f32 nW = 300, nH = 38;
+            f32 nX = contentX + (contentW - nW) * 0.5f;
+            f32 nY = H - 50;
 
-            uint32_t bg = g_injected
-                ? ACE_COL32(74, 222, 128, (int)(220 * a))
-                : ACE_COL32(248, 113, 113, (int)(220 * a));
-            ctx.overlayDrawList.AddRectFilled(nX, nY, nX + nW, nY + nH, bg, 10.0f);
+            Color bg = g_injected ? Fade(C::AccentGreen, 0.86f * a)
+                                  : Fade(C::AccentRed, 0.86f * a);
+            dl.AddFilledRoundRect(Rect{nX, nY, nW, nH}, bg, 10.0f, 12);
 
-            uint32_t tc = ACE_COL32(255, 255, 255, (int)(255 * a));
-            ACEVec2 nts = ctx.overlayDrawList.font->CalcTextSize(g_statusMsg.c_str());
-            ctx.overlayDrawList.AddText(nX + (nW - nts.x) * 0.5f,
-                                         nY + (nH - nts.y) * 0.5f,
-                                         tc, g_statusMsg.c_str());
+            Color tc = Fade(Color{255,255,255,255}, a);
+            DrawTextCentered(dl, Rect{nX, nY, nW, nH}, tc, g_statusMsg.c_str());
         }
     }
 
-    // Logout button (bottom right)
+    // Logout button
     const char* logoutText = "Logout";
-    ACEVec2 lots = ctx.drawList.font->CalcTextSize(logoutText);
-    float loX = W - lots.x - 20;
-    float loY = H - 30;
-    uint32_t loId = ctx.GetID("__logout");
-    bool loHov = ctx.input.IsMouseInRect(loX, loY, loX + lots.x, loY + lots.y + 4);
-    float loA = ctx.SmoothAnim(loId, loHov ? 1.0f : 0.0f);
-    ctx.drawList.AddText(loX, loY,
-                          ACE_COL32(120, 120, 140, (int)(150 + 100 * loA)), logoutText);
-    if (loHov && ctx.input.mouseClicked[0]) {
+    Vec2 lots = TextSize(logoutText);
+    f32 loX = W - lots.x - 20;
+    f32 loY = H - 30;
+    u32 loId = Hash("__logout");
+    bool loHov = HitTest(loX, loY, lots.x, lots.y + 4);
+    f32 loA = Anim(loId, loHov ? 1.0f : 0.0f);
+    DrawText(dl, loX, loY, Color{120, 120, 140, (u8)(150 + 100 * loA)}, logoutText);
+    if (loHov && g_input.IsMousePressed(MouseButton::Left)) {
         g_screen = SCREEN_LOGIN;
         g_loggedUser.clear();
         g_subscriptions.clear();
@@ -1058,27 +1068,10 @@ static void RenderMainScreen(ACEUIContext& ctx, float W, float H) {
 }
 
 // ============================================================================
-// RENDER DISPATCH
-// ============================================================================
-static void RenderUI() {
-    auto& ctx = g_ui;
-    float W = (float)g_width;
-    float H = (float)g_height;
-
-    switch (g_screen) {
-    case SCREEN_LOGIN:  RenderLoginScreen(ctx, W, H);  break;
-    case SCREEN_SIGNUP: RenderSignupScreen(ctx, W, H); break;
-    case SCREEN_MAIN:   RenderMainScreen(ctx, W, H);   break;
-    }
-}
-
-// ============================================================================
 // ENTRY POINT
 // ============================================================================
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     srand((unsigned)time(nullptr));
-
-    // Load existing user database
     LoadUsers();
 
     // Create borderless window
@@ -1088,38 +1081,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = "ACLoader";
+    wc.lpszClassName = "ACLoaderV2";
     RegisterClassExA(&wc);
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
 
     g_hwnd = CreateWindowExA(
-        0,
-        wc.lpszClassName, "AC Loader",
+        0, wc.lpszClassName, "AC Loader",
         WS_POPUP | WS_VISIBLE,
         (screenW - g_width) / 2, (screenH - g_height) / 2,
         g_width, g_height,
         nullptr, nullptr, hInstance, nullptr);
 
-    // Apply rounded window region for truly rounded corners
+    // Rounded corners
     HRGN rgn = CreateRoundRectRgn(0, 0, g_width + 1, g_height + 1,
                                    CORNER_RADIUS * 2, CORNER_RADIUS * 2);
     SetWindowRgn(g_hwnd, rgn, TRUE);
 
-    if (!CreateDeviceD3D()) {
-        CleanupDevice();
-        UnregisterClassA(wc.lpszClassName, hInstance);
-        return 1;
-    }
-
-    ShowWindow(g_hwnd, SW_SHOWDEFAULT);
-    UpdateWindow(g_hwnd);
-
-    // Init ACE renderer
-    if (!g_renderer.Initialize(g_device, g_context)) {
-        MessageBoxA(g_hwnd, "Failed to initialize ACE renderer", "Error", MB_OK);
-        CleanupDevice();
+    // Initialize DX11 backend
+    if (!g_backend.Initialize(g_hwnd, (u32)g_width, (u32)g_height)) {
+        MessageBoxA(nullptr, "Failed to initialize DX11 backend", "Error", MB_OK);
         return 1;
     }
 
@@ -1132,17 +1114,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     };
     bool fontLoaded = false;
     for (auto* p : fontPaths) {
-        if (g_font.LoadFromFile(p, 14.0f)) { fontLoaded = true; break; }
+        g_font = g_fontAtlas.AddFont(p, 14.0f, &g_backend);
+        if (g_font != 0) {
+            g_fontBold = g_fontAtlas.AddFont(p, 22.0f, &g_backend);
+            fontLoaded = true;
+            break;
+        }
     }
     if (!fontLoaded) {
-        MessageBoxA(g_hwnd, "Failed to load system font", "Error", MB_OK);
-        CleanupDevice(); return 1;
+        MessageBoxA(nullptr, "Failed to load system font", "Error", MB_OK);
+        g_backend.Shutdown();
+        return 1;
     }
 
-    g_renderer.CreateFontTexture(g_font);
-
-    g_ui.drawList.font = &g_font;
-    g_ui.overlayDrawList.font = &g_font;
+    ShowWindow(g_hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(g_hwnd);
 
     // Timing
     LARGE_INTEGER freq, last;
@@ -1161,41 +1147,43 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
-        float dt = (float)(now.QuadPart - last.QuadPart) / (float)freq.QuadPart;
-        if (dt > 0.1f) dt = 0.016f;
+        g_dt = (f32)(now.QuadPart - last.QuadPart) / (f32)freq.QuadPart;
+        if (g_dt > 0.1f) g_dt = 0.016f;
+        g_time += g_dt;
         last = now;
 
-        RECT rc;
-        GetClientRect(g_hwnd, &rc);
-        float w = (float)(rc.right - rc.left);
-        float h = (float)(rc.bottom - rc.top);
+        // Begin frame
+        g_input.BeginFrame();
+        g_backend.BeginFrame();
+        g_backend.SetClearColor(C::WindowBg);
 
-        g_ui.NewFrame(w, h, dt);
-        g_ui.wnd.x = 0; g_ui.wnd.y = 0;
-        g_ui.wnd.w = w; g_ui.wnd.h = h;
-        g_ui.wnd.cursorX = 0; g_ui.wnd.cursorY = 0;
-        g_ui.wnd.contentW = w;
+        // Build draw list
+        DrawList dl;
+        f32 W = (f32)g_width;
+        f32 H = (f32)g_height;
 
-        RenderUI();
+        switch (g_screen) {
+        case SCREEN_LOGIN:  RenderLoginScreen(dl, W, H);  break;
+        case SCREEN_SIGNUP: RenderSignupScreen(dl, W, H); break;
+        case SCREEN_MAIN:   RenderMainScreen(dl, W, H);   break;
+        }
 
-        g_ui.EndFrame();
-
-        float clearColor[4] = { 0.047f, 0.047f, 0.063f, 1.0f };
-        g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
-        g_context->ClearRenderTargetView(g_rtv, clearColor);
-
-        g_renderer.RenderDrawList(g_ui.drawList, w, h);
-        if (!g_ui.overlayDrawList.vtxBuffer.empty())
-            g_renderer.RenderDrawList(g_ui.overlayDrawList, w, h);
-
-        g_swapChain->Present(1, 0);
+        // Render
+        Vec2 vpSize = g_backend.GetViewportSize();
+        g_backend.RenderDrawList(dl, (u32)vpSize.x, (u32)vpSize.y);
+        g_backend.EndFrame();
+        g_backend.Present();
     }
 
-    g_renderer.Shutdown();
-    g_font.Free();
-    CleanupDevice();
+    g_backend.Shutdown();
     DestroyWindow(g_hwnd);
     UnregisterClassA(wc.lpszClassName, hInstance);
-
     return 0;
 }
+
+#else
+int main() {
+    printf("AC Loader requires Windows (DX11 backend).\n");
+    return 0;
+}
+#endif
