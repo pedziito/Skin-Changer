@@ -44,15 +44,22 @@ static OverlayWindow* g_pOverlay = nullptr;
 GameMenu::GameMenu()
     : m_visible(false)
     , m_activeTab(TAB_SKINS)
-    , m_selectedRow(0)
     , m_scrollOffset(0)
+    , m_mouseX(0), m_mouseY(0)
+    , m_menuX(0), m_menuY(0)
+    , m_rowCount(0)
+    , m_toggleCount(0)
     , m_skinChangerEnabled(true)
     , m_knifeChangerEnabled(false)
     , m_gloveChangerEnabled(false)
     , m_fontTitle(nullptr)
     , m_fontBody(nullptr)
     , m_fontSmall(nullptr)
-    , m_fontBold(nullptr) {
+    , m_fontBold(nullptr)
+    , m_fontLogo(nullptr) {
+    memset(m_tabRects, 0, sizeof(m_tabRects));
+    memset(m_rowRects, 0, sizeof(m_rowRects));
+    memset(m_toggleRects, 0, sizeof(m_toggleRects));
 }
 
 GameMenu::~GameMenu() {
@@ -60,19 +67,24 @@ GameMenu::~GameMenu() {
     if (m_fontBody)  DeleteObject(m_fontBody);
     if (m_fontSmall) DeleteObject(m_fontSmall);
     if (m_fontBold)  DeleteObject(m_fontBold);
+    if (m_fontLogo)  DeleteObject(m_fontLogo);
 }
 
 bool GameMenu::Initialize(HMODULE) {
-    m_fontTitle = CreateFontA(16, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
+    // Large fonts for the bigger menu
+    m_fontTitle = CreateFontA(22, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
                               OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                               DEFAULT_PITCH, "Segoe UI");
-    m_fontBody  = CreateFontA(13, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+    m_fontBody  = CreateFontA(16, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
                               OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                               DEFAULT_PITCH, "Segoe UI");
-    m_fontSmall = CreateFontA(11, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+    m_fontSmall = CreateFontA(13, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
                               OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                               DEFAULT_PITCH, "Segoe UI");
-    m_fontBold  = CreateFontA(13, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
+    m_fontBold  = CreateFontA(16, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
+                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                              DEFAULT_PITCH, "Segoe UI");
+    m_fontLogo  = CreateFontA(28, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
                               OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                               DEFAULT_PITCH, "Segoe UI");
 
@@ -153,59 +165,62 @@ void GameMenu::AddSkin(const std::string& weapon, const std::string& skin) {
 }
 
 // ────────────────────────────────────────────────
-//  Input
+//  Mouse input
 // ────────────────────────────────────────────────
-void GameMenu::ProcessInput() {
+void GameMenu::OnMouseMove(int x, int y) {
+    m_mouseX = x;
+    m_mouseY = y;
+}
+
+void GameMenu::OnMouseClick(int x, int y) {
     if (!m_visible) return;
 
-    // Tab switching: LEFT / RIGHT arrows
-    if (GetAsyncKeyState(VK_LEFT) & 1) {
-        m_activeTab = (Tab)(((int)m_activeTab - 1 + TAB_COUNT) % TAB_COUNT);
-        m_selectedRow = 0;
-        m_scrollOffset = 0;
-    }
-    if (GetAsyncKeyState(VK_RIGHT) & 1) {
-        m_activeTab = (Tab)(((int)m_activeTab + 1) % TAB_COUNT);
-        m_selectedRow = 0;
-        m_scrollOffset = 0;
+    // Tab clicks
+    for (int i = 0; i < TAB_COUNT; i++) {
+        if (HitTest(m_tabRects[i], x, y)) {
+            m_activeTab = (Tab)i;
+            m_scrollOffset = 0;
+            return;
+        }
     }
 
-    // Row navigation: UP / DOWN
-    if (GetAsyncKeyState(VK_UP) & 1) {
-        if (m_selectedRow > 0) m_selectedRow--;
-    }
-    if (GetAsyncKeyState(VK_DOWN) & 1) {
-        m_selectedRow++;
-    }
-
-    // Activate / toggle: ENTER
-    if (GetAsyncKeyState(VK_RETURN) & 1) {
-        if (m_activeTab == TAB_SKINS) {
-            // Build flat list: weapon headers + skins
-            int idx = 0;
-            for (auto& w : m_weapons) {
-                if (idx == m_selectedRow) break; // header row – skip
-                idx++;
-                auto& skins = m_weaponSkins[w];
-                for (auto& s : skins) {
-                    if (idx == m_selectedRow) {
-                        // Toggle skin
-                        if (m_activeSkins[w] == s)
-                            m_activeSkins.erase(w);
+    // Skins tab – click on skin rows
+    if (m_activeTab == TAB_SKINS) {
+        for (int r = 0; r < m_rowCount; r++) {
+            if (HitTest(m_rowRects[r], x, y)) {
+                int wi = m_rowWeaponIdx[r];
+                int si = m_rowSkinIdx[r];
+                if (si >= 0 && wi >= 0 && wi < (int)m_weapons.size()) {
+                    auto& wname = m_weapons[wi];
+                    auto& skins = m_weaponSkins[wname];
+                    if (si < (int)skins.size()) {
+                        if (m_activeSkins[wname] == skins[si])
+                            m_activeSkins.erase(wname);
                         else
-                            m_activeSkins[w] = s;
-                        break;
+                            m_activeSkins[wname] = skins[si];
                     }
-                    idx++;
                 }
+                return;
             }
         }
-        if (m_activeTab == TAB_SETTINGS) {
-            if (m_selectedRow == 0) m_skinChangerEnabled  = !m_skinChangerEnabled;
-            if (m_selectedRow == 1) m_knifeChangerEnabled = !m_knifeChangerEnabled;
-            if (m_selectedRow == 2) m_gloveChangerEnabled = !m_gloveChangerEnabled;
+    }
+
+    // Settings tab – click toggles
+    if (m_activeTab == TAB_SETTINGS) {
+        for (int i = 0; i < m_toggleCount; i++) {
+            if (HitTest(m_toggleRects[i], x, y)) {
+                bool* vals[] = { &m_skinChangerEnabled, &m_knifeChangerEnabled, &m_gloveChangerEnabled };
+                if (i < 3) *vals[i] = !*vals[i];
+                return;
+            }
         }
     }
+}
+
+void GameMenu::OnMouseWheel(int delta) {
+    if (!m_visible) return;
+    m_scrollOffset -= delta / 40;  // ~3 rows per scroll
+    if (m_scrollOffset < 0) m_scrollOffset = 0;
 }
 
 // ────────────────────────────────────────────────
@@ -240,34 +255,83 @@ void GameMenu::Render(HDC hdc, int winW, int winH) {
     // Centre the menu panel
     int mx = (winW - MENU_WIDTH) / 2;
     int my = (winH - MENU_HEIGHT) / 2;
+    m_menuX = mx;
+    m_menuY = my;
+
+    // Reset hit-test data
+    m_rowCount = 0;
+    m_toggleCount = 0;
 
     // Shadow
-    DrawRoundRect(hdc, mx + 3, my + 3, MENU_WIDTH, MENU_HEIGHT, MENU_RAD,
-                  RGB(2, 2, 2), RGB(2, 2, 2));
+    DrawRoundRect(hdc, mx + 4, my + 4, MENU_WIDTH, MENU_HEIGHT, MENU_RAD,
+                  RGB(2, 3, 6), RGB(2, 3, 6));
 
     // Main background
     DrawRoundRect(hdc, mx, my, MENU_WIDTH, MENU_HEIGHT, MENU_RAD,
                   MENU_BG, MENU_BORDER);
 
-    // Header
-    DrawHeader(hdc, mx, my, MENU_WIDTH);
-
-    // Tabs
-    int tabY = my + MENU_HEADER;
-    DrawTabs(hdc, mx, tabY, MENU_WIDTH);
+    // Left sidebar
+    DrawSidebar(hdc, mx, my, MENU_HEIGHT);
 
     // Content area
-    int contentY = tabY + MENU_TAB_H + 4;
-    int contentH = MENU_HEIGHT - MENU_HEADER - MENU_TAB_H - 4 - 30;
+    int cx = mx + MENU_SIDEBAR_W;
+    int cw = MENU_WIDTH - MENU_SIDEBAR_W;
 
-    // Clip to content area
-    HRGN clip = CreateRectRgn(mx + 1, contentY, mx + MENU_WIDTH - 1, contentY + contentH);
+    // Header area in content
+    DrawHeader(hdc, cx, my, cw);
+
+    // Tab bar below header
+    int tabY = my + MENU_HEADER;
+    const char* tabLabels[TAB_COUNT] = { "Skins", "Indstillinger", "Om" };
+    int tabW = cw / TAB_COUNT;
+
+    for (int i = 0; i < TAB_COUNT; i++) {
+        int tx = cx + i * tabW;
+        bool sel = ((int)m_activeTab == i);
+        bool hov = HitTest({tx, tabY, tabW, MENU_TAB_H}, m_mouseX, m_mouseY);
+
+        COLORREF bg  = sel ? MENU_CARD : (hov ? RGB(20, 23, 35) : MENU_BG);
+        COLORREF txt = sel ? MENU_ACCENT : (hov ? MENU_ACCENT_L : MENU_TEXT_DIM);
+
+        RECT trc = { tx, tabY, tx + tabW, tabY + MENU_TAB_H };
+        HBRUSH tbr = CreateSolidBrush(bg);
+        FillRect(hdc, &trc, tbr);
+        DeleteObject(tbr);
+
+        DrawText_(hdc, tabLabels[i], tx, tabY, tabW, MENU_TAB_H,
+                  txt, m_fontBold, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        if (sel) {
+            RECT ind = { tx + 6, tabY + MENU_TAB_H - 3, tx + tabW - 6, tabY + MENU_TAB_H };
+            HBRUSH ibr = CreateSolidBrush(MENU_ACCENT);
+            FillRect(hdc, &ind, ibr);
+            DeleteObject(ibr);
+        }
+
+        m_tabRects[i] = { tx, tabY, tabW, MENU_TAB_H };
+    }
+
+    // Separator
+    HPEN sp = CreatePen(PS_SOLID, 1, MENU_BORDER);
+    HPEN op = (HPEN)SelectObject(hdc, sp);
+    MoveToEx(hdc, cx, tabY + MENU_TAB_H, nullptr);
+    LineTo(hdc, cx + cw, tabY + MENU_TAB_H);
+    SelectObject(hdc, op);
+    DeleteObject(sp);
+
+    // Content body
+    int contentY = tabY + MENU_TAB_H + 2;
+    int contentH = MENU_HEIGHT - MENU_HEADER - MENU_TAB_H - 2 - (my + MENU_HEIGHT - (my + MENU_HEIGHT));
+    contentH = (my + MENU_HEIGHT) - contentY - 36;  // leave room for footer
+
+    // Clip
+    HRGN clip = CreateRectRgn(cx + 1, contentY, cx + cw - 1, contentY + contentH);
     SelectClipRgn(hdc, clip);
 
     switch (m_activeTab) {
-    case TAB_SKINS:    DrawSkinsTab(hdc, mx, contentY, MENU_WIDTH, contentH); break;
-    case TAB_SETTINGS: DrawSettingsTab(hdc, mx, contentY, MENU_WIDTH, contentH); break;
-    case TAB_ABOUT:    DrawAboutTab(hdc, mx, contentY, MENU_WIDTH, contentH); break;
+    case TAB_SKINS:    DrawSkinsTab(hdc, cx, contentY, cw, contentH); break;
+    case TAB_SETTINGS: DrawSettingsTab(hdc, cx, contentY, cw, contentH); break;
+    case TAB_ABOUT:    DrawAboutTab(hdc, cx, contentY, cw, contentH); break;
     default: break;
     }
 
@@ -275,208 +339,274 @@ void GameMenu::Render(HDC hdc, int winW, int winH) {
     DeleteObject(clip);
 
     // Footer
-    int footerY = my + MENU_HEIGHT - 24;
-    DrawText_(hdc, "O = Luk  |  Pile = V\xE6lg  |  Tab = Skift  |  ENTER = Aktiver",
-              mx + MENU_PAD, footerY, MENU_WIDTH - MENU_PAD * 2, 20,
+    int footerY = my + MENU_HEIGHT - 30;
+    DrawText_(hdc, "Tryk O for at lukke menuen", cx, footerY, cw, 24,
               MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
+}
+
+void GameMenu::DrawSidebar(HDC hdc, int x, int y, int h) {
+    // Sidebar background
+    RECT sbr = { x, y, x + MENU_SIDEBAR_W, y + h };
+    HBRUSH sbb = CreateSolidBrush(MENU_SIDEBAR);
+    FillRect(hdc, &sbr, sbb);
+    DeleteObject(sbb);
+
+    // Right border
+    HPEN bp = CreatePen(PS_SOLID, 1, MENU_SIDEBAR_BR);
+    HPEN obp = (HPEN)SelectObject(hdc, bp);
+    MoveToEx(hdc, x + MENU_SIDEBAR_W - 1, y, nullptr);
+    LineTo(hdc, x + MENU_SIDEBAR_W - 1, y + h);
+    SelectObject(hdc, obp);
+    DeleteObject(bp);
+
+    // Logo
+    int logoY = y + 20;
+    DrawRoundRect(hdc, x + 20, logoY, 50, 50, 12, MENU_ACCENT, MENU_ACCENT);
+    DrawText_(hdc, "AC", x + 20, logoY, 50, 50,
+              MENU_WHITE, m_fontLogo, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    DrawText_(hdc, "AC Changer", x + 78, logoY + 6, 90, 20,
+              MENU_WHITE, m_fontBold, DT_LEFT | DT_SINGLELINE);
+    DrawText_(hdc, "v1.0", x + 78, logoY + 28, 90, 16,
+              MENU_TEXT_DIM, m_fontSmall, DT_LEFT | DT_SINGLELINE);
+
+    // Navigation items
+    int navY = logoY + 70;
+    const char* navItems[] = { "Dashboard", "Support", "Info" };
+    for (int i = 0; i < 3; i++) {
+        bool sel = ((int)m_activeTab == i);
+        bool hov = HitTest({x + 10, navY, MENU_SIDEBAR_W - 20, 36}, m_mouseX, m_mouseY);
+
+        if (sel) {
+            DrawRoundRect(hdc, x + 10, navY, MENU_SIDEBAR_W - 20, 36, 8,
+                          RGB(25, 40, 70), MENU_ACCENT);
+        } else if (hov) {
+            DrawRoundRect(hdc, x + 10, navY, MENU_SIDEBAR_W - 20, 36, 8,
+                          RGB(22, 26, 38), MENU_SIDEBAR_BR);
+        }
+
+        COLORREF nc = sel ? MENU_ACCENT_L : (hov ? MENU_TEXT : MENU_TEXT_DIM);
+        DrawText_(hdc, navItems[i], x + 24, navY, MENU_SIDEBAR_W - 34, 36,
+                  nc, m_fontBody, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        navY += 42;
+    }
+
+    // Status indicator at bottom
+    int statusY = y + h - 60;
+    DrawRoundRect(hdc, x + 15, statusY, MENU_SIDEBAR_W - 30, 40, 8,
+                  RGB(20, 50, 35), MENU_GREEN);
+    DrawText_(hdc, "\xB7  Online", x + 15, statusY, MENU_SIDEBAR_W - 30, 40,
+              MENU_GREEN, m_fontBody, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
 void GameMenu::DrawHeader(HDC hdc, int x, int y, int w) {
     // Dark header bar
-    DrawRoundRect(hdc, x, y, w, MENU_HEADER, MENU_RAD, MENU_BG_HEADER, MENU_BORDER);
-    // Flatten bottom corners by overpainting
-    RECT rc = { x + 1, y + MENU_HEADER - MENU_RAD, x + w - 1, y + MENU_HEADER };
-    HBRUSH br = CreateSolidBrush(MENU_BG_HEADER);
-    FillRect(hdc, &rc, br);
-    DeleteObject(br);
+    RECT hr = { x, y, x + w, y + MENU_HEADER };
+    HBRUSH hb = CreateSolidBrush(MENU_BG_HEADER);
+    FillRect(hdc, &hr, hb);
+    DeleteObject(hb);
 
     // Title
-    DrawText_(hdc, "AC CHANGER", x + MENU_PAD, y, 160, MENU_HEADER,
+    DrawText_(hdc, "SKIN CHANGER", x + MENU_PAD, y, 200, MENU_HEADER,
               MENU_WHITE, m_fontTitle, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Version badge
-    DrawRoundRect(hdc, x + w - 68, y + 11, 54, 20, 10, RGB(20, 60, 40), MENU_GREEN);
-    DrawText_(hdc, "v1.0", x + w - 68, y + 11, 54, 20,
-              MENU_GREEN, m_fontSmall, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-}
+    DrawRoundRect(hdc, x + w - 90, y + 17, 70, 26, 13, RGB(15, 45, 35), MENU_GREEN);
+    DrawText_(hdc, "v1.0", x + w - 90, y + 17, 70, 26,
+              MENU_GREEN, m_fontBody, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
-void GameMenu::DrawTabs(HDC hdc, int x, int y, int w) {
-    const char* tabLabels[TAB_COUNT] = { "Skins", "Indstillinger", "Om" };
-    int tabW = w / TAB_COUNT;
-
-    for (int i = 0; i < TAB_COUNT; i++) {
-        int tx = x + i * tabW;
-        bool sel = ((int)m_activeTab == i);
-
-        COLORREF bg  = sel ? MENU_ITEM_SEL : MENU_BG;
-        COLORREF txt = sel ? MENU_ACCENT   : MENU_TEXT_DIM;
-
-        // Tab background
-        RECT trc = { tx, y, tx + tabW, y + MENU_TAB_H };
-        HBRUSH tbr = CreateSolidBrush(bg);
-        FillRect(hdc, &trc, tbr);
-        DeleteObject(tbr);
-
-        // Tab text
-        DrawText_(hdc, tabLabels[i], tx, y, tabW, MENU_TAB_H,
-                  txt, m_fontBold, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-        // Active indicator line
-        if (sel) {
-            RECT ind = { tx + 4, y + MENU_TAB_H - 2, tx + tabW - 4, y + MENU_TAB_H };
-            HBRUSH ibr = CreateSolidBrush(MENU_ACCENT);
-            FillRect(hdc, &ind, ibr);
-            DeleteObject(ibr);
-        }
-    }
-
-    // Bottom separator
+    // Separator
     HPEN sp = CreatePen(PS_SOLID, 1, MENU_BORDER);
     HPEN op = (HPEN)SelectObject(hdc, sp);
-    MoveToEx(hdc, x, y + MENU_TAB_H, nullptr);
-    LineTo(hdc, x + w, y + MENU_TAB_H);
+    MoveToEx(hdc, x, y + MENU_HEADER - 1, nullptr);
+    LineTo(hdc, x + w, y + MENU_HEADER - 1);
     SelectObject(hdc, op);
     DeleteObject(sp);
 }
 
 void GameMenu::DrawSkinsTab(HDC hdc, int x, int y, int w, int h) {
-    int row = 0;
-    int py = y + 4;
+    int py = y + 8 - m_scrollOffset;
+    int weaponIndex = -1;
 
     for (auto& weapon : m_weapons) {
-        // Weapon header
-        bool isSel = (row == m_selectedRow);
-        COLORREF hdrBg = isSel ? MENU_ITEM_SEL : RGB(16, 16, 18);
-        RECT hdr = { x + MENU_PAD, py, x + w - MENU_PAD, py + MENU_ROW_H };
-        HBRUSH hb = CreateSolidBrush(hdrBg);
-        FillRect(hdc, &hdr, hb);
-        DeleteObject(hb);
+        weaponIndex++;
 
-        std::string label = "  " + weapon;
-        DrawText_(hdc, label.c_str(), x + MENU_PAD + 4, py, w - MENU_PAD * 2 - 8, MENU_ROW_H,
-                  MENU_ACCENT, m_fontBold, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        // Weapon header card
+        int headerH = MENU_ROW_H + 4;
+        if (py + headerH > y && py < y + h) {
+            DrawRoundRect(hdc, x + MENU_PAD, py, w - MENU_PAD * 2, headerH, 6,
+                          RGB(18, 22, 34), MENU_BORDER);
 
-        // Show active skin name on the right
-        auto it = m_activeSkins.find(weapon);
-        if (it != m_activeSkins.end()) {
-            DrawText_(hdc, it->second.c_str(), x + MENU_PAD + 4, py,
-                      w - MENU_PAD * 2 - 8, MENU_ROW_H,
-                      MENU_GREEN, m_fontSmall, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            // Weapon icon (gold circle)
+            DrawRoundRect(hdc, x + MENU_PAD + 10, py + 8, 30, 30, 15,
+                          RGB(40, 35, 15), MENU_ICON_GOLD);
+            DrawText_(hdc, weapon.substr(0, 1).c_str(), x + MENU_PAD + 10, py + 8, 30, 30,
+                      MENU_ICON_GOLD, m_fontBold, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            DrawText_(hdc, weapon.c_str(), x + MENU_PAD + 50, py, w - MENU_PAD * 2 - 60, headerH,
+                      MENU_ACCENT_L, m_fontBold, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+            // Active skin on right
+            auto it = m_activeSkins.find(weapon);
+            if (it != m_activeSkins.end()) {
+                DrawText_(hdc, it->second.c_str(), x + MENU_PAD + 50, py,
+                          w - MENU_PAD * 2 - 60, headerH,
+                          MENU_GREEN, m_fontBody, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+            }
+        }
+        py += headerH + 4;
+
+        // Skin rows
+        auto& skins = m_weaponSkins[weapon];
+        for (int si = 0; si < (int)skins.size(); si++) {
+            int rowH = MENU_ROW_H;
+            if (py + rowH > y && py < y + h) {
+                bool hov = HitTest({x + MENU_PAD + 12, py, w - MENU_PAD * 2 - 12, rowH}, m_mouseX, m_mouseY);
+                bool active = (m_activeSkins.count(weapon) && m_activeSkins[weapon] == skins[si]);
+
+                COLORREF rowBg = active ? RGB(20, 45, 35) : (hov ? MENU_CARD_HOV : MENU_CARD);
+                COLORREF rowBr = active ? MENU_GREEN : (hov ? MENU_CARD_BR : RGB(30, 34, 48));
+
+                DrawRoundRect(hdc, x + MENU_PAD + 12, py, w - MENU_PAD * 2 - 12, rowH, 6,
+                              rowBg, rowBr);
+
+                // Left accent bar on hover
+                if (hov) {
+                    RECT bar = { x + MENU_PAD + 12, py + 4, x + MENU_PAD + 15, py + rowH - 4 };
+                    HBRUSH ab = CreateSolidBrush(MENU_ACCENT);
+                    FillRect(hdc, &bar, ab);
+                    DeleteObject(ab);
+                }
+
+                // Skin name
+                DrawText_(hdc, skins[si].c_str(), x + MENU_PAD + 28, py,
+                          w - MENU_PAD * 2 - 100, rowH,
+                          hov ? MENU_WHITE : MENU_TEXT, m_fontBody,
+                          DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+                // Active badge
+                if (active) {
+                    int bx = x + w - MENU_PAD - 70;
+                    DrawRoundRect(hdc, bx, py + 8, 55, 24, 12, RGB(15, 50, 30), MENU_GREEN);
+                    DrawText_(hdc, "AKTIV", bx, py + 8, 55, 24,
+                              MENU_GREEN, m_fontSmall, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                }
+
+                // Store hit rect
+                if (m_rowCount < MAX_ROWS) {
+                    m_rowRects[m_rowCount] = { x + MENU_PAD + 12, py, w - MENU_PAD * 2 - 12, rowH };
+                    m_rowWeaponIdx[m_rowCount] = weaponIndex;
+                    m_rowSkinIdx[m_rowCount] = si;
+                    m_rowCount++;
+                }
+            }
+            py += rowH + 3;
         }
 
-        py += MENU_ROW_H;
-        row++;
-
-        // Skins under this weapon
-        for (auto& skin : m_weaponSkins[weapon]) {
-            isSel = (row == m_selectedRow);
-            bool active = (m_activeSkins.count(weapon) && m_activeSkins[weapon] == skin);
-
-            COLORREF skinBg = isSel ? MENU_ITEM_SEL : MENU_ITEM_BG;
-            RECT sr = { x + MENU_PAD + 8, py, x + w - MENU_PAD, py + MENU_ROW_H - 2 };
-            HBRUSH sb = CreateSolidBrush(skinBg);
-            FillRect(hdc, &sr, sb);
-            DeleteObject(sb);
-
-            // Selection indicator bar
-            if (isSel) {
-                RECT si = { x + MENU_PAD + 8, py, x + MENU_PAD + 11, py + MENU_ROW_H - 2 };
-                HBRUSH sib = CreateSolidBrush(MENU_ACCENT);
-                FillRect(hdc, &si, sib);
-                DeleteObject(sib);
-            }
-
-            // Skin name
-            std::string skinLabel = "    " + skin;
-            DrawText_(hdc, skinLabel.c_str(), x + MENU_PAD + 12, py,
-                      w - MENU_PAD * 2 - 60, MENU_ROW_H - 2,
-                      isSel ? MENU_WHITE : MENU_TEXT, m_fontBody,
-                      DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-            // Active badge
-            if (active) {
-                int bx = x + w - MENU_PAD - 50;
-                DrawRoundRect(hdc, bx, py + 5, 42, 18, 9, RGB(20, 60, 40), MENU_GREEN);
-                DrawText_(hdc, "AKTIV", bx, py + 5, 42, 18,
-                          MENU_GREEN, m_fontSmall, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            }
-
-            py += MENU_ROW_H - 2;
-            row++;
-        }
-
-        py += 2; // gap between weapon groups
+        py += 8; // gap between weapon groups
     }
 
-    // Clamp selected row
-    if (m_selectedRow >= row) m_selectedRow = row - 1;
-    if (m_selectedRow < 0)   m_selectedRow = 0;
+    // Clamp scroll
+    int totalH = py + m_scrollOffset - y;
+    if (totalH < h) m_scrollOffset = 0;
+    else if (m_scrollOffset > totalH - h) m_scrollOffset = totalH - h;
 }
 
 void GameMenu::DrawSettingsTab(HDC hdc, int x, int y, int w, int h) {
     struct Setting {
         const char* name;
+        const char* desc;
         bool* value;
     };
     Setting settings[] = {
-        { "Skin Changer",   &m_skinChangerEnabled },
-        { "Knife Changer",  &m_knifeChangerEnabled },
-        { "Glove Changer",  &m_gloveChangerEnabled },
+        { "Skin Changer",   "Skift skins p\xE5 alle v\xE5""ben",        &m_skinChangerEnabled },
+        { "Knife Changer",  "Skift din kniv model",                       &m_knifeChangerEnabled },
+        { "Glove Changer",  "Skift handske model",                        &m_gloveChangerEnabled },
     };
     int count = sizeof(settings) / sizeof(settings[0]);
-    if (m_selectedRow >= count) m_selectedRow = count - 1;
+    m_toggleCount = 0;
 
-    int py = y + 8;
+    int py = y + 16;
     for (int i = 0; i < count; i++) {
-        bool sel = (i == m_selectedRow);
-        COLORREF bg = sel ? MENU_ITEM_SEL : MENU_ITEM_BG;
+        int cardH = 64;
+        bool hov = HitTest({x + MENU_PAD, py, w - MENU_PAD * 2, cardH}, m_mouseX, m_mouseY);
 
-        DrawRoundRect(hdc, x + MENU_PAD, py, w - MENU_PAD * 2, MENU_ROW_H + 4, 6,
-                      bg, sel ? MENU_ACCENT : MENU_BORDER);
+        COLORREF bg = hov ? MENU_CARD_HOV : MENU_CARD;
+        COLORREF br = hov ? MENU_CARD_BR : MENU_BORDER;
+
+        DrawRoundRect(hdc, x + MENU_PAD, py, w - MENU_PAD * 2, cardH, 8, bg, br);
 
         // Label
-        DrawText_(hdc, settings[i].name, x + MENU_PAD + 12, py,
-                  w - MENU_PAD * 2 - 80, MENU_ROW_H + 4,
-                  sel ? MENU_WHITE : MENU_TEXT, m_fontBody,
-                  DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawText_(hdc, settings[i].name, x + MENU_PAD + 18, py + 8,
+                  w - MENU_PAD * 2 - 120, 24,
+                  MENU_WHITE, m_fontBold, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-        // Toggle indicator
+        // Description
+        DrawText_(hdc, settings[i].desc, x + MENU_PAD + 18, py + 32,
+                  w - MENU_PAD * 2 - 120, 22,
+                  MENU_TEXT_DIM, m_fontSmall, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        // Toggle switch
         bool on = *settings[i].value;
-        int tx = x + w - MENU_PAD - 56;
-        DrawRoundRect(hdc, tx, py + 7, 40, 20, 10,
-                      on ? RGB(20, 60, 40) : RGB(40, 20, 20),
+        int sw = 56, sh = 28;
+        int tx = x + w - MENU_PAD - sw - 12;
+        int ty = py + (cardH - sh) / 2;
+
+        // Track background
+        DrawRoundRect(hdc, tx, ty, sw, sh, sh / 2,
+                      on ? RGB(25, 80, 55) : RGB(50, 25, 25),
                       on ? MENU_GREEN : MENU_RED);
-        DrawText_(hdc, on ? "TIL" : "FRA", tx, py + 7, 40, 20,
+
+        // Knob
+        int knobR = sh - 6;
+        int knobX = on ? (tx + sw - knobR - 3) : (tx + 3);
+        DrawRoundRect(hdc, knobX, ty + 3, knobR, knobR, knobR / 2,
+                      on ? MENU_GREEN : MENU_RED,
+                      on ? RGB(60, 220, 140) : RGB(230, 80, 80));
+
+        // Status text
+        DrawText_(hdc, on ? "TIL" : "FRA", tx, ty, sw, sh,
                   on ? MENU_GREEN : MENU_RED, m_fontSmall,
                   DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
-        py += MENU_ROW_H + 8;
+        // Store hit rect for the entire card
+        if (m_toggleCount < 8) {
+            m_toggleRects[m_toggleCount++] = { x + MENU_PAD, py, w - MENU_PAD * 2, cardH };
+        }
+
+        py += cardH + 12;
     }
 }
 
 void GameMenu::DrawAboutTab(HDC hdc, int x, int y, int w, int h) {
-    int py = y + 16;
+    int py = y + 24;
     int cw = w - MENU_PAD * 2;
 
-    DrawText_(hdc, "AC Changer v1.0", x + MENU_PAD, py, cw, 20,
+    DrawText_(hdc, "AC Changer v1.0", x + MENU_PAD, py, cw, 28,
               MENU_WHITE, m_fontTitle, DT_CENTER | DT_SINGLELINE);
-    py += 26;
+    py += 36;
 
-    DrawText_(hdc, "CS2 Inventory Changer", x + MENU_PAD, py, cw, 18,
+    DrawText_(hdc, "CS2 Inventory Changer", x + MENU_PAD, py, cw, 22,
               MENU_TEXT_DIM, m_fontBody, DT_CENTER | DT_SINGLELINE);
-    py += 30;
+    py += 40;
 
     // Separator
     HPEN sp = CreatePen(PS_SOLID, 1, MENU_BORDER);
     HPEN op = (HPEN)SelectObject(hdc, sp);
-    MoveToEx(hdc, x + MENU_PAD + 30, py, nullptr); LineTo(hdc, x + w - MENU_PAD - 30, py);
+    MoveToEx(hdc, x + MENU_PAD + 40, py, nullptr);
+    LineTo(hdc, x + w - MENU_PAD - 40, py);
     SelectObject(hdc, op);
     DeleteObject(sp);
+    py += 24;
+
+    // Features card
+    DrawRoundRect(hdc, x + MENU_PAD, py, cw, 220, 8, MENU_CARD, MENU_BORDER);
     py += 16;
 
-    DrawText_(hdc, "Funktioner:", x + MENU_PAD, py, cw, 18,
+    DrawText_(hdc, "Funktioner:", x + MENU_PAD + 16, py, cw - 32, 22,
               MENU_ACCENT, m_fontBold, DT_LEFT | DT_SINGLELINE);
-    py += 22;
+    py += 32;
 
     const char* features[] = {
         "  \xB7  Skin Changer for alle v\xE5""ben",
@@ -486,14 +616,14 @@ void GameMenu::DrawAboutTab(HDC hdc, int x, int y, int w, int h) {
         "  \xB7  UNDETECTED"
     };
     for (auto f : features) {
-        DrawText_(hdc, f, x + MENU_PAD, py, cw, 18,
+        DrawText_(hdc, f, x + MENU_PAD + 16, py, cw - 32, 24,
                   MENU_TEXT, m_fontBody, DT_LEFT | DT_SINGLELINE);
-        py += 20;
+        py += 28;
     }
 
-    py += 16;
-    DrawText_(hdc, "Tryk O for at lukke menuen", x + MENU_PAD, py, cw, 18,
-              MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
+    py += 30;
+    DrawText_(hdc, "Tryk O for at lukke menuen", x + MENU_PAD, py, cw, 22,
+              MENU_TEXT_DIM, m_fontBody, DT_CENTER | DT_SINGLELINE);
 }
 
 
@@ -841,6 +971,32 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         EndPaint(hwnd, &ps);
         return 0;
     }
+
+    case WM_MOUSEMOVE:
+        if (g_pOverlay) {
+            int mx = (short)LOWORD(lp);
+            int my = (short)HIWORD(lp);
+            g_pOverlay->m_menu.OnMouseMove(mx, my);
+            InvalidateRect(hwnd, nullptr, FALSE);  // repaint for hover
+        }
+        return 0;
+
+    case WM_LBUTTONDOWN:
+        if (g_pOverlay) {
+            int mx = (short)LOWORD(lp);
+            int my = (short)HIWORD(lp);
+            g_pOverlay->m_menu.OnMouseClick(mx, my);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
+
+    case WM_MOUSEWHEEL:
+        if (g_pOverlay) {
+            int delta = GET_WHEEL_DELTA_WPARAM(wp);
+            g_pOverlay->m_menu.OnMouseWheel(delta);
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
 
     case WM_ERASEBKGND:
         return 1;

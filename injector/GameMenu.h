@@ -7,35 +7,44 @@
 #include <memory>
 
 // ============================================================================
-//  CS2 In-Game Overlay Menu
-//  Opens/closes with O key
-//  Dark, clean overlay rendered via transparent GDI window
+//  CS2 In-Game Overlay Menu  –  Click-based, NL-style dark navy theme
+//  Opens/closes with O key.  All interaction via mouse clicks.
 // ============================================================================
 
-// Menu colours (dark theme)
-#define MENU_BG         RGB(12, 12, 14)
-#define MENU_BG_HEADER  RGB(8, 8, 10)
-#define MENU_ITEM_BG    RGB(20, 20, 22)
-#define MENU_ITEM_SEL   RGB(38, 38, 44)
-#define MENU_ACCENT     RGB(90, 180, 250)
-#define MENU_TEXT        RGB(210, 210, 220)
-#define MENU_TEXT_DIM    RGB(100, 100, 110)
-#define MENU_BORDER     RGB(40, 40, 46)
+// Colours – dark navy theme (same as the loader)
+#define MENU_BG         RGB(15, 17, 26)
+#define MENU_BG_HEADER  RGB(10, 12, 20)
+#define MENU_CARD       RGB(24, 28, 42)
+#define MENU_CARD_HOV   RGB(30, 35, 52)
+#define MENU_CARD_BR    RGB(40, 46, 65)
+#define MENU_ACCENT     RGB(70, 130, 220)
+#define MENU_ACCENT_L   RGB(100, 160, 245)
+#define MENU_TEXT        RGB(200, 205, 220)
+#define MENU_TEXT_DIM    RGB(120, 128, 150)
+#define MENU_BORDER     RGB(30, 34, 50)
 #define MENU_GREEN       RGB(45, 200, 120)
 #define MENU_RED         RGB(210, 60, 60)
-#define MENU_WHITE       RGB(235, 235, 240)
+#define MENU_WHITE       RGB(235, 238, 245)
+#define MENU_SIDEBAR    RGB(15, 17, 26)
+#define MENU_SIDEBAR_BR RGB(30, 34, 50)
+#define MENU_FIELD      RGB(24, 28, 42)
+#define MENU_BTN_BG     RGB(55, 110, 200)
+#define MENU_BTN_HOV    RGB(70, 130, 220)
+#define MENU_ICON_GOLD  RGB(220, 165, 40)
 
-// Layout
-#define MENU_WIDTH   340
-#define MENU_HEIGHT  460
-#define MENU_HEADER  42
-#define MENU_TAB_H   32
-#define MENU_ROW_H   30
-#define MENU_PAD     14
-#define MENU_RAD     8
+// Layout – 4× bigger than original (800×650 vs. 340×460)
+#define MENU_WIDTH   800
+#define MENU_HEIGHT  650
+#define MENU_HEADER  60
+#define MENU_TAB_H   44
+#define MENU_ROW_H   42
+#define MENU_PAD     20
+#define MENU_RAD     10
+#define MENU_SIDEBAR_W  180
 
 /**
  * In-Game Overlay Menu for CS2 Skin Changer
+ * Full mouse/click interaction – no keyboard navigation
  */
 class GameMenu {
 public:
@@ -59,11 +68,15 @@ public:
     bool Initialize(HMODULE hModule);
     void Shutdown();
 
-    // Called from main loop
-    void ProcessInput();
+    // Mouse input – called from OverlayWindow
+    void OnMouseMove(int x, int y);
+    void OnMouseClick(int x, int y);
+    void OnMouseWheel(int delta);
+
+    // Render
     void Render(HDC hdc, int winW, int winH);
 
-    // Toggle visibility (INSERT key)
+    // Toggle visibility
     void Toggle();
     bool IsVisible() const { return m_visible; }
 
@@ -71,10 +84,19 @@ public:
     void AddWeapon(const std::string& weapon);
     void AddSkin(const std::string& weapon, const std::string& skin);
 
+    // Legacy (unused, kept for compat)
+    void ProcessInput() {}
+
 private:
+    // Hit-test rectangle
+    struct HitRect { int x, y, w, h; };
+    bool HitTest(const HitRect& r, int mx, int my) const {
+        return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
+    }
+
     // Render helpers
+    void DrawSidebar(HDC hdc, int x, int y, int h);
     void DrawHeader(HDC hdc, int x, int y, int w);
-    void DrawTabs(HDC hdc, int x, int y, int w);
     void DrawSkinsTab(HDC hdc, int x, int y, int w, int h);
     void DrawSettingsTab(HDC hdc, int x, int y, int w, int h);
     void DrawAboutTab(HDC hdc, int x, int y, int w, int h);
@@ -83,24 +105,38 @@ private:
 
     bool    m_visible;
     Tab     m_activeTab;
-    int     m_selectedRow;
     int     m_scrollOffset;
+
+    // Mouse state
+    int  m_mouseX, m_mouseY;
+    int  m_menuX, m_menuY;    // top-left of menu panel (computed in Render)
+
+    // Hit rects built each frame during Render
+    HitRect m_tabRects[TAB_COUNT];
+    static const int MAX_ROWS = 128;
+    HitRect m_rowRects[MAX_ROWS];
+    int     m_rowWeaponIdx[MAX_ROWS];  // -1 = weapon header
+    int     m_rowSkinIdx[MAX_ROWS];
+    int     m_rowCount;
+    HitRect m_toggleRects[8];
+    int     m_toggleCount;
 
     // Skin database
     std::vector<std::string> m_weapons;
     std::map<std::string, std::vector<std::string>> m_weaponSkins;
-    std::map<std::string, std::string> m_activeSkins;  // weapon -> active skin
+    std::map<std::string, std::string> m_activeSkins;
 
     // Settings
     bool m_skinChangerEnabled;
     bool m_knifeChangerEnabled;
     bool m_gloveChangerEnabled;
 
-    // Fonts (created once)
+    // Fonts
     HFONT m_fontTitle;
     HFONT m_fontBody;
     HFONT m_fontSmall;
     HFONT m_fontBold;
+    HFONT m_fontLogo;
 };
 
 /**
