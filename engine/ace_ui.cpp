@@ -147,9 +147,11 @@ void ACEUIContext::BeginWindow(const char* title, float x, float y, float w, flo
 
     drawList.PushClipRect(wnd.x, wnd.y, wnd.x + wnd.w, wnd.y + wnd.h);
 
-    // Window background
-    drawList.AddRectFilled(wnd.x, wnd.y, wnd.x + wnd.w, wnd.y + wnd.h, ACETheme::WindowBg, 12.0f);
-    drawList.AddRect(wnd.x, wnd.y, wnd.x + wnd.w, wnd.y + wnd.h, ACETheme::Border, 12.0f);
+    // Window background — clean rounded dark panel
+    drawList.AddRectFilled(wnd.x, wnd.y, wnd.x + wnd.w, wnd.y + wnd.h,
+                           ACE_COL32(13, 13, 18, 255), 12.0f);
+    drawList.AddRect(wnd.x, wnd.y, wnd.x + wnd.w, wnd.y + wnd.h,
+                     ACE_COL32(35, 35, 50, 200), 12.0f);
 }
 
 void ACEUIContext::EndWindow() {

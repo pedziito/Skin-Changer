@@ -61,20 +61,33 @@ set_target_properties(skin_changer PROPERTIES
 )
 
 # ============================================================================
-# LOADER EXECUTABLE (injects DLL into cs2.exe)
+# LOADER EXECUTABLE (DX11 GUI app — subscription panel + injector)
+# Uses ACE custom rendering engine for clean, dark UI.
 # ============================================================================
-add_executable(ac_loader
+add_executable(ac_loader WIN32
     loader/loader.cpp
+    engine/ace_renderer.cpp
+    engine/ace_ui.cpp
+)
+
+target_include_directories(ac_loader PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor
 )
 
 target_link_libraries(ac_loader PRIVATE
+    d3d11
+    dxgi
+    d3dcompiler
     advapi32
     shell32
     user32
+    gdi32
 )
 
 set_target_properties(ac_loader PROPERTIES
-    WIN32_EXECUTABLE FALSE
+    WIN32_EXECUTABLE TRUE
     OUTPUT_NAME "AC_Loader"
 )
 

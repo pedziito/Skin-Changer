@@ -1,7 +1,8 @@
 /*
  * AC Skin Changer - Menu (Custom ACE Engine)
- * NEVERLOSE-inspired skin changer menu.
+ * Clean dark UI matching AC subscription panel theme.
  * Uses ACE custom rendering engine — zero ImGui dependency.
+ * Smooth rounded corners, no pixelated edges.
  */
 
 #include "core.h"
@@ -76,7 +77,7 @@ namespace {
     }
 
     // ========================================================================
-    // SIDEBAR
+    // SIDEBAR — clean AC theme
     // ========================================================================
     void RenderSidebar(ACEUIContext& ctx) {
         float sx = ctx.wnd.x;
@@ -85,21 +86,42 @@ namespace {
 
         // Background
         ctx.drawList.AddRectFilled(sx, sy, sx + SIDEBAR_W, sy + sh,
-                                   ACETheme::SidebarBg, 0);
+                                   ACE_COL32(16, 16, 22, 255), 0);
         ctx.drawList.AddLine(sx + SIDEBAR_W, sy, sx + SIDEBAR_W, sy + sh,
-                             ACETheme::Border, 1.0f);
+                             ACE_COL32(35, 35, 50, 100), 1.0f);
 
-        // Branding
-        ctx.drawList.AddTextShadow(sx + 16, sy + 12, ACETheme::AccentBlue, "AC ENGINE");
-        ctx.drawList.AddText(sx + 16, sy + 30, ACETheme::TextDim, "v3.0 Custom Render");
+        // AC Brand Logo — rounded square
+        float logoSize = 38.0f;
+        float logoR = logoSize * 0.22f;
+        float logoX = sx + (SIDEBAR_W - logoSize) * 0.5f;
+        float logoY = sy + 12;
 
+        ctx.drawList.AddRectFilled(logoX, logoY, logoX + logoSize, logoY + logoSize,
+                                   ACE_COL32(22, 35, 70, 255), logoR);
+        ctx.drawList.AddRect(logoX, logoY, logoX + logoSize, logoY + logoSize,
+                             ACE_COL32(59, 130, 246, 60), logoR, 1.0f);
+
+        const char* logoTxt = "AC";
+        ACEVec2 lts = ctx.drawList.font->CalcTextSize(logoTxt);
+        ctx.drawList.AddText(logoX + (logoSize - lts.x) * 0.5f,
+                             logoY + (logoSize - lts.y) * 0.5f,
+                             ACE_COL32(70, 150, 255, 255), logoTxt);
+
+        // Version text below logo
+        const char* verTxt = "v3.0";
+        ACEVec2 vts = ctx.drawList.font->CalcTextSize(verTxt);
+        ctx.drawList.AddText(sx + (SIDEBAR_W - vts.x) * 0.5f, logoY + logoSize + 4,
+                             ACETheme::TextDim, verTxt);
+
+        // Subtle gradient separator
+        float sepY = logoY + logoSize + 22;
         ctx.drawList.AddRectFilledMultiColor(
-            sx + 12, sy + 52, sx + SIDEBAR_W - 12, sy + 53,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            sx + 12, sepY, sx + SIDEBAR_W - 12, sepY + 1,
+            ACE_COL32(35, 35, 50, 0), ACE_COL32(59, 130, 246, 60),
+            ACE_COL32(59, 130, 246, 60), ACE_COL32(35, 35, 50, 0));
 
         // Page buttons
-        float btnY = sy + 64;
+        float btnY = sepY + 10;
         for (int i = 0; i < PAGE_COUNT; i++) {
             // separator before Configs
             if (i == PAGE_CONFIGS) {
@@ -154,8 +176,8 @@ namespace {
         float bottomY = sy + sh - 70;
         ctx.drawList.AddRectFilledMultiColor(
             sx + 12, bottomY, sx + SIDEBAR_W - 12, bottomY + 1,
-            ACETheme::Border, ACETheme::Border,
-            ACE_COL32(40,40,55,0), ACE_COL32(40,40,55,0));
+            ACE_COL32(35, 35, 50, 0), ACE_COL32(35, 35, 50, 100),
+            ACE_COL32(35, 35, 50, 100), ACE_COL32(35, 35, 50, 0));
 
         size_t totalSkins = 0;
         for (auto& w : G::allWeapons) totalSkins += w.skins.size();
@@ -168,7 +190,7 @@ namespace {
         ctx.drawList.AddText(sx + 16, bottomY + 24, ACETheme::AccentGreen, buf);
 
         ctx.drawList.AddText(sx + 16, bottomY + 44, ACETheme::TextDim,
-                             "Custom Engine v3.0");
+                             "ACE Engine v3.0");
     }
 
     // ========================================================================
@@ -459,8 +481,8 @@ namespace {
                                     "Configuration Presets");
         ctx.drawList.AddRectFilledMultiColor(
             cx, cy + 24, cx + cw - 10, cy + 25,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         // preset name input
         ctx.SetCursorPos(cx - ctx.wnd.x, cy + 40 - ctx.wnd.y);
@@ -495,7 +517,7 @@ namespace {
                 float  anim = ctx.SmoothAnim(iId, hov ? 1.0f : 0.0f);
 
                 uint32_t bg = ACE_COL32(22,22,30, (int)(180 + 75*anim));
-                ctx.drawList.AddRectFilled(iX, iY, iX+iW, iY+iH, bg, 6.0f);
+        ctx.drawList.AddRectFilled(iX, iY, iX+iW, iY+iH, bg, 8.0f);
 
                 ctx.drawList.AddText(iX + 12, iY + 6, ACETheme::TextPrimary,
                                      preset.c_str());
@@ -556,14 +578,14 @@ namespace {
                                     "Settings & About");
         ctx.drawList.AddRectFilledMultiColor(
             cx, cy + 24, cx + cw - 10, cy + 25,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         float y = cy + 40;
 
-        // About card
+        // About card — clean rounded corners
         ctx.drawList.AddRectFilled(cx, y, cx + cw - 10, y + 200,
-                                    ACETheme::CardBg, 8.0f);
+                                    ACETheme::CardBg, 10.0f);
         ctx.drawList.AddText(cx + 16, y + 12, ACETheme::AccentBlue,
                              "AC Skin Changer");
         ctx.drawList.AddText(cx + 16, y + 32, ACETheme::TextSecondary,
@@ -573,8 +595,8 @@ namespace {
 
         ctx.drawList.AddRectFilledMultiColor(
             cx + 16, y + 74, cx + cw - 26, y + 75,
-            ACETheme::Border, ACETheme::Border,
-            ACE_COL32(40,40,55,0), ACE_COL32(40,40,55,0));
+            ACE_COL32(35, 35, 50, 0), ACE_COL32(35, 35, 50, 100),
+            ACE_COL32(35, 35, 50, 100), ACE_COL32(35, 35, 50, 0));
 
         ctx.drawList.AddText(cx + 16, y + 84, ACETheme::TextSecondary,
                              "Engine Components:");
@@ -598,7 +620,7 @@ namespace {
         // Stats card
         y += 216;
         ctx.drawList.AddRectFilled(cx, y, cx + cw - 10, y + 130,
-                                    ACETheme::CardBg, 8.0f);
+                                    ACETheme::CardBg, 10.0f);
         ctx.drawList.AddText(cx + 16, y + 12, ACETheme::AccentBlue,
                              "Statistics");
 
@@ -618,7 +640,7 @@ namespace {
         // Hotkeys card
         y += 146;
         ctx.drawList.AddRectFilled(cx, y, cx + cw - 10, y + 60,
-                                    ACETheme::CardBg, 8.0f);
+                                    ACETheme::CardBg, 10.0f);
         ctx.drawList.AddText(cx + 16, y + 12, ACETheme::AccentBlue,
                              "Hotkeys");
         ctx.drawList.AddText(cx + 16, y + 34, ACETheme::TextPrimary,
@@ -638,33 +660,35 @@ namespace Menu {
 
         ctx.BeginWindow("AC Skin Changer", mx, my, MENU_W, MENU_H, true);
 
-        // background
+        // Background with clean rounded corners
         ctx.drawList.AddRectFilled(ctx.wnd.x, ctx.wnd.y,
                                     ctx.wnd.x + ctx.wnd.w,
                                     ctx.wnd.y + ctx.wnd.h,
-                                    ACETheme::WindowBg, 10.0f);
+                                    ACE_COL32(13, 13, 18, 255), 12.0f);
 
-        // title bar
+        // Title bar
         ctx.drawList.AddRectFilledMultiColor(
             ctx.wnd.x, ctx.wnd.y,
             ctx.wnd.x + ctx.wnd.w, ctx.wnd.y + TITLE_H,
-            ACE_COL32(20,20,30,255), ACE_COL32(20,20,30,255),
-            ACE_COL32(15,15,20,255), ACE_COL32(15,15,20,255));
+            ACE_COL32(18, 18, 26, 255), ACE_COL32(18, 18, 26, 255),
+            ACE_COL32(14, 14, 20, 255), ACE_COL32(14, 14, 20, 255));
 
         ctx.drawList.AddTextShadow(ctx.wnd.x + SIDEBAR_W + 16,
                                     ctx.wnd.y + 12,
                                     ACETheme::TextPrimary,
                                     "AC SKIN CHANGER");
 
+        // Clean accent line under title
         ctx.drawList.AddRectFilledMultiColor(
             ctx.wnd.x, ctx.wnd.y + TITLE_H - 2,
             ctx.wnd.x + ctx.wnd.w, ctx.wnd.y + TITLE_H,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 200), ACE_COL32(139, 92, 246, 200),
+            ACE_COL32(139, 92, 246, 100), ACE_COL32(59, 130, 246, 100));
 
+        // Outer border - smooth rounding
         ctx.drawList.AddRect(ctx.wnd.x, ctx.wnd.y,
                               ctx.wnd.x + ctx.wnd.w, ctx.wnd.y + ctx.wnd.h,
-                              ACETheme::Border, 10.0f, 1.0f);
+                              ACE_COL32(35, 35, 50, 200), 12.0f, 1.0f);
 
         RenderSidebar(ctx);
 

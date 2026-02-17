@@ -287,7 +287,7 @@ void ACEDrawList::AddLine(float x1, float y1, float x2, float y2, uint32_t col, 
 
 void ACEDrawList::AddCircleFilled(float cx, float cy, float radius, uint32_t col, int segments) {
     if ((col & 0xFF000000) == 0 || radius <= 0) return;
-    if (segments <= 0) segments = std::max(8, (int)(radius * 0.5f));
+    if (segments <= 0) segments = std::max(24, (int)(radius * 1.5f));
     ACEVec2 uv = _WhiteUV();
 
     uint32_t centerIdx = (uint32_t)vtxBuffer.size();
@@ -309,7 +309,7 @@ void ACEDrawList::AddCircleFilled(float cx, float cy, float radius, uint32_t col
 
 void ACEDrawList::AddCircle(float cx, float cy, float radius, uint32_t col, int segments, float thickness) {
     if ((col & 0xFF000000) == 0 || radius <= 0) return;
-    if (segments <= 0) segments = std::max(8, (int)(radius * 0.5f));
+    if (segments <= 0) segments = std::max(24, (int)(radius * 1.5f));
 
     PathClear();
     for (int i = 0; i <= segments; i++) {
@@ -381,7 +381,7 @@ void ACEDrawList::PathClear() { _path.clear(); }
 void ACEDrawList::PathLineTo(float x, float y) { _path.push_back({x, y}); }
 
 void ACEDrawList::PathArcTo(float cx, float cy, float radius, float aMin, float aMax, int segments) {
-    if (segments <= 0) segments = std::max(4, (int)(radius * 0.3f));
+    if (segments <= 0) segments = std::max(12, (int)(radius * 0.8f));
     for (int i = 0; i <= segments; i++) {
         float a = aMin + (float)i / segments * (aMax - aMin);
         _path.push_back({ cx + cosf(a) * radius, cy + sinf(a) * radius });
@@ -395,11 +395,12 @@ void ACEDrawList::PathRect(float x1, float y1, float x2, float y2, float roundin
         PathLineTo(x2, y2); PathLineTo(x1, y2);
     } else {
         float r = std::min(rounding, std::min((x2-x1)*0.5f, (y2-y1)*0.5f));
-        // 4 arcs: top-left, top-right, bottom-right, bottom-left
-        PathArcTo(x1+r, y1+r, r, (float)M_PI,     (float)M_PI*1.5f, 8);
-        PathArcTo(x2-r, y1+r, r, (float)M_PI*1.5f, (float)M_PI*2.0f, 8);
-        PathArcTo(x2-r, y2-r, r, 0.0f,             (float)M_PI*0.5f, 8);
-        PathArcTo(x1+r, y2-r, r, (float)M_PI*0.5f, (float)M_PI,      8);
+        // Higher segment count for clean rounded corners
+        int segs = std::max(16, (int)(r * 1.2f));
+        PathArcTo(x1+r, y1+r, r, (float)M_PI,     (float)M_PI*1.5f, segs);
+        PathArcTo(x2-r, y1+r, r, (float)M_PI*1.5f, (float)M_PI*2.0f, segs);
+        PathArcTo(x2-r, y2-r, r, 0.0f,             (float)M_PI*0.5f, segs);
+        PathArcTo(x1+r, y2-r, r, (float)M_PI*0.5f, (float)M_PI,      segs);
     }
 }
 

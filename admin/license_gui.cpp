@@ -1,7 +1,8 @@
 /*
  * AC License Generator — Standalone GUI Application
- * NEVERLOSE-themed admin tool for generating, validating, and revoking licenses.
- * Uses ACE custom rendering engine (DX11) — same visual style as the skin changer.
+ * Clean dark UI matching AC subscription panel theme.
+ * Uses ACE custom rendering engine (DX11) — same visual style across all tools.
+ * Smooth rounded corners, no pixelated edges.
  */
 
 #define WIN32_LEAN_AND_MEAN
@@ -235,47 +236,76 @@ static void RenderUI() {
     float H = (float)g_height;
 
     // Full-screen background
-    ctx.drawList.AddRectFilled(0, 0, W, H, ACETheme::WindowBg, 0);
+    ctx.drawList.AddRectFilled(0, 0, W, H, ACE_COL32(13, 13, 18, 255), 0);
 
-    // Window chrome
+    // Window chrome — clean rounded panel
     float mx = 20, my = 20;
     float mw = W - 40, mh = H - 40;
 
-    ctx.drawList.AddRectFilled(mx, my, mx + mw, my + mh, ACE_COL32(15, 15, 20, 255), 12.0f);
-    ctx.drawList.AddRect(mx, my, mx + mw, my + mh, ACETheme::Border, 12.0f, 1.0f);
+    ctx.drawList.AddRectFilled(mx, my, mx + mw, my + mh,
+                               ACE_COL32(15, 15, 20, 255), 12.0f);
+    ctx.drawList.AddRect(mx, my, mx + mw, my + mh,
+                         ACE_COL32(35, 35, 50, 200), 12.0f, 1.0f);
 
     // Title bar
     float titleH = 44;
     ctx.drawList.AddRectFilledMultiColor(
         mx, my, mx + mw, my + titleH,
-        ACE_COL32(20, 20, 30, 255), ACE_COL32(20, 20, 30, 255),
-        ACE_COL32(15, 15, 22, 255), ACE_COL32(15, 15, 22, 255));
-    ctx.drawList.AddTextShadow(mx + 18, my + 13, ACETheme::AccentBlue, "AC LICENSE GENERATOR");
+        ACE_COL32(18, 18, 26, 255), ACE_COL32(18, 18, 26, 255),
+        ACE_COL32(14, 14, 20, 255), ACE_COL32(14, 14, 20, 255));
+    ctx.drawList.AddTextShadow(mx + 18, my + 13, ACETheme::AccentBlue,
+                               "AC LICENSE GENERATOR");
     ctx.drawList.AddText(mx + mw - 100, my + 15, ACETheme::TextDim, "v3.0 Admin");
+
+    // Clean accent line
     ctx.drawList.AddRectFilledMultiColor(
         mx, my + titleH - 2, mx + mw, my + titleH,
-        ACETheme::AccentBlue, ACETheme::AccentPurple,
-        ACETheme::AccentPurple, ACETheme::AccentBlue);
+        ACE_COL32(59, 130, 246, 200), ACE_COL32(139, 92, 246, 200),
+        ACE_COL32(139, 92, 246, 100), ACE_COL32(59, 130, 246, 100));
 
     // Sidebar
     float sideW = 180;
     float sideY = my + titleH;
     float sideH = mh - titleH;
-    ctx.drawList.AddRectFilled(mx, sideY, mx + sideW, my + mh, ACETheme::SidebarBg, 0);
-    ctx.drawList.AddLine(mx + sideW, sideY, mx + sideW, my + mh, ACETheme::Border, 1.0f);
+    ctx.drawList.AddRectFilled(mx, sideY, mx + sideW, my + mh,
+                               ACE_COL32(16, 16, 22, 255), 0);
+    ctx.drawList.AddLine(mx + sideW, sideY, mx + sideW, my + mh,
+                         ACE_COL32(35, 35, 50, 100), 1.0f);
 
-    // Sidebar branding
-    ctx.drawList.AddText(mx + 16, sideY + 10, ACETheme::AccentBlue, "ADMIN PANEL");
-    ctx.drawList.AddText(mx + 16, sideY + 28, ACETheme::TextDim, "License Manager");
+    // Sidebar — AC Brand Logo
+    float logoSize = 38.0f;
+    float logoR = logoSize * 0.22f;
+    float logoX = mx + (sideW - logoSize) * 0.5f;
+    float logoLY = sideY + 10;
+
+    ctx.drawList.AddRectFilled(logoX, logoLY, logoX + logoSize, logoLY + logoSize,
+                               ACE_COL32(22, 35, 70, 255), logoR);
+    ctx.drawList.AddRect(logoX, logoLY, logoX + logoSize, logoLY + logoSize,
+                         ACE_COL32(59, 130, 246, 60), logoR, 1.0f);
+
+    const char* logoTxt = "AC";
+    ACEVec2 lts = ctx.drawList.font->CalcTextSize(logoTxt);
+    ctx.drawList.AddText(logoX + (logoSize - lts.x) * 0.5f,
+                         logoLY + (logoSize - lts.y) * 0.5f,
+                         ACE_COL32(70, 150, 255, 255), logoTxt);
+
+    // "Admin Panel" text
+    const char* adminTxt = "Admin Panel";
+    ACEVec2 ats = ctx.drawList.font->CalcTextSize(adminTxt);
+    ctx.drawList.AddText(mx + (sideW - ats.x) * 0.5f, logoLY + logoSize + 6,
+                         ACETheme::TextDim, adminTxt);
+
+    // Gradient separator
+    float sepY2 = logoLY + logoSize + 24;
     ctx.drawList.AddRectFilledMultiColor(
-        mx + 12, sideY + 48, mx + sideW - 12, sideY + 49,
-        ACETheme::AccentBlue, ACETheme::AccentPurple,
-        ACETheme::AccentPurple, ACETheme::AccentBlue);
+        mx + 12, sepY2, mx + sideW - 12, sepY2 + 1,
+        ACE_COL32(35, 35, 50, 0), ACE_COL32(59, 130, 246, 60),
+        ACE_COL32(59, 130, 246, 60), ACE_COL32(35, 35, 50, 0));
 
     // Sidebar buttons
     const char* pageNames[] = { "Generate", "Validate", "Manage", "About" };
     const char* pageIcons[] = { "+", "?", "L", "i" };
-    float btnY = sideY + 60;
+    float btnY = sepY2 + 10;
 
     for (int i = 0; i < 4; i++) {
         float btnH = 36;
@@ -308,13 +338,12 @@ static void RenderUI() {
     float botY = my + mh - 50;
     ctx.drawList.AddRectFilledMultiColor(
         mx + 12, botY, mx + sideW - 12, botY + 1,
-        ACETheme::Border, ACETheme::Border,
-        ACE_COL32(40, 40, 55, 0), ACE_COL32(40, 40, 55, 0));
+        ACE_COL32(35, 35, 50, 0), ACE_COL32(35, 35, 50, 100),
+        ACE_COL32(35, 35, 50, 100), ACE_COL32(35, 35, 50, 0));
     char statBuf[64];
     snprintf(statBuf, sizeof(statBuf), "%zu licenses", g_licenses.size());
     ctx.drawList.AddText(mx + 16, botY + 8, ACETheme::AccentGreen, statBuf);
     ctx.drawList.AddText(mx + 16, botY + 26, ACETheme::TextDim, "ACE Engine v3.0");
-
     // Content area
     float cx = mx + sideW + 16;
     float cy = my + titleH + 16;
@@ -325,13 +354,15 @@ static void RenderUI() {
     if (g_currentPage == 0) {
         ctx.drawList.AddTextShadow(cx, cy, ACETheme::TextPrimary, "Generate New License");
         ctx.drawList.AddRectFilledMultiColor(cx, cy + 20, cx + cw, cy + 21,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         // Card
         float cardY = cy + 36;
-        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 240, ACETheme::CardBg, 8.0f);
-        ctx.drawList.AddRect(cx, cardY, cx + cw, cardY + 240, ACETheme::Border, 8.0f, 1.0f);
+        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 240,
+                                   ACETheme::CardBg, 10.0f);
+        ctx.drawList.AddRect(cx, cardY, cx + cw, cardY + 240,
+                             ACE_COL32(35, 35, 50, 160), 10.0f, 1.0f);
 
         // Username
         ctx.drawList.AddText(cx + 16, cardY + 16, ACETheme::TextSecondary, "Username");
@@ -400,11 +431,12 @@ static void RenderUI() {
     else if (g_currentPage == 1) {
         ctx.drawList.AddTextShadow(cx, cy, ACETheme::TextPrimary, "Validate License");
         ctx.drawList.AddRectFilledMultiColor(cx, cy + 20, cx + cw, cy + 21,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         float cardY = cy + 36;
-        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 100, ACETheme::CardBg, 8.0f);
+        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 100,
+                                   ACETheme::CardBg, 10.0f);
 
         ctx.drawList.AddText(cx + 16, cardY + 16, ACETheme::TextSecondary, "License File Path");
         ctx.SetCursorPos(cx + 16 - ctx.wnd.x, cardY + 36 - ctx.wnd.y);
@@ -478,8 +510,8 @@ static void RenderUI() {
     else if (g_currentPage == 2) {
         ctx.drawList.AddTextShadow(cx, cy, ACETheme::TextPrimary, "License History");
         ctx.drawList.AddRectFilledMultiColor(cx, cy + 20, cx + cw, cy + 21,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         if (g_licenses.empty()) {
             ctx.drawList.AddText(cx + 20, cy + 50, ACETheme::TextDim,
@@ -521,11 +553,12 @@ static void RenderUI() {
     else if (g_currentPage == 3) {
         ctx.drawList.AddTextShadow(cx, cy, ACETheme::TextPrimary, "About");
         ctx.drawList.AddRectFilledMultiColor(cx, cy + 20, cx + cw, cy + 21,
-            ACETheme::AccentBlue, ACETheme::AccentPurple,
-            ACETheme::AccentPurple, ACETheme::AccentBlue);
+            ACE_COL32(59, 130, 246, 180), ACE_COL32(139, 92, 246, 180),
+            ACE_COL32(139, 92, 246, 60), ACE_COL32(59, 130, 246, 60));
 
         float cardY = cy + 36;
-        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 260, ACETheme::CardBg, 8.0f);
+        ctx.drawList.AddRectFilled(cx, cardY, cx + cw, cardY + 260,
+                                   ACETheme::CardBg, 10.0f);
 
         ctx.drawList.AddText(cx + 16, cardY + 12, ACETheme::AccentBlue, "AC License Generator");
         ctx.drawList.AddText(cx + 16, cardY + 32, ACETheme::TextSecondary,
@@ -535,8 +568,8 @@ static void RenderUI() {
 
         ctx.drawList.AddRectFilledMultiColor(
             cx + 16, cardY + 74, cx + cw - 16, cardY + 75,
-            ACETheme::Border, ACETheme::Border,
-            ACE_COL32(40, 40, 55, 0), ACE_COL32(40, 40, 55, 0));
+            ACE_COL32(35, 35, 50, 0), ACE_COL32(35, 35, 50, 100),
+            ACE_COL32(35, 35, 50, 100), ACE_COL32(35, 35, 50, 0));
 
         ctx.drawList.AddText(cx + 16, cardY + 84, ACETheme::TextSecondary, "Features:");
 
@@ -545,7 +578,7 @@ static void RenderUI() {
             "License validation & status check",
             "License revocation",
             "Configurable expiry (1-3650 days)",
-            "NEVERLOSE-themed dark UI",
+            "AC clean dark UI theme",
             "DX11 hardware-accelerated rendering",
             "Custom shader pipeline (HLSL)",
             "stb_truetype font rendering",
