@@ -2,102 +2,53 @@ name: Build CS2 Inventory Changer
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
     
-    strategy:
-      matrix:
-        build_type: [Release]
-        
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
     - name: Install dependencies
-      run: |
-        choco install cmake -y
-        
+      run: choco install cmake -y
+
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
-      
+
     - name: Create build directory
       run: mkdir build
 
     - name: Configure CMake
       run: |
         cd build
-        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-      
+        cmake .. -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+
     - name: Build project
       run: |
         cd build
-        cmake --build . --config ${{ matrix.build_type }} --verbose
-        
-    - name: Create Release Artifacts
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path release_package | Out-Null
-        
-        if (Test-Path -Path "build\bin\cs2inventory.exe") {
-          Copy-Item -Path "build\bin\cs2inventory.exe" -Destination "release_package\cs2inventory.exe" -Force
-          Write-Host "✓ cs2inventory.exe copied"
-        } else {
-          Write-Host "✗ cs2inventory.exe not found"
-        }
-        
-        if (Test-Path -Path "build\bin\cs2admin.exe") {
-          Copy-Item -Path "build\bin\cs2admin.exe" -Destination "release_package\cs2admin.exe" -Force
-          Write-Host "✓ cs2admin.exe copied"
-        } else {
-          Write-Host "✗ cs2admin.exe not found (optional)"
-        }
-        
-        $readmeLines = @(
-          "CS2 INVENTORY CHANGER - Release Package",
-          "",
-          "Single Executable:",
-          "- cs2inventory.exe: Complete application (loader + injection included)",
-          "- cs2admin.exe: License management tool (optional)",
-          "",
-          "Installation:",
-          "1. Place cs2inventory.exe anywhere",
-          "2. Obtain license.key from admin",
-          "3. Run cs2inventory.exe",
-          "4. Login with your account",
-          "5. Start CS2 game",
-          "6. Press INS to open menu",
-          "",
-          "Note: This is a single-file executable with all components built-in."
-        )
-        Set-Content -Path "release_package\README.txt" -Value $readmeLines -Force
-        Write-Host "✓ README.txt created"
-        
-    - name: Upload cs2inventory.exe
+        cmake --build . --config Release --verbose
+
+    - name: Upload cs2inventory.exe to Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/bin/cs2inventory.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifact (for debugging)
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: cs2inventory-exe
-        path: release_package/cs2inventory.exe
-        retention-days: 30
-        
-    - name: Upload cs2admin.exe
-      uses: actions/upload-artifact@v4
-      with:
-        name: cs2admin-tool
-        path: release_package/cs2admin.exe
-        retention-days: 30
-        
-    - name: Upload all artifacts as ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: CS2InventoryChanger-Complete
-        path: release_package/
+        path: build/bin/cs2inventory.exe
+
         retention-days: 30
 
     - name: Create Release
