@@ -8,117 +8,111 @@
 #include "../engine/ace_engine.h"
 
 // ============================================================================
-// HOOK INFRASTRUCTURE
+// TYPEDEFS & STATE (file-scope, internal linkage)
 // ============================================================================
-namespace {
-    typedef HRESULT(WINAPI* PresentFn)(IDXGISwapChain*, UINT, UINT);
-    typedef HRESULT(WINAPI* ResizeBuffersFn)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
+typedef HRESULT(WINAPI* PresentFn)(IDXGISwapChain*, UINT, UINT);
+typedef HRESULT(WINAPI* ResizeBuffersFn)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
 
-    PresentFn oPresent = nullptr;
-    ResizeBuffersFn oResizeBuffers = nullptr;
+static PresentFn oPresent = nullptr;
+static ResizeBuffersFn oResizeBuffers = nullptr;
+static bool engineInitialized = false;
+static LARGE_INTEGER perfFreq = {};
+static LARGE_INTEGER lastTime = {};
 
-    bool engineInitialized = false;
+// ============================================================================
+// VTABLE HOOK HELPER
+// ============================================================================
+struct VTableHook {
+    void** vtable = nullptr;
+    void* original = nullptr;
+    int index = 0;
+    DWORD oldProtect = 0;
 
-    // Timing
-    LARGE_INTEGER perfFreq;
-    LARGE_INTEGER lastTime;
-
-    struct VTableHook {
-        void** vtable = nullptr;
-        void* original = nullptr;
-        int index = 0;
-        DWORD oldProtect = 0;
-
-        bool Hook(void** vt, int idx, void* detour) {
-            vtable = vt;
-            index = idx;
-            original = vtable[index];
-            DWORD oldProt;
-            if (VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProt)) {
-                oldProtect = oldProt;
-                vtable[index] = detour;
-                return true;
-            }
-            return false;
+    bool Hook(void** vt, int idx, void* detour) {
+        vtable = vt;
+        index = idx;
+        original = vtable[index];
+        DWORD oldProt;
+        if (VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProt)) {
+            oldProtect = oldProt;
+            vtable[index] = detour;
+            return true;
         }
-
-        void Unhook() {
-            if (vtable && original) {
-                DWORD oldProt;
-                VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProt);
-                vtable[index] = original;
-                VirtualProtect(&vtable[index], sizeof(void*), oldProtect, &oldProt);
-                vtable = nullptr;
-                original = nullptr;
-            }
-        }
-    };
-
-    VTableHook presentHook;
-    VTableHook resizeHook;
-
-    // Forward declarations
-    LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    HRESULT WINAPI HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
-    HRESULT WINAPI HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount,
-                                        UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT Flags);
-
-    void InitEngine(IDXGISwapChain* pSwapChain) {
-        // Get device from swap chain
-        if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&G::pDevice))) {
-            LogMsg("Failed to get device from swap chain");
-            return;
-        }
-        G::pDevice->GetImmediateContext(&G::pContext);
-        G::pSwapChain = pSwapChain;
-
-        // Get game window
-        DXGI_SWAP_CHAIN_DESC desc;
-        pSwapChain->GetDesc(&desc);
-        G::gameWindow = desc.OutputWindow;
-
-        // Create render target
-        ID3D11Texture2D* backBuffer = nullptr;
-        pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-        if (backBuffer) {
-            G::pDevice->CreateRenderTargetView(backBuffer, nullptr, &G::pRenderTargetView);
-            backBuffer->Release();
-        }
-
-        // Initialize ACE engine (renderer + font + shaders)
-        if (!ACE::Initialize(G::pDevice, G::pContext)) {
-            LogMsg("FATAL: ACE engine initialization failed");
-            return;
-        }
-
-        // Hook WndProc
-        G::originalWndProc = (WNDPROC)SetWindowLongPtrA(G::gameWindow, GWLP_WNDPROC, (LONG_PTR)HookedWndProc);
-
-        // Setup timing
-        QueryPerformanceFrequency(&perfFreq);
-        QueryPerformanceCounter(&lastTime);
-
-        engineInitialized = true;
-        LogMsg("ACE engine initialized — custom rendering pipeline active");
+        return false;
     }
+
+    void Unhook() {
+        if (vtable && original) {
+            DWORD oldProt;
+            VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProt);
+            vtable[index] = original;
+            VirtualProtect(&vtable[index], sizeof(void*), oldProtect, &oldProt);
+            vtable = nullptr;
+            original = nullptr;
+        }
+    }
+};
+
+static VTableHook presentHook;
+static VTableHook resizeHook;
+
+// ============================================================================
+// FORWARD DECLARATIONS
+// ============================================================================
+static LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+static HRESULT WINAPI   HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
+static HRESULT WINAPI   HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount,
+                                             UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT Flags);
+
+// ============================================================================
+// ENGINE INITIALIZATION
+// ============================================================================
+static void InitEngine(IDXGISwapChain* pSwapChain) {
+    if (FAILED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void**)&G::pDevice))) {
+        LogMsg("Failed to get device from swap chain");
+        return;
+    }
+    G::pDevice->GetImmediateContext(&G::pContext);
+    G::pSwapChain = pSwapChain;
+
+    DXGI_SWAP_CHAIN_DESC desc;
+    pSwapChain->GetDesc(&desc);
+    G::gameWindow = desc.OutputWindow;
+
+    ID3D11Texture2D* backBuffer = nullptr;
+    pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    if (backBuffer) {
+        G::pDevice->CreateRenderTargetView(backBuffer, nullptr, &G::pRenderTargetView);
+        backBuffer->Release();
+    }
+
+    if (!ACE::Initialize(G::pDevice, G::pContext)) {
+        LogMsg("FATAL: ACE engine initialization failed");
+        return;
+    }
+
+    G::originalWndProc = (WNDPROC)SetWindowLongPtrA(G::gameWindow, GWLP_WNDPROC, (LONG_PTR)HookedWndProc);
+
+    QueryPerformanceFrequency(&perfFreq);
+    QueryPerformanceCounter(&lastTime);
+
+    engineInitialized = true;
+    LogMsg("ACE engine initialized — custom rendering pipeline active");
 }
 
 // ============================================================================
-// HOOKED WNDPROC — Custom Input System
+// HOOKED WNDPROC
 // ============================================================================
-LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    // Toggle menu with INSERT key
+static LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_KEYDOWN && wParam == VK_INSERT) {
         G::menuOpen = !G::menuOpen;
         LogMsg("Menu toggled: %s", G::menuOpen ? "OPEN" : "CLOSED");
         return 0;
     }
 
-    // When menu is open, feed input to ACE engine
     if (G::menuOpen && engineInitialized) {
         bool consumed = ACEProcessInput(ACE::gUI, (void*)hWnd, msg, (unsigned long long)wParam, (long long)lParam);
 
-        // Block game input for mouse/keyboard events when menu is open
         switch (msg) {
             case WM_MOUSEMOVE:
             case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
@@ -136,39 +130,31 @@ LRESULT CALLBACK HookedWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 }
 
 // ============================================================================
-// HOOKED PRESENT — Custom Render Pipeline
+// HOOKED PRESENT
 // ============================================================================
-HRESULT WINAPI HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
+static HRESULT WINAPI HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags) {
     if (!engineInitialized) {
         InitEngine(pSwapChain);
     }
 
     if (engineInitialized) {
-        // Apply skins each frame
         Inventory::ApplySkins();
 
-        // Calculate delta time
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
-        float deltaTime = (float)(now.QuadPart - lastTime.QuadPart) / perfFreq.QuadPart;
+        float deltaTime = (float)(now.QuadPart - lastTime.QuadPart) / (float)perfFreq.QuadPart;
         if (deltaTime > 0.1f) deltaTime = 0.016f;
         lastTime = now;
 
-        // Get display size
         DXGI_SWAP_CHAIN_DESC desc;
         pSwapChain->GetDesc(&desc);
-        float displayW = (float)desc.BufferDesc.Width;
-        float displayH = (float)desc.BufferDesc.Height;
 
-        // Begin ACE frame
-        ACE::NewFrame(displayW, displayH, deltaTime);
+        ACE::NewFrame((float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height, deltaTime);
 
-        // Render menu if open
         if (G::menuOpen) {
             Menu::Render();
         }
 
-        // End frame and render draw lists
         ACE::Render(G::pRenderTargetView, G::pContext);
     }
 
@@ -178,8 +164,8 @@ HRESULT WINAPI HookedPresent(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT
 // ============================================================================
 // HOOKED RESIZE BUFFERS
 // ============================================================================
-HRESULT WINAPI HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount,
-                                     UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT Flags) {
+static HRESULT WINAPI HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount,
+                                           UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT Flags) {
     if (G::pRenderTargetView) {
         G::pRenderTargetView->Release();
         G::pRenderTargetView = nullptr;
@@ -200,11 +186,10 @@ HRESULT WINAPI HookedResizeBuffers(IDXGISwapChain* pSwapChain, UINT BufferCount,
 }
 
 // ============================================================================
-// HOOKS NAMESPACE
+// PUBLIC API
 // ============================================================================
 namespace Hooks {
     bool Initialize() {
-        // Find game window first
         G::gameWindow = FindWindowA("SDL_app", nullptr);
         if (!G::gameWindow) G::gameWindow = FindWindowA(nullptr, "Counter-Strike 2");
         if (!G::gameWindow) {
@@ -223,7 +208,6 @@ namespace Hooks {
 
         LogMsg("Found CS2 window: 0x%p", (void*)G::gameWindow);
 
-        // Create dummy swap chain targeting game window for VTable hooking
         DXGI_SWAP_CHAIN_DESC scd = {};
         scd.BufferCount = 1;
         scd.BufferDesc.Width = 2;
@@ -252,18 +236,27 @@ namespace Hooks {
             return false;
         }
 
-        // Hook VTable
         void** scVtable = *reinterpret_cast<void***>(tmpSwapChain);
-        oPresent = (PresentFn)scVtable[8];
-        oResizeBuffers = (ResizeBuffersFn)scVtable[13];
+        oPresent = reinterpret_cast<PresentFn>(scVtable[8]);
+        oResizeBuffers = reinterpret_cast<ResizeBuffersFn>(scVtable[13]);
 
-        PresentFn pHooked = &HookedPresent;
-        ResizeBuffersFn rHooked = &HookedResizeBuffers;
-        presentHook.Hook(scVtable, 8, reinterpret_cast<void*>(pHooked));
-        resizeHook.Hook(scVtable, 13, reinterpret_cast<void*>(rHooked));
+        // Use memcpy to safely convert function pointers to void* (avoids MSVC WINAPI cast issues)
+        void* detourPresent;
+        void* detourResize;
+        {
+            auto fp = &HookedPresent;
+            auto fr = &HookedResizeBuffers;
+            memcpy(&detourPresent, &fp, sizeof(void*));
+            memcpy(&detourResize, &fr, sizeof(void*));
+        }
+        presentHook.Hook(scVtable, 8, detourPresent);
+        resizeHook.Hook(scVtable, 13, detourResize);
+
+        tmpContext->Release();
+        tmpDevice->Release();
+        tmpSwapChain->Release();
 
         LogMsg("DX11 hooks installed (Present @ 8, ResizeBuffers @ 13) — ACE pipeline");
-
         return true;
     }
 
