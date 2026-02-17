@@ -31,7 +31,7 @@ bool LoadUserConfig();
 bool SignUpUser();
 bool LoginUser();
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+int main(int argc, char* argv[]) {
     // Show console window
     AllocConsole();
     FILE* pCout = nullptr;
