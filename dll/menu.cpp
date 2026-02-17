@@ -90,31 +90,40 @@ namespace {
         ctx.drawList.AddLine(sx + SIDEBAR_W, sy, sx + SIDEBAR_W, sy + sh,
                              ACE_COL32(35, 35, 50, 100), 1.0f);
 
-        // AC Brand Logo — rounded square
-        float logoSize = 38.0f;
-        float logoR = logoSize * 0.22f;
-        float logoX = sx + (SIDEBAR_W - logoSize) * 0.5f;
-        float logoY = sy + 12;
-
-        ctx.drawList.AddRectFilled(logoX, logoY, logoX + logoSize, logoY + logoSize,
-                                   ACE_COL32(22, 35, 70, 255), logoR);
-        ctx.drawList.AddRect(logoX, logoY, logoX + logoSize, logoY + logoSize,
-                             ACE_COL32(59, 130, 246, 60), logoR, 1.0f);
-
+        // AC Brand Logo — standalone white text with blue shadow/glow (like NL)
         const char* logoTxt = "AC";
         ACEVec2 lts = ctx.drawList.font->CalcTextSize(logoTxt);
-        ctx.drawList.AddText(logoX + (logoSize - lts.x) * 0.5f,
-                             logoY + (logoSize - lts.y) * 0.5f,
-                             ACE_COL32(70, 150, 255, 255), logoTxt);
+        float logoCX = sx + SIDEBAR_W * 0.5f;
+        float logoCY = sy + 20;
+
+        // Multi-layer blue glow
+        for (int layer = 4; layer >= 1; layer--) {
+            float spread = (float)layer * 1.6f;
+            int alpha = (int)(25.0f * (1.0f - (float)layer / 5.0f));
+            uint32_t gc = ACE_COL32(59, 130, 246, alpha);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    if (dx || dy)
+                        ctx.drawList.AddText(logoCX - lts.x * 0.5f + dx * spread,
+                                             logoCY - lts.y * 0.5f + dy * spread, gc, logoTxt);
+        }
+        // Tight blue shadow
+        ctx.drawList.AddText(logoCX - lts.x * 0.5f, logoCY - lts.y * 0.5f + 1,
+                             ACE_COL32(59, 130, 246, 100), logoTxt);
+        ctx.drawList.AddText(logoCX - lts.x * 0.5f + 1, logoCY - lts.y * 0.5f,
+                             ACE_COL32(59, 130, 246, 70), logoTxt);
+        // White text on top
+        ctx.drawList.AddText(logoCX - lts.x * 0.5f, logoCY - lts.y * 0.5f,
+                             ACE_COL32(255, 255, 255, 255), logoTxt);
 
         // Version text below logo
         const char* verTxt = "v3.0";
         ACEVec2 vts = ctx.drawList.font->CalcTextSize(verTxt);
-        ctx.drawList.AddText(sx + (SIDEBAR_W - vts.x) * 0.5f, logoY + logoSize + 4,
+        ctx.drawList.AddText(sx + (SIDEBAR_W - vts.x) * 0.5f, logoCY + lts.y * 0.5f + 6,
                              ACETheme::TextDim, verTxt);
 
         // Subtle gradient separator
-        float sepY = logoY + logoSize + 22;
+        float sepY = logoCY + lts.y * 0.5f + 24;
         ctx.drawList.AddRectFilledMultiColor(
             sx + 12, sepY, sx + SIDEBAR_W - 12, sepY + 1,
             ACE_COL32(35, 35, 50, 0), ACE_COL32(59, 130, 246, 60),
