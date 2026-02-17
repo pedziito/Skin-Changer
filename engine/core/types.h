@@ -92,8 +92,8 @@ struct Vec2 {
 
     constexpr Vec2 Perpendicular() const { return {-y, x}; }
     static constexpr Vec2 Lerp(Vec2 a, Vec2 b, f32 t) { return a + (b - a) * t; }
-    static Vec2 Min(Vec2 a, Vec2 b) { return {std::min(a.x, b.x), std::min(a.y, b.y)}; }
-    static Vec2 Max(Vec2 a, Vec2 b) { return {std::max(a.x, b.x), std::max(a.y, b.y)}; }
+    static Vec2 Min(Vec2 a, Vec2 b) { return {(std::min)(a.x, b.x), (std::min)(a.y, b.y)}; }
+    static Vec2 Max(Vec2 a, Vec2 b) { return {(std::max)(a.x, b.x), (std::max)(a.y, b.y)}; }
 };
 
 struct Vec3 {
@@ -182,10 +182,10 @@ struct Rect {
     }
 
     static Rect Intersection(Rect a, Rect b) {
-        f32 x1 = std::max(a.x, b.x);
-        f32 y1 = std::max(a.y, b.y);
-        f32 x2 = std::min(a.Right(), b.Right());
-        f32 y2 = std::min(a.Bottom(), b.Bottom());
+        f32 x1 = (std::max)(a.x, b.x);
+        f32 y1 = (std::max)(a.y, b.y);
+        f32 x2 = (std::min)(a.Right(), b.Right());
+        f32 y2 = (std::min)(a.Bottom(), b.Bottom());
         if (x2 <= x1 || y2 <= y1) return {};
         return {x1, y1, x2 - x1, y2 - y1};
     }
