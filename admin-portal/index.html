@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS2 Admin Panel - License Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .login-page, .admin-panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #cbd5e1;
+            font-weight: 600;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #f1f5f9;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #475569, #64748b);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: rgba(72, 187, 120, 0.1);
+            border: 1px solid #48bb78;
+            color: #86efac;
+        }
+
+        .alert-error {
+            background: rgba(245, 101, 101, 0.1);
+            border: 1px solid #f56565;
+            color: #fca5a5;
+        }
+
+        .alert-warning {
+            background: rgba(237, 137, 54, 0.1);
+            border: 1px solid #ed8936;
+            color: #fed7aa;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .license-display {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #cbd5e1;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .copy-btn {
+            width: 100%;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: #475569;
+            margin-top: 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .table thead {
+            background: #0f172a;
+            border-bottom: 2px solid #334155;
+        }
+
+        .table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(72, 187, 120, 0.2);
+            color: #86efac;
+        }
+
+        .badge-revoked {
+            background: rgba(245, 101, 101, 0.2);
+            color: #fca5a5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Page -->
+        <div id="loginPage" class="login-page">
+            <div class="header">
+                <div class="logo">🔐</div>
+                <h1>CS2 Admin Panel</h1>
+            </div>
+
+            <div id="loginAlert"></div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="password">Admin Password</label>
+                    <input type="password" id="password" placeholder="Enter admin password" required autofocus>
+                </div>
+                <button type="submit">Login</button>
+            </form>
+
+            <div class="alert alert-warning" style="margin-top: 20px;">
+                <strong>Demo Credentials:</strong><br>
+                Password: <code>Mao770609</code>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminPanel" class="admin-panel hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <h1 style="margin: 0;">License Manager</h1>
+                <button class="logout-btn" onclick="handleLogout()" style="width: auto; padding: 8px 20px;">Logout</button>
+            </div>
+
+            <div id="panelAlert"></div>
+
+            <div class="tabs">
+                <button class="tab-button active" onclick="switchTab('generate')">Generate License</button>
+                <button class="tab-button" onclick="switchTab('validate')">Validate License</button>
+                <button class="tab-button" onclick="switchTab('manage')">Manage Licenses</button>
+            </div>
+
+            <!-- Generate License Tab -->
+            <div id="generate" class="tab-content active">
+                <form onsubmit="generateLicense(event)">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="e.g., player_name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="days">Validity (days)</label>
+                        <input type="number" id="days" value="30" min="1" max="365" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">Notes (optional)</label>
+                        <textarea id="notes" placeholder="License description..." rows="3"></textarea>
+                    </div>
+
+                    <button type="submit">Generate License</button>
+                </form>
+
+                <div id="generatedLicense"></div>
+            </div>
+
+            <!-- Validate License Tab -->
+            <div id="validate" class="tab-content">
+                <form onsubmit="validateLicense(event)">
+                    <div class="form-group">
+                        <label for="licenseKey">License Key</label>
+                        <textarea id="licenseKey" placeholder="Paste license content..." rows="5" required></textarea>
+                    </div>
+
+                    <button type="submit">Validate</button>
+                </form>
+
+                <div id="validationResult"></div>
+            </div>
+
+            <!-- Manage Licenses Tab -->
+            <div id="manage" class="tab-content">
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalLicenses">0</div>
+                        <div class="stat-label">Total Licenses</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="activeLicenses">0</div>
+                        <div class="stat-label">Active</div>
+                    </div>
+                </div>
+
+                <div id="licensesList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = 'Mao770609';
+        const STORAGE_KEY = 'cs2_licenses';
+        let isLoggedIn = false;
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+
+            if (password === ADMIN_PASSWORD) {
+                isLoggedIn = true;
+                localStorage.setItem('cs2_admin_session', 'true');
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('adminPanel').classList.remove('hidden');
+                loadLicenses();
+            } else {
+                showAlert('loginAlert', 'Invalid password', 'error');
+                document.getElementById('password').value = '';
+            }
+        }
+
+        function handleLogout() {
+            isLoggedIn = false;
+            localStorage.removeItem('cs2_admin_session');
+            document.getElementById('adminPanel').classList.add('hidden');
+            document.getElementById('loginPage').classList.remove('hidden');
+            document.getElementById('password').value = '';
+            document.getElementById('password').focus();
+        }
+
+        function generateLicenseKey() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let key = 'CS2-';
+            key += new Date().getFullYear() + '-';
+            for (let i = 0; i < 8; i++) {
+                key += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            key += '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-';
+            for (let i = 0; i < 8; i++) {
+                key += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return key;
+        }
+
+        function generateLicense(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const days = parseInt(document.getElementById('days').value);
+            const notes = document.getElementById('notes').value;
+
+            const now = new Date();
+            const expiry = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+            const licenseKey = generateLicenseKey();
+            const created = now.toISOString().replace('T', ' ').substring(0, 19);
+            const expiryDate = expiry.toISOString().replace('T', ' ').substring(0, 19);
+
+            const licenseContent = `${licenseKey}
+USERNAME=${username}
+CREATED=${created}
+EXPIRY=${expiryDate}
+ACTIVE=true`;
+
+            // Save to localStorage
+            const licenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            licenses.push({
+                key: licenseKey,
+                username: username,
+                created: created,
+                expiry: expiryDate,
+                active: true,
+                notes: notes
+            });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(licenses));
+
+            // Display result
+            const resultDiv = document.getElementById('generatedLicense');
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">License generated successfully!</div>
+                <strong>License Content:</strong>
+                <div class="license-display">${licenseContent}</div>
+                <button class="copy-btn" onclick="copyToClipboard(\`${licenseContent.replace(/\`/g, '\\`')}\`)">Copy to Clipboard</button>
+            `;
+
+            // Reset form
+            event.target.reset();
+            loadLicenses();
+            showAlert('panelAlert', 'License generated successfully!', 'success');
+        }
+
+        function validateLicense(event) {
+            event.preventDefault();
+
+            const content = document.getElementById('licenseKey').value.trim();
+            const lines = content.split('\n');
+
+            const resultDiv = document.getElementById('validationResult');
+
+            if (lines.length < 4) {
+                resultDiv.innerHTML = '<div class="alert alert-error">Invalid license format - not enough lines</div>';
+                return;
+            }
+
+            const key = lines[0];
+            let license = { key: key };
+
+            for (let i = 1; i < lines.length; i++) {
+                const [field, value] = lines[i].split('=');
+                if (field && value) {
+                    license[field.toLowerCase()] = value;
+                }
+            }
+
+            if (!key.startsWith('CS2-')) {
+                resultDiv.innerHTML = '<div class="alert alert-error">Invalid license key format</div>';
+                return;
+            }
+
+            const now = new Date();
+            const expiryDate = new Date(license.expiry);
+            const isExpired = expiryDate < now;
+            const isActive = license.active === 'true';
+
+            let html = '<div class="alert alert-success">License is VALID</div>';
+            html += '<div class="license-display">';
+            html += `<strong>Key:</strong> ${license.key}<br>`;
+            html += `<strong>Username:</strong> ${license.username}<br>`;
+            html += `<strong>Created:</strong> ${license.created}<br>`;
+            html += `<strong>Expiry:</strong> ${license.expiry}<br>`;
+            html += `<strong>Status:</strong> ${isActive ? 'ACTIVE' : 'REVOKED'}<br>`;
+            html += `<strong>Expired:</strong> ${isExpired ? 'YES' : 'NO'}<br>`;
+            html += '</div>';
+
+            resultDiv.innerHTML = html;
+        }
+
+        function loadLicenses() {
+            const licenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            const active = licenses.filter(l => l.active).length;
+
+            document.getElementById('totalLicenses').textContent = licenses.length;
+            document.getElementById('activeLicenses').textContent = active;
+
+            let html = '<table class="table"><thead><tr>';
+            html += '<th>Key</th><th>Username</th><th>Status</th><th>Action</th>';
+            html += '</tr></thead><tbody>';
+
+            licenses.forEach((license, idx) => {
+                const status = license.active ? 'ACTIVE' : 'REVOKED';
+                const badgeClass = license.active ? 'badge-active' : 'badge-revoked';
+                html += `<tr><td><code style="font-size: 11px;">${license.key}</code></td>`;
+                html += `<td>${license.username}</td>`;
+                html += `<td><span class="badge ${badgeClass}">${status}</span></td>`;
+                html += `<td>`;
+                if (license.active) {
+                    html += `<button class="btn-danger" style="width: auto; padding: 6px 12px; font-size: 11px;" onclick="revokeLicense(${idx})">Revoke</button>`;
+                }
+                html += `</td></tr>`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('licensesList').innerHTML = html;
+        }
+
+        function revokeLicense(idx) {
+            if (confirm('Revoke this license?')) {
+                const licenses = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+                licenses[idx].active = false;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(licenses));
+                loadLicenses();
+                showAlert('panelAlert', 'License revoked successfully', 'success');
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showAlert('panelAlert', 'Copied to clipboard!', 'success');
+            });
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function showAlert(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => {
+                element.innerHTML = '';
+            }, 5000);
+        }
+
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            if (localStorage.getItem('cs2_admin_session') === 'true') {
+                isLoggedIn = true;
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('adminPanel').classList.remove('hidden');
+                loadLicenses();
+            } else {
+                document.getElementById('password').focus();
+            }
+        });
+    </script>
+</body>
+</html>
