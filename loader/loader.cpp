@@ -44,7 +44,6 @@ static int                      g_height = 560;
 static constexpr int            CORNER_RADIUS = 14;
 
 static ACEFont      g_font;
-static ACEFont      g_fontLarge;  // For the AC logo
 static ACERenderer  g_renderer;
 static ACEUIContext g_ui;
 
@@ -377,15 +376,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 // ============================================================================
 // HELPER: Draw AC logo (white text + blue shadow/glow, standalone — no box)
 // ============================================================================
-static void DrawACLogo(ACEDrawList& dl, float cx, float cy, ACEFont* largeFont, ACEFont* smallFont) {
+static void DrawACLogo(ACEDrawList& dl, float cx, float cy) {
     const char* logoText = "AC";
-
-    // Use large font for logo if available, otherwise fallback
-    ACEFont* prevFont = dl.font;
-    if (largeFont && largeFont->fontSize > 0) {
-        dl.font = largeFont;
-    }
-
     ACEVec2 ts = dl.font->CalcTextSize(logoText);
 
     // Multi-layer blue glow behind text
@@ -393,7 +385,6 @@ static void DrawACLogo(ACEDrawList& dl, float cx, float cy, ACEFont* largeFont, 
         float spread = (float)layer * 1.8f;
         int alpha = (int)(30.0f * (1.0f - (float)layer / 6.0f));
         uint32_t glowCol = ACE_COL32(59, 130, 246, alpha);
-        // Draw glow in 8 directions
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 if (dx == 0 && dy == 0) continue;
@@ -413,8 +404,6 @@ static void DrawACLogo(ACEDrawList& dl, float cx, float cy, ACEFont* largeFont, 
     // White text on top
     dl.AddText(cx - ts.x * 0.5f, cy - ts.y * 0.5f,
                ACE_COL32(255, 255, 255, 255), logoText);
-
-    dl.font = prevFont;
 }
 
 // ============================================================================
@@ -603,7 +592,7 @@ static void RenderLoginScreen(ACEUIContext& ctx, float W, float H) {
     RenderWindowControls(ctx, W);
 
     // AC Logo — centered, standalone white text with blue glow
-    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f, &g_fontLarge, &g_font);
+    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f);
 
     // Tagline
     const char* tagline = "Skin Changer";
@@ -709,7 +698,7 @@ static void RenderSignupScreen(ACEUIContext& ctx, float W, float H) {
 
     RenderWindowControls(ctx, W);
 
-    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f, &g_fontLarge, &g_font);
+    DrawACLogo(ctx.drawList, W * 0.5f, 65.0f);
 
     const char* tagline = "Skin Changer";
     ACEVec2 tts = ctx.drawList.font->CalcTextSize(tagline);
@@ -822,7 +811,7 @@ static void RenderMainScreen(ACEUIContext& ctx, float W, float H) {
                          ACE_COL32(40, 40, 55, 80), 1.0f);
 
     // AC Logo in sidebar — white text, blue glow, no box
-    DrawACLogo(ctx.drawList, SIDEBAR_W * 0.5f, 36.0f, &g_fontLarge, &g_font);
+    DrawACLogo(ctx.drawList, SIDEBAR_W * 0.5f, 36.0f);
 
     // Separator under logo
     float sepY = 56;
@@ -1150,27 +1139,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         CleanupDevice(); return 1;
     }
 
-    // Large font for AC logo
-    const char* boldPaths[] = {
-        "C:\\Windows\\Fonts\\segoeuib.ttf",   // Segoe UI Bold
-        "C:\\Windows\\Fonts\\arialbd.ttf",    // Arial Bold
-        "C:\\Windows\\Fonts\\tahomabd.ttf",   // Tahoma Bold
-        "C:\\Windows\\Fonts\\segoeui.ttf",    // Fallback to regular
-        "C:\\Windows\\Fonts\\arial.ttf",
-    };
-    bool largeFontLoaded = false;
-    for (auto* p : boldPaths) {
-        if (g_fontLarge.LoadFromFile(p, 28.0f)) { largeFontLoaded = true; break; }
-    }
-    // If large font fails, we fall back to regular font in DrawACLogo
-
     g_renderer.CreateFontTexture(g_font);
-    if (largeFontLoaded) {
-        // We need a second texture for the large font — share atlas won't work
-        // For now, use the same atlas approach. The large font will use the regular font's atlas
-        // This requires the logo to use the regular font. We'll handle this in DrawACLogo.
-        g_renderer.CreateFontTexture(g_fontLarge);
-    }
 
     g_ui.drawList.font = &g_font;
     g_ui.overlayDrawList.font = &g_font;
@@ -1224,7 +1193,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     g_renderer.Shutdown();
     g_font.Free();
-    g_fontLarge.Free();
     CleanupDevice();
     DestroyWindow(g_hwnd);
     UnregisterClassA(wc.lpszClassName, hInstance);
