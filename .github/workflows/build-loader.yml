@@ -1,4 +1,4 @@
-name: Build CS2 Loader
+name: Build CS2 Inventory Changer
 
 on:
   push:
@@ -45,18 +45,11 @@ jobs:
       run: |
         New-Item -ItemType Directory -Force -Path release_package | Out-Null
         
-        if (Test-Path -Path "build\bin\cs2loader.exe") {
-          Copy-Item -Path "build\bin\cs2loader.exe" -Destination "release_package\cs2loader.exe" -Force
-          Write-Host "✓ cs2loader.exe copied"
+        if (Test-Path -Path "build\bin\cs2inventory.exe") {
+          Copy-Item -Path "build\bin\cs2inventory.exe" -Destination "release_package\cs2inventory.exe" -Force
+          Write-Host "✓ cs2inventory.exe copied"
         } else {
-          Write-Host "✗ cs2loader.exe not found"
-        }
-        
-        if (Test-Path -Path "build\bin\CS2Changer.dll") {
-          Copy-Item -Path "build\bin\CS2Changer.dll" -Destination "release_package\CS2Changer.dll" -Force
-          Write-Host "✓ CS2Changer.dll copied"
-        } else {
-          Write-Host "✗ CS2Changer.dll not found"
+          Write-Host "✗ cs2inventory.exe not found"
         }
         
         if (Test-Path -Path "build\bin\cs2admin.exe") {
@@ -67,36 +60,30 @@ jobs:
         }
         
         $readmeLines = @(
-          "CS2 SKIN CHANGER - Release Package",
+          "CS2 INVENTORY CHANGER - Release Package",
           "",
-          "Files:",
-          "- cs2loader.exe: Main loader application",
-          "- CS2Changer.dll: Game hook DLL",
+          "Single Executable:",
+          "- cs2inventory.exe: Complete application (loader + injection included)",
           "- cs2admin.exe: License management tool (optional)",
           "",
           "Installation:",
-          "1. Place cs2loader.exe and CS2Changer.dll in same folder",
+          "1. Place cs2inventory.exe anywhere",
           "2. Obtain license.key from admin",
-          "3. Run cs2loader.exe",
-          "4. Accept VAC warning",
+          "3. Run cs2inventory.exe",
+          "4. Login with your account",
           "5. Start CS2 game",
-          "6. Press INS to open menu"
+          "6. Press INS to open menu",
+          "",
+          "Note: This is a single-file executable with all components built-in."
         )
         Set-Content -Path "release_package\README.txt" -Value $readmeLines -Force
         Write-Host "✓ README.txt created"
         
-    - name: Upload cs2loader.exe
+    - name: Upload cs2inventory.exe
       uses: actions/upload-artifact@v4
       with:
-        name: cs2loader
-        path: release_package/cs2loader.exe
-        retention-days: 30
-        
-    - name: Upload CS2Changer.dll
-      uses: actions/upload-artifact@v4
-      with:
-        name: CS2Changer-dll
-        path: release_package/CS2Changer.dll
+        name: cs2inventory-exe
+        path: release_package/cs2inventory.exe
         retention-days: 30
         
     - name: Upload cs2admin.exe
@@ -109,7 +96,7 @@ jobs:
     - name: Upload all artifacts as ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: CS2Changer-Complete
+        name: CS2InventoryChanger-Complete
         path: release_package/
         retention-days: 30
 
@@ -120,19 +107,21 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: CS2 Loader ${{ github.ref }}
+        release_name: CS2 Inventory Changer ${{ github.ref }}
         body: |
-          CS2 Skin Changer Release
+          CS2 Inventory Changer Release
           
-          Files included:
-          - cs2loader.exe: Main loader application
-          - CS2Changer.dll: Game hook DLL
+          Single-File Executable:
+          - cs2inventory.exe: Complete application (all components built-in)
           - cs2admin.exe: License management tool
           
           Installation:
-          1. Place cs2loader.exe and CS2Changer.dll in same folder
+          1. Place cs2inventory.exe anywhere
           2. Obtain license.key from admin
-          3. Run cs2loader.exe
-          4. Accept VAC warning
+          3. Run cs2inventory.exe
+          4. Login with your account
           5. Start CS2 game
           6. Press INS to open menu
+          
+          This version includes everything needed in a single executable.
+

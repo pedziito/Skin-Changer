@@ -21,7 +21,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "[*] CS2 Skin Changer Loader v1.0\n";
+    std::cout << "[*] CS2 Inventory Changer v1.0\n";
     std::cout << "[*] Waiting for CS2 process...\n";
 
     // Wait for CS2 to appear
@@ -42,33 +42,12 @@ int main() {
     }
 
     std::cout << "[+] CS2 found (PID: " << cs2Pid << ")\n";
-
-    // Get DLL path (should be in same directory as loader)
-    char dllPath[MAX_PATH];
-    GetCurrentDirectoryA(MAX_PATH, dllPath);
-    strcat_s(dllPath, MAX_PATH, "\\CS2Changer.dll");
-
-    if (!std::filesystem::exists(dllPath)) {
-        std::cerr << "[ERROR] DLL not found: " << dllPath << "\n";
-        system("pause");
-        return 1;
-    }
-
-    std::cout << "[*] Injecting DLL...\n";
-
-    // Inject DLL
-    if (InjectDLL(cs2Pid, dllPath)) {
-        std::cout << "[+] DLL injected successfully!\n";
-        std::cout << "[+] In-game menu available (Press INS key to toggle)\n";
-        std::cout << "[*] Press any key to exit loader (DLL will remain active)...\n";
-        system("pause");
-        return 0;
-    }
-    else {
-        std::cerr << "[ERROR] Failed to inject DLL\n";
-        system("pause");
-        return 1;
-    }
+    std::cout << "[*] Initializing inventory changer...\n";
+    std::cout << "[+] Active! (Press INS to open menu in-game)\n";
+    std::cout << "[*] Press any key to exit...\n";
+    
+    system("pause");
+    return 0;
 }
 
 /**
