@@ -191,7 +191,7 @@ struct TypeAutoRegistrar {
  * Creates a PropertyInfo entry for a struct member.
  */
 #define ACE_FIELD_5(member, desc, flags, min_val, max_val) \
-    [&]() { \
+    []() { \
         ace::PropertyInfo pi{}; \
         pi.name = #member; \
         pi.description = desc; \
@@ -233,7 +233,8 @@ struct TypeAutoRegistrar {
         td.name = #TypeName; \
         td.id = ace::Hash(#TypeName); \
         td.size = sizeof(TypeName); \
-        td.properties = { __VA_ARGS__ }; \
+        const ace::PropertyInfo _ace_props[] = { ACE_EXPAND_ARGS(__VA_ARGS__) }; \
+        td.properties.assign(_ace_props, _ace_props + sizeof(_ace_props)/sizeof(_ace_props[0])); \
         return td; \
     } \
     static inline ace::TypeAutoRegistrar _ace_reg_##TypeName{ TypeName::GetTypeDescriptor() };
