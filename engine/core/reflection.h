@@ -183,34 +183,47 @@ struct TypeAutoRegistrar {
 };
 
 // ============================================================================
+// REFLECTION HELPERS — Lambda-free for MSVC compatibility
+// ============================================================================
+template<typename T>
+inline PropertyInfo MakePropertyImpl(
+    std::string_view name, std::string_view desc,
+    PropFlags flags, size_t offset, size_t sz,
+    f32 rangeMin, f32 rangeMax)
+{
+    PropertyInfo pi{};
+    pi.name = name;
+    pi.description = desc;
+    pi.type = DeducePropType<T>();
+    pi.flags = flags;
+    pi.offset = offset;
+    pi.size = sz;
+    pi.rangeMin = rangeMin;
+    pi.rangeMax = rangeMax;
+    return pi;
+}
+
+inline std::vector<PropertyInfo> MakePropertyList(
+    std::initializer_list<PropertyInfo> list)
+{
+    return std::vector<PropertyInfo>(list);
+}
+
+// ============================================================================
 // REFLECTION MACROS
 // ============================================================================
 
 /**
  * ACE_FIELD(member, description, [flags], [min], [max])
  * Creates a PropertyInfo entry for a struct member.
+ * Uses a template helper function instead of immediately-invoked lambdas
+ * to avoid MSVC C2106 bugs with IIFEs inside braced initializer lists.
  */
 #define ACE_FIELD_5(member, desc, flags, min_val, max_val) \
-    []() { \
-        ace::PropertyInfo pi{}; \
-        pi.name = #member; \
-        pi.description = desc; \
-        pi.type = ace::DeducePropType<decltype(Self::member)>(); \
-        pi.flags = flags; \
-        pi.offset = offsetof(Self, member); \
-        pi.size = sizeof(decltype(Self::member)); \
-        pi.rangeMin = min_val; \
-        pi.rangeMax = max_val; \
-        pi.getter = [](const void* obj, void* out) { \
-            *static_cast<decltype(Self::member)*>(out) = \
-                static_cast<const Self*>(obj)->member; \
-        }; \
-        pi.setter = [](void* obj, const void* in) { \
-            static_cast<Self*>(obj)->member = \
-                *static_cast<const decltype(Self::member)*>(in); \
-        }; \
-        return pi; \
-    }()
+    ace::MakePropertyImpl<decltype(Self::member)>( \
+        #member, desc, flags, \
+        offsetof(Self, member), sizeof(decltype(Self::member)), \
+        min_val, max_val)
 
 #define ACE_FIELD_3(member, desc, flags) ACE_FIELD_5(member, desc, flags, 0.0f, 1.0f)
 #define ACE_FIELD_2(member, desc)        ACE_FIELD_5(member, desc, ace::PropFlags::None, 0.0f, 1.0f)
@@ -225,6 +238,8 @@ struct TypeAutoRegistrar {
 /**
  * ACE_REFLECT(StructName, properties...)
  * Place inside your struct to generate a static TypeDescriptor and auto-register it.
+ * Uses MakePropertyList() so __VA_ARGS__ expands inside a function call
+ * rather than a braced initializer list (avoids MSVC preprocessor bugs).
  */
 #define ACE_REFLECT(TypeName, ...) \
     using Self = TypeName; \
@@ -233,8 +248,7 @@ struct TypeAutoRegistrar {
         td.name = #TypeName; \
         td.id = ace::Hash(#TypeName); \
         td.size = sizeof(TypeName); \
-        const ace::PropertyInfo _ace_props[] = { ACE_EXPAND_ARGS(__VA_ARGS__) }; \
-        td.properties.assign(_ace_props, _ace_props + sizeof(_ace_props)/sizeof(_ace_props[0])); \
+        td.properties = ace::MakePropertyList({ __VA_ARGS__ }); \
         return td; \
     } \
     static inline ace::TypeAutoRegistrar _ace_reg_##TypeName{ TypeName::GetTypeDescriptor() };
