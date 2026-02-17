@@ -8,7 +8,7 @@
 
 // ============================================================================
 //  CS2 In-Game Overlay Menu
-//  Opens/closes with INSERT key
+//  Opens/closes with O key
 //  Dark, clean overlay rendered via transparent GDI window
 // ============================================================================
 

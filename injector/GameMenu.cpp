@@ -1,6 +1,6 @@
 // ============================================================================
 //  CS2 In-Game Overlay Menu  –  Full Implementation
-//  INSERT key toggles the menu overlay on top of CS2
+//  O key toggles the menu overlay on top of CS2
 // ============================================================================
 #include "GameMenu.h"
 #include <iostream>
@@ -254,7 +254,7 @@ void GameMenu::Render(HDC hdc, int winW, int winH) {
 
     // Footer
     int footerY = my + MENU_HEIGHT - 24;
-    DrawText_(hdc, "INSERT = Luk  |  Pile = V\xE6lg  |  Tab = Skift  |  ENTER = Aktiver",
+    DrawText_(hdc, "O = Luk  |  Pile = V\xE6lg  |  Tab = Skift  |  ENTER = Aktiver",
               mx + MENU_PAD, footerY, MENU_WIDTH - MENU_PAD * 2, 20,
               MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
 }
@@ -470,7 +470,7 @@ void GameMenu::DrawAboutTab(HDC hdc, int x, int y, int w, int h) {
     }
 
     py += 16;
-    DrawText_(hdc, "Tryk INSERT for at lukke menuen", x + MENU_PAD, py, cw, 18,
+    DrawText_(hdc, "Tryk O for at lukke menuen", x + MENU_PAD, py, cw, 18,
               MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
 }
 
@@ -501,6 +501,18 @@ bool OverlayWindow::Create(HMODULE hModule) {
         // Try alternative class name
         m_gameHwnd = FindWindowA("SDL_app", nullptr);
     }
+    if (!m_gameHwnd) {
+        // Enumerate windows for partial title match
+        EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
+            char title[256];
+            GetWindowTextA(hwnd, title, 256);
+            if (strstr(title, "Counter-Strike") || strstr(title, "CS2")) {
+                *(HWND*)lp = hwnd;
+                return FALSE;
+            }
+            return TRUE;
+        }, (LPARAM)&m_gameHwnd);
+    }
 
     // Register overlay window class
     WNDCLASSEXA wc = { sizeof(wc) };
@@ -529,14 +541,16 @@ bool OverlayWindow::Create(HMODULE hModule) {
 
     if (!m_hwnd) return false;
 
-    // Make window transparent (colour key = RGB(0,0,0) is transparent)
-    SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
+    // Make window transparent (magenta is the transparent colour key)
+    SetLayeredWindowAttributes(m_hwnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
 
     // Initialise menu
     if (!m_menu.Initialize(hModule)) return false;
 
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
+    SetForegroundWindow(m_hwnd);
+    BringWindowToTop(m_hwnd);
 
     m_running = true;
     return true;
@@ -589,10 +603,10 @@ void OverlayWindow::RunFrame() {
         ShowMenu();
     }
 
-    // Check INSERT key (VK_INSERT = 0x2D)
-    static bool insWasDown = false;
-    bool insDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
-    if (insDown && !insWasDown) {
+    // Check O key to toggle menu
+    static bool keyWasDown = false;
+    bool keyDown = (GetAsyncKeyState('O') & 0x8000) != 0;
+    if (keyDown && !keyWasDown) {
         if (m_menu.IsVisible()) {
             // Hide menu, make window click-through
             m_menu.Toggle();
@@ -603,7 +617,7 @@ void OverlayWindow::RunFrame() {
             ShowMenu();
         }
     }
-    insWasDown = insDown;
+    keyWasDown = keyDown;
 
     // Process menu input
     m_menu.ProcessInput();
@@ -635,8 +649,8 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
         SelectObject(mem, bmp);
 
-        // Clear to colour key (transparent)
-        HBRUSH bg = CreateSolidBrush(RGB(0, 0, 0));
+        // Clear to colour key (magenta = transparent)
+        HBRUSH bg = CreateSolidBrush(RGB(255, 0, 255));
         FillRect(mem, &rc, bg);
         DeleteObject(bg);
 
