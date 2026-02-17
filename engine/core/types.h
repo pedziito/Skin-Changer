@@ -103,7 +103,15 @@ struct Vec3 {
     constexpr Vec3 operator+(Vec3 b) const { return {x + b.x, y + b.y, z + b.z}; }
     constexpr Vec3 operator-(Vec3 b) const { return {x - b.x, y - b.y, z - b.z}; }
     constexpr Vec3 operator*(f32 s)  const { return {x * s, y * s, z * s}; }
+    constexpr Vec3 operator/(f32 s)  const { return {x / s, y / s, z / s}; }
     constexpr f32  Dot(Vec3 b) const { return x * b.x + y * b.y + z * b.z; }
+    constexpr f32  LenSq()    const { return x * x + y * y + z * z; }
+    f32            Len()      const { return std::sqrt(LenSq()); }
+    Vec3           Normalized() const { f32 l = Len(); return l > 0 ? *this / l : Vec3{}; }
+    constexpr Vec3 Cross(Vec3 b) const {
+        return {y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x};
+    }
+    static constexpr Vec3 Lerp(Vec3 a, Vec3 b, f32 t) { return a + (b - a) * t; }
 };
 
 struct Vec4 {
@@ -111,6 +119,7 @@ struct Vec4 {
     constexpr Vec4() = default;
     constexpr Vec4(f32 x, f32 y, f32 z, f32 w) : x(x), y(y), z(z), w(w) {}
     constexpr Vec4 operator+(Vec4 b) const { return {x + b.x, y + b.y, z + b.z, w + b.w}; }
+    constexpr Vec4 operator-(Vec4 b) const { return {x - b.x, y - b.y, z - b.z, w - b.w}; }
     constexpr Vec4 operator*(f32 s) const  { return {x * s, y * s, z * s, w * s}; }
     static constexpr Vec4 Lerp(Vec4 a, Vec4 b, f32 t) { return a + (b - a) * t; }
 };

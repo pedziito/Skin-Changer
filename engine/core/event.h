@@ -239,6 +239,7 @@ struct MouseButtonEvent {
     i32  button;
     bool pressed;
     Vec2 position;
+    bool shift{false}, ctrl{false}, alt{false};
     mutable bool consumed{false};
 };
 

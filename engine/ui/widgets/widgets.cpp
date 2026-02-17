@@ -3,6 +3,7 @@
  */
 
 #include "widgets.h"
+#include "../../input/input_system.h"
 
 namespace ace {
 

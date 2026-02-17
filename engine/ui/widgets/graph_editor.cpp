@@ -3,6 +3,7 @@
  */
 
 #include "graph_editor.h"
+#include "../../input/input_system.h"
 #include <algorithm>
 #include <cmath>
 

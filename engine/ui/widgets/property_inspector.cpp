@@ -29,14 +29,14 @@ void PropertyInspector::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
     for (i32 i = 0; i < (i32)_typeDesc->properties.size(); ++i) {
         auto& prop = _typeDesc->properties[i];
 
-        if (HasFlag(prop.flags, PropFlags::Hidden)) continue;
+        if (ace::HasFlag(prop.flags, PropFlags::Hidden)) continue;
 
         Rect rowRect{bounds.x, y, bounds.w, _rowHeight};
 
         // Only draw visible rows
         if (rowRect.Bottom() > bounds.y && rowRect.y < bounds.Bottom()) {
             // Separator check
-            if (HasFlag(prop.flags, PropFlags::Separator)) {
+            if (ace::HasFlag(prop.flags, PropFlags::Separator)) {
                 drawList.AddFilledRect(
                     {rowRect.x + 4, rowRect.Center().y, rowRect.w - 8, 1},
                     theme.GetColor(ThemeToken::BorderSecondary));
@@ -44,7 +44,7 @@ void PropertyInspector::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
                 continue;
             }
 
-            if (HasFlag(prop.flags, PropFlags::Header)) {
+            if (ace::HasFlag(prop.flags, PropFlags::Header)) {
                 drawList.AddFilledRect(rowRect, theme.GetColor(ThemeToken::BgTertiary));
                 // Draw header text (via font atlas in real usage)
                 y += _rowHeight;
@@ -79,7 +79,7 @@ void PropertyInspector::DrawProperty(const PropertyInfo& prop, Rect rowRect,
         theme.GetColor(ThemeToken::TextSecondary).WithAlpha(40));
 
     // Type-specific editor
-    if (HasFlag(prop.flags, PropFlags::ReadOnly)) {
+    if (ace::HasFlag(prop.flags, PropFlags::ReadOnly)) {
         drawList.AddFilledRect(editorRect.Shrink(2), theme.GetColor(ThemeToken::BgTertiary));
         return;
     }
@@ -121,7 +121,7 @@ void PropertyInspector::DrawIntEditor(const PropertyInfo& prop, Rect editorRect,
                                        DrawList& drawList, const ThemeEngine& theme) {
     Rect fieldRect = editorRect.Shrink(2);
 
-    if (HasFlag(prop.flags, PropFlags::DragInt)) {
+    if (ace::HasFlag(prop.flags, PropFlags::DragInt)) {
         // Drag-style integer editor
         int value = prop.GetValue<int>(_target);
         f32 t = math::InvLerp(prop.rangeMin, prop.rangeMax, (f32)value);
@@ -141,7 +141,7 @@ void PropertyInspector::DrawFloatEditor(const PropertyInfo& prop, Rect editorRec
                                          DrawList& drawList, const ThemeEngine& theme) {
     Rect fieldRect = editorRect.Shrink(2);
 
-    if (HasFlag(prop.flags, PropFlags::Slider)) {
+    if (ace::HasFlag(prop.flags, PropFlags::Slider)) {
         f32 value = prop.GetValue<f32>(_target);
         f32 t = math::InvLerp(prop.rangeMin, prop.rangeMax, value);
         t = math::Saturate(t);
@@ -210,7 +210,7 @@ bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
 
     for (i32 i = 0; i < (i32)_typeDesc->properties.size(); ++i) {
         auto& prop = _typeDesc->properties[i];
-        if (HasFlag(prop.flags, PropFlags::Hidden | PropFlags::ReadOnly)) continue;
+        if (ace::HasFlag(prop.flags, PropFlags::Hidden | PropFlags::ReadOnly)) continue;
 
         Rect rowRect{bounds.x, y, bounds.w, _rowHeight};
         Rect editorRect{bounds.x + bounds.w * _labelWidth, y, bounds.w * (1-_labelWidth), _rowHeight};
@@ -224,7 +224,7 @@ bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
             }
 
             if (prop.type == PropType::Float &&
-                (HasFlag(prop.flags, PropFlags::Slider) || HasFlag(prop.flags, PropFlags::DragFloat))) {
+                (ace::HasFlag(prop.flags, PropFlags::Slider) || ace::HasFlag(prop.flags, PropFlags::DragFloat))) {
                 _editingProperty = i;
                 _isDragging = true;
                 _dragStartValue = prop.GetValue<f32>(_target);
@@ -232,7 +232,7 @@ bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
                 return true;
             }
 
-            if (prop.type == PropType::Int && HasFlag(prop.flags, PropFlags::DragInt)) {
+            if (prop.type == PropType::Int && ace::HasFlag(prop.flags, PropFlags::DragInt)) {
                 _editingProperty = i;
                 _isDragging = true;
                 _dragStartValue = (f32)prop.GetValue<int>(_target);

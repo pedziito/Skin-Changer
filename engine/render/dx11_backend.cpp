@@ -274,6 +274,10 @@ void DX11Backend::DestroyTexture(TextureHandle handle) {
 // ============================================================================
 // RENDER TARGET
 // ============================================================================
+RenderTargetHandle DX11Backend::CreateRenderTarget(u32 width, u32 height) {
+    return CreateRenderTarget(RenderTargetDesc{width, height});
+}
+
 RenderTargetHandle DX11Backend::CreateRenderTarget(const RenderTargetDesc& desc) {
     RenderTarget rt{};
     rt.width = desc.width;

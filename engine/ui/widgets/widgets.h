@@ -168,7 +168,7 @@ class SeparatorWidget : public Widget {
 public:
     SeparatorWidget(bool horizontal = true) : Widget("Separator"), _horizontal(horizontal) {
         _layout.preferredSize = _horizontal ? Vec2{0, 1} : Vec2{1, 0};
-        _layout.flexGrow = _horizontal ? 1 : 0;
+        _layout.flexGrow = _horizontal ? 1.0f : 0.0f;
     }
 
     void OnDraw(DrawList& drawList, const ThemeEngine& theme) override {

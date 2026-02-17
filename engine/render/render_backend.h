@@ -16,7 +16,7 @@ namespace ace {
 // ============================================================================
 // FORWARD DECLARATIONS
 // ============================================================================
-struct FontAtlas;
+class FontAtlas;
 
 // ============================================================================
 // GPU RESOURCE HANDLES
@@ -249,6 +249,12 @@ struct TextureDesc {
 };
 
 // ============================================================================
+// RENDER TARGET HANDLE (forward declaration for IRenderBackend)
+// ============================================================================
+using RenderTargetHandle = u64;
+constexpr RenderTargetHandle INVALID_RT = 0;
+
+// ============================================================================
 // RENDER BACKEND INTERFACE — Implemented per graphics API
 // ============================================================================
 class IRenderBackend {
@@ -278,18 +284,19 @@ public:
     // Info
     virtual std::string GetBackendName() const = 0;
     virtual Vec2 GetViewportSize() const = 0;
+
+    // Render Targets
+    virtual RenderTargetHandle CreateRenderTarget(u32 width, u32 height) = 0;
+    virtual void DestroyRenderTarget(RenderTargetHandle handle) = 0;
 };
 
 // ============================================================================
-// RENDER TARGET (for multi-viewport / offscreen rendering)
+// RENDER TARGET DESCRIPTOR (for multi-viewport / offscreen rendering)
 // ============================================================================
 struct RenderTargetDesc {
     u32  width;
     u32  height;
     bool depthBuffer{false};
 };
-
-using RenderTargetHandle = u64;
-constexpr RenderTargetHandle INVALID_RT = 0;
 
 } // namespace ace

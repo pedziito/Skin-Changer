@@ -30,22 +30,22 @@ namespace easing {
         return t < 0.5f ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2) + 1;
     }
 
-    inline f32 InExpo(f32 t) { return t == 0 ? 0 : std::pow(2, 10*(t-1)); }
-    inline f32 OutExpo(f32 t) { return t == 1 ? 1 : 1 - std::pow(2, -10*t); }
+    inline f32 InExpo(f32 t) { return t == 0 ? 0 : static_cast<f32>(std::pow(2, 10*(t-1))); }
+    inline f32 OutExpo(f32 t) { return t == 1 ? 1 : 1 - static_cast<f32>(std::pow(2, -10*t)); }
     inline f32 InOutExpo(f32 t) {
         if (t == 0 || t == 1) return t;
         return t < 0.5f
-            ? std::pow(2, 20*t - 10) * 0.5f
-            : (2 - std::pow(2, -20*t + 10)) * 0.5f;
+            ? static_cast<f32>(std::pow(2, 20*t - 10)) * 0.5f
+            : (2 - static_cast<f32>(std::pow(2, -20*t + 10))) * 0.5f;
     }
 
     inline f32 InElastic(f32 t) {
         if (t == 0 || t == 1) return t;
-        return -std::pow(2, 10*t - 10) * std::sin((t*10 - 10.75f) * (math::TAU / 3));
+        return -static_cast<f32>(std::pow(2, 10*t - 10)) * std::sin((t*10 - 10.75f) * (math::TAU / 3));
     }
     inline f32 OutElastic(f32 t) {
         if (t == 0 || t == 1) return t;
-        return std::pow(2, -10*t) * std::sin((t*10 - 0.75f) * (math::TAU / 3)) + 1;
+        return static_cast<f32>(std::pow(2, -10*t)) * std::sin((t*10 - 0.75f) * (math::TAU / 3)) + 1;
     }
 
     inline f32 InBack(f32 t) {

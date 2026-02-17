@@ -3,6 +3,7 @@
  */
 
 #include "node_editor.h"
+#include "../../input/input_system.h"
 #include <algorithm>
 
 namespace ace {

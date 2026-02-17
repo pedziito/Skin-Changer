@@ -132,6 +132,9 @@ public:
     // Picking
     Vec3 ScreenToWorldRay(Vec2 screenPos) const;
 
+    // Allow ViewportManager to call protected methods
+    friend class ViewportManager;
+
 protected:
     void OnUpdate(f32 dt) override;
     void OnDraw(DrawList& drawList, const ThemeEngine& theme) override;

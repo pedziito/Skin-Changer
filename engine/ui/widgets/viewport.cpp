@@ -3,6 +3,7 @@
  */
 
 #include "viewport.h"
+#include "../../input/input_system.h"
 #include <cmath>
 #include <algorithm>
 

@@ -46,9 +46,12 @@ public:
     ID3D11Device*        GetDevice()  const { return _device.Get(); }
     ID3D11DeviceContext* GetContext() const { return _context.Get(); }
 
-    // Render target support
+    // Render target support (IRenderBackend interface)
+    RenderTargetHandle CreateRenderTarget(u32 width, u32 height) override;
+    void DestroyRenderTarget(RenderTargetHandle handle) override;
+
+    // DX11-specific render target API
     RenderTargetHandle CreateRenderTarget(const RenderTargetDesc& desc);
-    void DestroyRenderTarget(RenderTargetHandle handle);
     void BindRenderTarget(RenderTargetHandle handle);
     void UnbindRenderTarget();
     TextureHandle GetRenderTargetTexture(RenderTargetHandle handle);
