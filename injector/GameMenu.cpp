@@ -504,6 +504,7 @@ void GameMenu::DrawAboutTab(HDC hdc, int x, int y, int w, int h) {
 OverlayWindow::OverlayWindow()
     : m_hwnd(nullptr)
     , m_gameHwnd(nullptr)
+    , m_cs2Pid(0)
     , m_hModule(nullptr)
     , m_running(false)
     , m_autoShow(true) {
@@ -513,45 +514,101 @@ OverlayWindow::~OverlayWindow() {
     Destroy();
 }
 
+// Helper struct for EnumWindows callback
+struct FindCS2WndData {
+    DWORD  pid;
+    HWND   bestHwnd;
+    int    bestArea;
+};
+
+static BOOL CALLBACK FindCS2WndCallback(HWND hwnd, LPARAM lp) {
+    auto* data = (FindCS2WndData*)lp;
+    DWORD wndPid = 0;
+    GetWindowThreadProcessId(hwnd, &wndPid);
+    if (wndPid != data->pid) return TRUE;
+    // Skip invisible windows
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    RECT wr;
+    GetWindowRect(hwnd, &wr);
+    int w = wr.right - wr.left;
+    int h = wr.bottom - wr.top;
+    // Skip tiny or off-screen windows
+    if (w < 200 || h < 200) return TRUE;
+    if (wr.left > 10000 || wr.top > 10000) return TRUE;
+    if (wr.left < -10000 || wr.top < -10000) return TRUE;
+    int area = w * h;
+    char cls[128] = {}, ttl[256] = {};
+    GetClassNameA(hwnd, cls, 128);
+    GetWindowTextA(hwnd, ttl, 256);
+    DbgLog("  PID-enum: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d) area=%d",
+           (void*)hwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom, area);
+    if (area > data->bestArea) {
+        data->bestArea = area;
+        data->bestHwnd = hwnd;
+    }
+    return TRUE;
+}
+
 bool OverlayWindow::Create(HMODULE hModule) {
+    return Create(hModule, 0);
+}
+
+bool OverlayWindow::Create(HMODULE hModule, DWORD cs2Pid) {
     m_hModule = hModule;
+    m_cs2Pid = cs2Pid;
     g_pOverlay = this;
-    DbgLog("=== OverlayWindow::Create START ===");
+    DbgLog("=== OverlayWindow::Create START (PID=%d) ===", (int)cs2Pid);
 
-    // Find CS2 window
-    m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
-    DbgLog("FindWindowA(title='Counter-Strike 2') => %p", (void*)m_gameHwnd);
-    if (!m_gameHwnd) {
-        m_gameHwnd = FindWindowA("SDL_app", nullptr);
-        DbgLog("FindWindowA(class='SDL_app') => %p", (void*)m_gameHwnd);
+    // Strategy 1: Find by PID (most reliable)
+    if (cs2Pid != 0) {
+        DbgLog("Searching windows by PID %d...", (int)cs2Pid);
+        FindCS2WndData data = { cs2Pid, nullptr, 0 };
+        EnumWindows(FindCS2WndCallback, (LPARAM)&data);
+        m_gameHwnd = data.bestHwnd;
+        DbgLog("PID search result => %p (area=%d)", (void*)m_gameHwnd, data.bestArea);
     }
+
+    // Strategy 2: FindWindow by title
     if (!m_gameHwnd) {
-        DbgLog("Trying EnumWindows fallback...");
-        EnumWindows([](HWND hwnd, LPARAM lp) -> BOOL {
-            char title[256] = {};
-            GetWindowTextA(hwnd, title, 256);
-            if (strlen(title) > 0 && (strstr(title, "Counter-Strike") || strstr(title, "CS2"))) {
-                DbgLog("  EnumWindows match: hwnd=%p title='%s'", (void*)hwnd, title);
-                *(HWND*)lp = hwnd;
-                return FALSE;
+        m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
+        DbgLog("FindWindowA(title='Counter-Strike 2') => %p", (void*)m_gameHwnd);
+    }
+
+    // Strategy 3: FindWindow by class, but validate position
+    if (!m_gameHwnd) {
+        HWND sdlHwnd = FindWindowA("SDL_app", nullptr);
+        if (sdlHwnd) {
+            RECT wr; GetWindowRect(sdlHwnd, &wr);
+            DbgLog("FindWindowA(class='SDL_app') => %p rect=(%d,%d,%d,%d)",
+                   (void*)sdlHwnd, wr.left, wr.top, wr.right, wr.bottom);
+            // Only use if on-screen
+            if (wr.left < 10000 && wr.top < 10000 && wr.left > -10000 && wr.top > -10000) {
+                int w = wr.right - wr.left;
+                int h = wr.bottom - wr.top;
+                if (w >= 200 && h >= 200) {
+                    m_gameHwnd = sdlHwnd;
+                    DbgLog("SDL_app window accepted (on-screen, %dx%d)", w, h);
+                } else {
+                    DbgLog("SDL_app window REJECTED (too small: %dx%d)", w, h);
+                }
+            } else {
+                DbgLog("SDL_app window REJECTED (off-screen)");
             }
-            return TRUE;
-        }, (LPARAM)&m_gameHwnd);
-        DbgLog("EnumWindows result => %p", (void*)m_gameHwnd);
+        }
     }
 
-    if (!m_gameHwnd) {
-        DbgLog("ERROR: Could not find CS2 window! Proceeding with default 1920x1080.");
-    } else {
+    if (m_gameHwnd) {
         char cls[128] = {}, ttl[256] = {};
         GetClassNameA(m_gameHwnd, cls, 128);
         GetWindowTextA(m_gameHwnd, ttl, 256);
         RECT wr; GetWindowRect(m_gameHwnd, &wr);
-        DbgLog("CS2 window: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
+        DbgLog("Selected CS2 window: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
                (void*)m_gameHwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom);
         LONG style = GetWindowLong(m_gameHwnd, GWL_STYLE);
         LONG exstyle = GetWindowLong(m_gameHwnd, GWL_EXSTYLE);
         DbgLog("CS2 style=0x%08X exstyle=0x%08X", style, exstyle);
+    } else {
+        DbgLog("WARNING: No suitable CS2 window found! Using primary monitor.");
     }
 
     // Register overlay window class
@@ -564,10 +621,25 @@ bool OverlayWindow::Create(HMODULE hModule) {
     ATOM regResult = RegisterClassExA(&wc);
     DbgLog("RegisterClassExA => %d (LastError=%d)", regResult, (int)GetLastError());
 
-    // Get game window position / size
-    RECT gameRect = { 0, 0, 1920, 1080 };
+    // Get game window position / size (use primary monitor as fallback)
+    RECT gameRect = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
     if (m_gameHwnd) {
-        GetWindowRect(m_gameHwnd, &gameRect);
+        RECT wr;
+        GetWindowRect(m_gameHwnd, &wr);
+        // Validate the rect is sane
+        if (wr.left < 10000 && wr.top < 10000 && wr.left > -10000 && wr.top > -10000) {
+            int w = wr.right - wr.left;
+            int h = wr.bottom - wr.top;
+            if (w >= 200 && h >= 200) {
+                gameRect = wr;
+            } else {
+                DbgLog("Game window rect too small (%dx%d), using monitor", w, h);
+                m_gameHwnd = nullptr;
+            }
+        } else {
+            DbgLog("Game window rect off-screen (%d,%d), using monitor", wr.left, wr.top);
+            m_gameHwnd = nullptr;
+        }
     }
     int gw = gameRect.right  - gameRect.left;
     int gh = gameRect.bottom - gameRect.top;
@@ -632,15 +704,48 @@ void OverlayWindow::ShowMenu() {
 }
 
 void OverlayWindow::UpdatePosition() {
+    // Try to find the real CS2 window if we don't have one or it's invalid
     if (!m_gameHwnd || !IsWindow(m_gameHwnd)) {
-        m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
+        m_gameHwnd = nullptr;
+        // Search by PID first
+        if (m_cs2Pid != 0) {
+            FindCS2WndData data = { m_cs2Pid, nullptr, 0 };
+            EnumWindows(FindCS2WndCallback, (LPARAM)&data);
+            m_gameHwnd = data.bestHwnd;
+        }
+        // Fallback: by title
+        if (!m_gameHwnd) {
+            m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
+        }
         if (!m_gameHwnd) return;
+
+        // Log when we find a new window
+        static bool loggedNewWindow = false;
+        if (!loggedNewWindow) {
+            char cls[128] = {}, ttl[256] = {};
+            GetClassNameA(m_gameHwnd, cls, 128);
+            GetWindowTextA(m_gameHwnd, ttl, 256);
+            RECT wr; GetWindowRect(m_gameHwnd, &wr);
+            DbgLog("UpdatePosition: Found new CS2 window hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
+                   (void*)m_gameHwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom);
+            loggedNewWindow = true;
+        }
     }
 
     RECT gr;
     GetWindowRect(m_gameHwnd, &gr);
+
+    // Validate position is sane
+    if (gr.left > 10000 || gr.top > 10000 || gr.left < -10000 || gr.top < -10000) {
+        // Window is off-screen, use monitor instead
+        gr.left = 0; gr.top = 0;
+        gr.right = GetSystemMetrics(SM_CXSCREEN);
+        gr.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+
     int gw = gr.right  - gr.left;
     int gh = gr.bottom - gr.top;
+    if (gw < 200 || gh < 200) return;  // skip invalid sizes
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, gr.left, gr.top, gw, gh,
                  SWP_NOACTIVATE);

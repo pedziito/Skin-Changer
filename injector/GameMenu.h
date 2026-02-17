@@ -113,6 +113,7 @@ public:
     ~OverlayWindow();
 
     bool Create(HMODULE hModule);
+    bool Create(HMODULE hModule, DWORD cs2Pid);
     void Destroy();
     void RunFrame();
     void ShowMenu();   // Show menu and make window interactive
@@ -126,6 +127,7 @@ private:
 
     HWND      m_hwnd;
     HWND      m_gameHwnd;    // CS2 window handle
+    DWORD     m_cs2Pid;      // CS2 process ID for window search
     GameMenu  m_menu;
     HMODULE   m_hModule;
     bool      m_running;

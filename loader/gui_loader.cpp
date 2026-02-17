@@ -112,6 +112,7 @@ static HFONT fTitle, fBody, fSmall, fBtn, fLogo, fNav;
 // Overlay
 static OverlayWindow* g_pOverlayWnd  = nullptr;
 static volatile bool  g_overlayRunning = false;
+static DWORD          g_cs2Pid = 0;
 
 // ============================================================================
 //  Forward declarations
@@ -143,8 +144,8 @@ DWORD WINAPI OverlayThreadProc(LPVOID param) {
     DbgLog("=== OverlayThreadProc START ===");
     HINSTANCE hInst = (HINSTANCE)param;
     g_pOverlayWnd = new OverlayWindow();
-    DbgLog("Calling OverlayWindow::Create...");
-    if (!g_pOverlayWnd->Create((HMODULE)hInst)) {
+    DbgLog("Calling OverlayWindow::Create with PID=%d...", (int)g_cs2Pid);
+    if (!g_pOverlayWnd->Create((HMODULE)hInst, g_cs2Pid)) {
         DbgLog("ERROR: OverlayWindow::Create FAILED");
         delete g_pOverlayWnd;
         g_pOverlayWnd = nullptr;
@@ -880,6 +881,7 @@ bool LaunchGame(HWND hwnd) {
     if (!cs2) { SetStat("Fejl: CS2 ikke fundet!", C_RED); return false; }
 
     DbgLog("CS2 fundet! PID=%d", (int)cs2);
+    g_cs2Pid = cs2;  // Store for overlay thread
     SetStat("CS2 fundet! Forbereder...", C_TEXT2);
     Sleep(5000);
 
