@@ -12,61 +12,204 @@
         }
 
         :root {
-            --primary: #667eea;
-            --primary-dark: #5568d3;
-            --secondary: #764ba2;
-            --danger: #f56565;
-            --success: #48bb78;
-            --bg-dark: #0f172a;
-            --bg-surface: #1e293b;
-            --border: #334155;
-            --text: #f1f5f9;
-            --text-muted: #94a3b8;
+            --primary: #dc2626;
+            --primary-dark: #b91c1c;
+            --bg-dark: #0a0a0a;
+            --bg-surface: #1a1a1a;
+            --border: #2a2a2a;
+            --text: #ffffff;
+            --text-muted: #999999;
+            --success: #10b981;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-surface) 100%);
+            background: var(--bg-dark);
             color: var(--text);
             min-height: 100vh;
         }
 
-        .layout {
-            display: grid;
-            grid-template-columns: 250px 1fr;
+        .login-container {
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
 
-        /* Sidebar */
-        .sidebar {
+        .login-card {
+            width: 100%;
+            max-width: 400px;
             background: var(--bg-surface);
-            border-right: 1px solid var(--border);
-            padding: 30px 20px;
-            display: flex;
-            flex-direction: column;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 40px;
         }
 
         .logo {
+            width: 48px;
+            height: 48px;
+            background: var(--primary);
+            border-radius: 8px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--border);
+            justify-content: center;
+            margin-bottom: 24px;
         }
 
         .logo svg {
             width: 28px;
             height: 28px;
+            color: white;
+            stroke-width: 2;
         }
 
-        .logo h1 {
-            font-size: 16px;
+        .login-card h1 {
+            font-size: 24px;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .login-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(220, 38, 38, 0.05);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-danger {
+            background: #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #991b1b;
+        }
+
+        .btn-small {
+            padding: 8px 12px;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--success);
+            color: #86efac;
+        }
+
+        .alert-error {
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid #dc2626;
+            color: #fca5a5;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .sidebar-logo svg {
+            width: 24px;
+            height: 24px;
+            color: var(--primary);
+        }
+
+        .sidebar-logo h2 {
+            font-size: 14px;
+            font-weight: 700;
         }
 
         .nav {
@@ -80,54 +223,48 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 16px;
-            border-radius: 8px;
+            padding: 12px;
+            border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
-            border: 1px solid transparent;
             color: var(--text-muted);
-            font-size: 14px;
+            font-size: 13px;
+            border: 1px solid transparent;
         }
 
         .nav-item:hover {
-            background: rgba(102, 126, 234, 0.1);
+            background: var(--border);
             color: var(--text);
         }
 
         .nav-item.active {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+            background: rgba(220, 38, 38, 0.1);
             border-color: var(--primary);
             color: var(--primary);
         }
 
         .nav-item svg {
-            width: 20px;
-            height: 20px;
-            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
         }
 
         .logout-btn {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
-            background: var(--danger);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.2s;
             margin-top: auto;
+            padding: 12px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
         }
 
         .logout-btn:hover {
-            background: #e53e3e;
-            transform: translateY(-2px);
+            background: #991b1b;
         }
 
-        /* Main Content */
         .main {
             display: flex;
             flex-direction: column;
@@ -143,7 +280,7 @@
         }
 
         .header h2 {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 700;
         }
 
@@ -153,214 +290,63 @@
             overflow-y: auto;
         }
 
-        .login-page, .admin-content {
-            display: none;
-        }
-
-        .login-page.active, .admin-content.active {
-            display: block;
-        }
-
-        /* Login Page */
-        .login-container {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .login-card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 40px;
-            max-width: 400px;
-            width: 100%;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-        }
-
-        .login-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .login-icon {
-            width: 60px;
-            height: 60px;
-            margin: 0 auto 20px;
-            background: rgba(102, 126, 234, 0.1);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .login-icon svg {
-            width: 36px;
-            height: 36px;
-            color: var(--primary);
-        }
-
-        .login-header h1 {
-            font-size: 28px;
-            margin-bottom: 8px;
-        }
-
-        .login-header p {
-            color: var(--text-muted);
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        input, select, textarea {
-            width: 100%;
-            padding: 12px;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 14px;
-            font-family: inherit;
-            transition: all 0.2s;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: rgba(102, 126, 234, 0.05);
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            width: 100%;
-            margin-top: 10px;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.2);
-        }
-
-        .btn-secondary {
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            color: var(--text);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(102, 126, 234, 0.1);
-            border-color: var(--primary);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #e53e3e;
-        }
-
-        .btn-small {
-            padding: 8px 12px;
-            font-size: 12px;
-        }
-
-        /* Alert */
-        .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .alert.show {
-            display: block;
-        }
-
-        .alert-success {
-            background: rgba(72, 187, 120, 0.1);
-            border: 1px solid var(--success);
-            color: #86efac;
-        }
-
-        .alert-error {
-            background: rgba(245, 101, 101, 0.1);
-            border: 1px solid var(--danger);
-            color: #fca5a5;
-        }
-
-        /* Cards */
         .card {
             background: var(--bg-surface);
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 24px;
             margin-bottom: 20px;
         }
 
         .card-title {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             margin-bottom: 20px;
         }
 
-        /* Search & Filter */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .login-page, .admin-content {
+            display: none;
+        }
+
+        .login-page.active {
+            display: block;
+        }
+
+        .admin-content.active {
+            display: flex;
+        }
+
         .search-bar {
             display: flex;
             gap: 12px;
             margin-bottom: 20px;
         }
 
-        .search-bar input, .search-bar select {
+        .search-bar input {
             flex: 1;
         }
 
-        /* Table */
-        .table-wrapper {
-            overflow-x: auto;
+        .search-bar select {
+            flex: 1;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         thead {
             background: var(--bg-dark);
-            border-bottom: 2px solid var(--border);
+            border-bottom: 1px solid var(--border);
         }
 
         th {
@@ -369,7 +355,7 @@
             font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 11px;
         }
 
         td {
@@ -378,13 +364,12 @@
         }
 
         tbody tr:hover {
-            background: rgba(102, 126, 234, 0.05);
+            background: var(--border);
         }
 
-        /* Badge */
         .badge {
             display: inline-block;
-            padding: 4px 12px;
+            padding: 4px 8px;
             border-radius: 4px;
             font-size: 11px;
             font-weight: 600;
@@ -392,54 +377,24 @@
         }
 
         .badge-active {
-            background: rgba(72, 187, 120, 0.2);
+            background: rgba(16, 185, 129, 0.2);
             color: #86efac;
         }
 
         .badge-revoked {
-            background: rgba(245, 101, 101, 0.2);
+            background: rgba(220, 38, 38, 0.2);
             color: #fca5a5;
         }
 
         .badge-unlimited {
-            background: rgba(102, 126, 234, 0.2);
-            color: #93c5fd;
+            background: rgba(220, 38, 38, 0.2);
+            color: #fca5a5;
         }
 
-        /* Copy */
-        .copy-container {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-
-        .copy-field {
-            flex: 1;
-            display: flex;
-            gap: 8px;
-        }
-
-        .copy-field input {
-            flex: 1;
-        }
-
-        .copy-btn {
-            padding: 8px 16px;
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        /* Grid */
-        .grid-2 {
+        .stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
             margin-bottom: 20px;
         }
 
@@ -447,21 +402,62 @@
             background: var(--bg-dark);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 20px;
+            padding: 16px;
             text-align: center;
         }
 
         .stat-number {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
             color: var(--primary);
             margin-bottom: 8px;
         }
 
         .stat-label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
+        }
+
+        code {
+            background: var(--bg-dark);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            color: #fca5a5;
+        }
+
+        .copy-container {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .copy-btn {
+            padding: 8px 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        .info-box {
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 12px;
+            margin-top: 20px;
         }
 
         @media (max-width: 768px) {
@@ -477,12 +473,8 @@
                 flex-direction: column;
             }
 
-            table {
-                font-size: 12px;
-            }
-
-            th, td {
-                padding: 8px;
+            .stats {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -492,35 +484,27 @@
     <div id="loginPage" class="login-page active">
         <div class="login-container">
             <div class="login-card">
-                <div class="login-header">
-                    <div class="login-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                        </svg>
-                    </div>
-                    <h1>Admin Panel</h1>
-                    <p>License & HWID Management</p>
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
                 </div>
+                <h1>Admin Panel</h1>
+                <p>License Management</p>
 
                 <div id="loginAlert" class="alert"></div>
 
                 <form id="loginForm" onsubmit="handleLogin(event)">
                     <div class="form-group">
-                        <label>Admin Password</label>
-                        <input type="password" id="password" placeholder="Enter password" required autofocus>
+                        <label>Password</label>
+                        <input type="password" id="password" placeholder="Admin password" required autofocus>
                     </div>
-                    <button type="submit" class="btn btn-primary">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="23 6 13.46 15.54"></polyline>
-                            <path d="M1 6h15v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6z"></path>
-                        </svg>
-                        Login
-                    </button>
+                    <button type="submit" class="btn">Login</button>
                 </form>
 
-                <div style="margin-top: 20px; padding: 12px; background: rgba(237, 137, 54, 0.1); border: 1px solid rgba(237, 137, 54, 0.3); border-radius: 8px; font-size: 12px;">
-                    <strong>Demo:</strong> Mao770609
+                <div class="info-box" style="margin-top: 20px; text-align: center;">
+                    Demo: <code>Mao770609</code>
                 </div>
             </div>
         </div>
@@ -531,12 +515,12 @@
         <div class="layout">
             <!-- Sidebar -->
             <div class="sidebar">
-                <div class="logo">
+                <div class="sidebar-logo">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
-                    <h1>CS2 Admin</h1>
+                    <h2>CS2 Admin</h2>
                 </div>
 
                 <nav class="nav">
@@ -557,14 +541,7 @@
                     </div>
                 </nav>
 
-                <button class="logout-btn" onclick="handleLogout()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                        <polyline points="16 17 21 12 16 7"></polyline>
-                        <line x1="21" y1="12" x2="9" y2="12"></line>
-                    </svg>
-                    Logout
-                </button>
+                <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
 
             <!-- Main Content -->
@@ -577,9 +554,9 @@
                     <div id="generateAlert" class="alert"></div>
 
                     <!-- Generate Tab -->
-                    <div id="generate" class="tab-content">
+                    <div id="generate" class="tab-content active">
                         <div class="card">
-                            <div class="card-title">Create New License</div>
+                            <div class="card-title">Create New License Key</div>
 
                             <form onsubmit="generateLicense(event)">
                                 <div class="form-group">
@@ -595,22 +572,16 @@
                                 </div>
 
                                 <div class="form-group" id="customDaysGroup" style="display: none;">
-                                    <label>Custom Days (1-3650)</label>
-                                    <input type="number" id="customDays" min="1" max="3650" placeholder="Enter days">
+                                    <label>Days (1-3650)</label>
+                                    <input type="number" id="customDays" min="1" max="3650" placeholder="Enter number of days">
                                 </div>
 
                                 <div class="form-group">
                                     <label>Notes (Optional)</label>
-                                    <textarea id="notes" placeholder="Description, user info, etc." rows="4"></textarea>
+                                    <textarea id="notes" placeholder="User info, description..." rows="3"></textarea>
                                 </div>
 
-                                <button type="submit" class="btn btn-primary">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="12 5 12 19"></polyline>
-                                        <polyline points="5 12 19 12"></polyline>
-                                    </svg>
-                                    Generate License
-                                </button>
+                                <button type="submit" class="btn">Generate License</button>
                             </form>
                         </div>
 
@@ -618,11 +589,11 @@
                     </div>
 
                     <!-- Licenses Tab -->
-                    <div id="licenses" class="tab-content" style="display: none;">
-                        <div class="grid-2">
+                    <div id="licenses" class="tab-content">
+                        <div class="stats">
                             <div class="stat-box">
                                 <div class="stat-number" id="statsTotal">0</div>
-                                <div class="stat-label">Total Licenses</div>
+                                <div class="stat-label">Total</div>
                             </div>
                             <div class="stat-box">
                                 <div class="stat-number" id="statsActive">0</div>
@@ -631,10 +602,10 @@
                         </div>
 
                         <div class="card">
-                            <div class="card-title">Manage Licenses</div>
+                            <div class="card-title">All Licenses</div>
 
                             <div class="search-bar">
-                                <input type="text" id="searchInput" placeholder="Search by key or notes..." onkeyup="filterLicenses()">
+                                <input type="text" id="searchInput" placeholder="Search..." onkeyup="filterLicenses()">
                                 <select id="statusFilter" onchange="filterLicenses()">
                                     <option value="">All Status</option>
                                     <option value="active">Active</option>
@@ -642,21 +613,19 @@
                                 </select>
                             </div>
 
-                            <div class="table-wrapper">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>License Key</th>
-                                            <th>Status</th>
-                                            <th>Duration</th>
-                                            <th>HWID</th>
-                                            <th>Notes</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="licensesTable"></tbody>
-                                </table>
-                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>License Key</th>
+                                        <th>Status</th>
+                                        <th>Duration</th>
+                                        <th>HWID</th>
+                                        <th>Notes</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="licensesTable"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -783,21 +752,21 @@ ACTIVE=true`;
             const resultDiv = document.getElementById('generatedResult');
             resultDiv.innerHTML = `
                 <div class="card">
-                    <div style="background: rgba(72, 187, 120, 0.1); border: 1px solid #48bb78; padding: 12px; border-radius: 8px; margin-bottom: 20px; color: #86efac; font-size: 14px;">
-                        Generated successfully! Username is set when user registers a profile.
+                    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); padding: 12px; border-radius: 6px; margin-bottom: 20px; color: #86efac; font-size: 13px;">
+                        ✓ License generated! Username is set when user signs up.
                     </div>
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">License Key</label>
+                    <div style="margin-bottom: 16px;">
+                        <label>License Key</label>
                         <div class="copy-container">
-                            <input type="text" value="${licenseKey}" readonly style="background: var(--bg-dark); cursor: text;">
-                            <button class="copy-btn" onclick="copyToClipboard('${licenseKey}')">Copy</button>
+                            <input type="text" value="${licenseKey}" readonly>
+                            <button type="button" class="copy-btn" onclick="copyToClipboard('${licenseKey}')">Copy</button>
                         </div>
                     </div>
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Full License File</label>
-                        <textarea readonly style="background: var(--bg-dark); min-height: 100px; resize: vertical; font-family: monospace;">${licenseContent}</textarea>
+                    <div>
+                        <label>File Content</label>
+                        <textarea readonly style="height: 120px; resize: vertical; font-family: monospace; font-size: 11px;">${licenseContent}</textarea>
+                        <button type="button" class="copy-btn" style="margin-top: 8px; width: 100%;" onclick="copyToClipboard(\`${licenseContent}\`)">Copy File</button>
                     </div>
-                    <button class="copy-btn" onclick="copyToClipboard(\`${licenseContent}\`)" style="width: 100%;">Copy Full Content</button>
                 </div>
             `;
 
@@ -834,27 +803,26 @@ ACTIVE=true`;
             tbody.innerHTML = '';
 
             licenses.forEach((license, idx) => {
-                const hwidStatus = license.hwid ? `<code style="font-size: 11px;">${license.hwid.substring(0, 16)}...</code>` : '<span style="color: var(--text-muted);">Not set</span>';
+                const hwidStatus = license.hwid ? `<code>${license.hwid.substring(0, 16)}...</code>` : '<span style="color: var(--text-muted);">-</span>';
                 const statusBadge = license.active ? 'badge-active' : 'badge-revoked';
                 const statusText = license.active ? 'Active' : 'Revoked';
-                const durationText = license.days === -1 ? 'Unlimited' : `${license.days}d`;
-                const userText = license.username ? license.username : '<span style="color: var(--text-muted);">Pending signup</span>';
+
+                let actionBtns = '';
+                if (license.hwid) {
+                    actionBtns += `<button class="btn btn-secondary btn-small" onclick="resetHWID(${idx})">Reset</button>`;
+                }
+                if (license.active) {
+                    actionBtns += `<button class="btn btn-danger btn-small" onclick="revokeLicense(${idx})">Revoke</button>`;
+                }
 
                 tbody.innerHTML += `
                     <tr>
-                        <td><code style="font-size: 11px;">${license.key}</code></td>
+                        <td><code>${license.key}</code></td>
                         <td><span class="badge ${statusBadge}">${statusText}</span></td>
-                        <td>
-                            ${license.days === -1 ? '<span class="badge badge-unlimited">Lifetime</span>' : `${license.days} days`}
-                        </td>
+                        <td>${license.days === -1 ? '<span class="badge badge-unlimited">Lifetime</span>' : `${license.days}d`}</td>
                         <td>${hwidStatus}</td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${license.notes || '-'}</td>
-                        <td>
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px;">
-                                ${license.hwid ? `<button class="btn btn-secondary btn-small" onclick="resetHWID(${idx})">Reset HWID</button>` : ''}
-                                ${license.active ? `<button class="btn btn-danger btn-small" onclick="revokeLicense(${idx})">Revoke</button>` : ''}
-                            </div>
-                        </td>
+                        <td>${license.notes || '-'}</td>
+                        <td>${actionBtns || '-'}</td>
                     </tr>
                 `;
             });
@@ -879,25 +847,26 @@ ACTIVE=true`;
 
             filtered.forEach((license, idx) => {
                 const origIdx = licenses.indexOf(license);
-                const hwidStatus = license.hwid ? `<code style="font-size: 11px;">${license.hwid.substring(0, 16)}...</code>` : '<span style="color: var(--text-muted);">Not set</span>';
+                const hwidStatus = license.hwid ? `<code>${license.hwid.substring(0, 16)}...</code>` : '<span style="color: var(--text-muted);">-</span>';
                 const statusBadge = license.active ? 'badge-active' : 'badge-revoked';
                 const statusText = license.active ? 'Active' : 'Revoked';
 
+                let actionBtns = '';
+                if (license.hwid) {
+                    actionBtns += `<button class="btn btn-secondary btn-small" onclick="resetHWID(${origIdx})">Reset</button>`;
+                }
+                if (license.active) {
+                    actionBtns += `<button class="btn btn-danger btn-small" onclick="revokeLicense(${origIdx})">Revoke</button>`;
+                }
+
                 tbody.innerHTML += `
                     <tr>
-                        <td><code style="font-size: 11px;">${license.key}</code></td>
+                        <td><code>${license.key}</code></td>
                         <td><span class="badge ${statusBadge}">${statusText}</span></td>
-                        <td>
-                            ${license.days === -1 ? '<span class="badge badge-unlimited">Lifetime</span>' : `${license.days} days`}
-                        </td>
+                        <td>${license.days === -1 ? '<span class="badge badge-unlimited">Lifetime</span>' : `${license.days}d`}</td>
                         <td>${hwidStatus}</td>
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${license.notes || '-'}</td>
-                        <td>
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px;">
-                                ${license.hwid ? `<button class="btn btn-secondary btn-small" onclick="resetHWID(${origIdx})">Reset HWID</button>` : ''}
-                                ${license.active ? `<button class="btn btn-danger btn-small" onclick="revokeLicense(${origIdx})">Revoke</button>` : ''}
-                            </div>
-                        </td>
+                        <td>${license.notes || '-'}</td>
+                        <td>${actionBtns || '-'}</td>
                     </tr>
                 `;
             });
@@ -923,17 +892,22 @@ ACTIVE=true`;
 
         function switchTab(tab) {
             // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.remove('active');
+                el.style.display = 'none';
+            });
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
             // Show selected tab
-            document.getElementById(tab).style.display = 'block';
+            const tabElement = document.getElementById(tab);
+            tabElement.classList.add('active');
+            tabElement.style.display = 'block';
             event.target.classList.add('active');
 
             // Update title
             const titles = {
                 'generate': 'Generate License',
-                'licenses': 'Manage Licenses'
+                'licenses': 'All Licenses'
             };
             document.getElementById('pageTitle').textContent = titles[tab] || 'Admin Panel';
 
