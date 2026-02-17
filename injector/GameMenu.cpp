@@ -1,16 +1,21 @@
 // ============================================================================
-//  CS2 In-Game Overlay Menu  –  NEVERLOSE-style
-//  INSERT toggles.  Grid skin browser.  Float slider.
+//  CS2 In-Game Overlay  –  NEVERLOSE Style
+//  INSERT toggles (only when CS2 is foreground window)
+//  Grid skin browser  ·  float slider  ·  preset save/load
 // ============================================================================
 #include "GameMenu.h"
-#include <iostream>
 #include <algorithm>
 #include <cstdio>
 #include <cstdarg>
 #include <ctime>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <direct.h>
 
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "msimg32.lib")
 
 // ============================================================================
 //  Debug logger
@@ -22,1066 +27,1321 @@ static void DbgLog(const char* fmt, ...) {
     time_t now = time(nullptr);
     struct tm t; localtime_s(&t, &now);
     fprintf(f, "[%02d:%02d:%02d] ", t.tm_hour, t.tm_min, t.tm_sec);
-    va_list ap;
-    va_start(ap, fmt);
+    va_list ap; va_start(ap, fmt);
     vfprintf(f, fmt, ap);
     va_end(ap);
     fprintf(f, "\n");
     fclose(f);
 }
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "msimg32.lib")
 
 static OverlayWindow* g_pOverlay = nullptr;
 
 // ============================================================================
+//  Rarity color for a skin based on its index in the weapon's list
+//  (simulates rarity tiers – first few = covert, etc.)
+// ============================================================================
+static COLORREF RarityColor(int idx) {
+    if (idx < 2)  return NL_RARITY_COVERT;
+    if (idx < 5)  return NL_RARITY_CLASSIFIED;
+    if (idx < 10) return NL_RARITY_RESTRICTED;
+    if (idx < 18) return NL_RARITY_MILSPEC;
+    return NL_RARITY_INDUSTRIAL;
+}
+
+static const char* WearName(float f) {
+    if (f <= 0.07f) return "Factory New";
+    if (f <= 0.15f) return "Minimal Wear";
+    if (f <= 0.38f) return "Field-Tested";
+    if (f <= 0.45f) return "Well-Worn";
+    return "Battle-Scarred";
+}
+
+// ============================================================================
 //  GameMenu
 // ============================================================================
-
 GameMenu::GameMenu()
-    : m_visible(false)
-    , m_activePage(PAGE_INVENTORY)
-    , m_invView(INV_EQUIPPED)
-    , m_scrollOffset(0)
-    , m_mouseX(0), m_mouseY(0)
-    , m_menuX(0), m_menuY(0)
-    , m_selWeapon(-1), m_selSkin(-1)
-    , m_detailFloat(0.01f)
-    , m_skinChangerEnabled(true)
-    , m_knifeChangerEnabled(false)
-    , m_gloveChangerEnabled(false)
-    , m_gridCount(0)
-    , m_sliderDrag(false)
-    , m_invRemoveCount(0)
-    , m_toggleCount(0)
-    , m_fontTitle(nullptr), m_fontBody(nullptr)
-    , m_fontSmall(nullptr), m_fontBold(nullptr)
-    , m_fontLogo(nullptr), m_fontGrid(nullptr) {
-    memset(m_gridRects, 0, sizeof(m_gridRects));
-    memset(m_sidebarRects, 0, sizeof(m_sidebarRects));
-    memset(&m_addBtnRect, 0, sizeof(m_addBtnRect));
-    memset(&m_backBtnRect, 0, sizeof(m_backBtnRect));
-    memset(&m_applyBtnRect, 0, sizeof(m_applyBtnRect));
-    memset(&m_sliderRect, 0, sizeof(m_sliderRect));
+    : m_visible(false), m_page(PAGE_INVENTORY), m_view(INV_EQUIPPED)
+    , m_scroll(0), m_mouseX(0), m_mouseY(0), m_menuX(0), m_menuY(0)
+    , m_selWeapon(-1), m_selSkin(-1), m_detailFloat(0.01f)
+    , m_gN(0), m_sliderDrag(false), m_remN(0), m_pN(0)
+    , m_fTitle(0), m_fBody(0), m_fSmall(0), m_fBold(0)
+    , m_fLogo(0), m_fGrid(0), m_fIcon(0) {
+    memset(m_gR, 0, sizeof(m_gR));
+    memset(m_sideR, 0, sizeof(m_sideR));
+    memset(&m_addBtn, 0, sizeof(Rect));
+    memset(&m_backBtn, 0, sizeof(Rect));
+    memset(&m_applyBtn, 0, sizeof(Rect));
+    memset(&m_sliderR, 0, sizeof(Rect));
+    memset(&m_saveBtn, 0, sizeof(Rect));
+    memset(&m_applyGameBtn, 0, sizeof(Rect));
 }
 
 GameMenu::~GameMenu() {
-    if (m_fontTitle) DeleteObject(m_fontTitle);
-    if (m_fontBody)  DeleteObject(m_fontBody);
-    if (m_fontSmall) DeleteObject(m_fontSmall);
-    if (m_fontBold)  DeleteObject(m_fontBold);
-    if (m_fontLogo)  DeleteObject(m_fontLogo);
-    if (m_fontGrid)  DeleteObject(m_fontGrid);
+    HFONT* fonts[] = {&m_fTitle,&m_fBody,&m_fSmall,&m_fBold,&m_fLogo,&m_fGrid,&m_fIcon};
+    for (auto* p : fonts) if (*p) { DeleteObject(*p); *p = nullptr; }
 }
 
 bool GameMenu::Initialize(HMODULE) {
-    m_fontTitle = CreateFontA(22, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-    m_fontBody  = CreateFontA(15, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-    m_fontSmall = CreateFontA(12, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-    m_fontBold  = CreateFontA(15, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-    m_fontLogo  = CreateFontA(20, 0, 0, 0, FW_BOLD,   0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
-    m_fontGrid  = CreateFontA(13, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
-                              OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
+    m_fTitle = CreateFontA(20,0,0,0,FW_BOLD,    0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fBody  = CreateFontA(14,0,0,0,FW_NORMAL,  0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fSmall = CreateFontA(12,0,0,0,FW_NORMAL,  0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fBold  = CreateFontA(14,0,0,0,FW_SEMIBOLD,0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fLogo  = CreateFontA(18,0,0,0,FW_BOLD,    0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fGrid  = CreateFontA(12,0,0,0,FW_NORMAL,  0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_fIcon  = CreateFontA(24,0,0,0,FW_NORMAL,  0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI Emoji");
     BuildDatabase();
+    ScanPresets();
     return true;
 }
 
 void GameMenu::Shutdown() { m_visible = false; }
+void GameMenu::Toggle()   { m_visible = !m_visible; if (m_visible) m_scroll = 0; }
 
-void GameMenu::Toggle() {
-    m_visible = !m_visible;
-    if (m_visible) { m_scrollOffset = 0; }
-}
-
+// ============================================================================
+//  BuildDatabase  –  comprehensive CS2 weapons + paint-kit IDs
+// ============================================================================
 void GameMenu::BuildDatabase() {
-    // Pistols
-    m_weaponDB.push_back({"Glock-18", {"Fade", "Gamma Doppler", "Wasteland Rebel", "Water Elemental", "Twilight Galaxy",
-        "Bullet Queen", "Vogue", "Neo-Noir", "Moonrise", "Off World", "Weasel", "Royal Legion", "Grinder", "Steel Disruption",
-        "Oxide Blaze", "Wraiths", "Sacrifice", "Franklin", "Synth Leaf", "Snack Attack", "Clear Polymer", "Nuclear Garden",
-        "High Beam", "Umbral Rabbit", "Pink DDPAT", "Sand Dune"}});
+    // ── Pistols ──
+    m_weapons.push_back({"Glock-18", 4, "Pistols", {
+        {"Fade",38},{"Gamma Doppler",568},{"Wasteland Rebel",511},{"Water Elemental",410},
+        {"Twilight Galaxy",697},{"Bullet Queen",981},{"Vogue",978},{"Neo-Noir",769},
+        {"Moonrise",837},{"Off World",850},{"Royal Legion",532},{"Grinder",241},
+        {"Steel Disruption",843},{"Oxide Blaze",685},{"Sacrifice",906},{"Franklin",595},
+        {"Synth Leaf",897},{"Snack Attack",872},{"Clear Polymer",855},{"Nuclear Garden",683},
+        {"High Beam",665},{"Weasel",530},{"Sand Dune",208},{"Pink DDPAT",0}
+    }});
+    m_weapons.push_back({"USP-S", 61, "Pistols", {
+        {"Kill Confirmed",504},{"Neo-Noir",769},{"Printstream",1017},{"Caiman",625},
+        {"Cortex",839},{"Monster Mashup",868},{"Blueprint",826},{"Orion",313},
+        {"The Traitor",729},{"Check Engine",816},{"Flashback",599},{"Serum",506},
+        {"Cyrex",497},{"Guardian",290},{"Stainless",295},{"Ticket to Hell",0},
+        {"Whiteout",0},{"Road Rash",653},{"Dark Water",187},{"Overgrowth",494},
+        {"Night Ops",236},{"Target Acquired",0},{"Purple DDPAT",0},{"Pathfinder",0},
+        {"Ancient Visions",0},{"Black Lotus",0}
+    }});
+    m_weapons.push_back({"P250", 36, "Pistols", {
+        {"Asiimov",551},{"See Ya Later",503},{"Vino Primo",518},{"Nevermore",538},
+        {"Undertow",187},{"Muertos",496},{"Mehndi",414},{"Supernova",483},
+        {"Nuclear Threat",252},{"Cartel",495},{"Wingshot",569},{"Splash",0},
+        {"Re.built",0},{"Inferno",0},{"Iron Clad",0},{"Contamination",0}
+    }});
+    m_weapons.push_back({"Desert Eagle", 1, "Pistols", {
+        {"Blaze",37},{"Printstream",1018},{"Code Red",661},{"Mecha Industries",828},
+        {"Kumicho Dragon",520},{"Conspiracy",351},{"Sunset Storm",0},{"Trigger Discipline",0},
+        {"Ocean Drive",0},{"Fennec Fox",0},{"Light Rail",0},{"Sputnik",0},
+        {"Bronze Deco",0},{"Midnight Storm",0},{"Night",27},{"Cobalt Disruption",0},
+        {"Emerald Jormungandr",0},{"Golden Koi",0},{"Hypnotic",0},{"Heirloom",0},
+        {"Hand Cannon",0},{"Oxide Blaze",685}
+    }});
+    m_weapons.push_back({"Five-SeveN", 3, "Pistols", {
+        {"Hyper Beast",510},{"Monkey Business",535},{"Angry Mob",735},
+        {"Neon Kimono",733},{"Case Hardened",44},{"Fowl Play",0},
+        {"Berries And Cherries",0},{"Fairy Tale",0},{"Scrawl",0},
+        {"Triumvirate",0},{"Retrobution",0},{"Copper Galaxy",0},
+        {"Nightshade",0},{"Kami",0},{"Silver Quartz",0}
+    }});
+    m_weapons.push_back({"Tec-9", 30, "Pistols", {
+        {"Fuel Injector",649},{"Decimator",647},{"Nuclear Threat",252},
+        {"Re-Entry",0},{"Bamboozle",882},{"Remote Control",0},
+        {"Terrace",0},{"Toxic",0},{"Titanium Bit",0},{"Isaac",407},
+        {"Avalanche",0},{"Red Quartz",0},{"Ice Cap",0}
+    }});
+    m_weapons.push_back({"CZ75-Auto", 63, "Pistols", {
+        {"Victoria",313},{"Xiangliu",866},{"Emerald Quartz",657},
+        {"Vendetta",523},{"Eco",0},{"Tacticat",0},
+        {"The Fuschia Is Now",0},{"Trigger Discipline",0},
+        {"Poison Dart",0},{"Red Astor",0},{"Chalice",0},
+        {"Nitro",0},{"Yellow Jacket",0}
+    }});
+    m_weapons.push_back({"Dual Berettas", 2, "Pistols", {
+        {"Cobalt Quartz",0},{"Twin Turbo",0},{"Melondrama",0},
+        {"Flora Carnivora",0},{"Royal Consorts",0},{"Urban Shock",0},
+        {"Hemoglobin",0},{"Shred",0},{"Stained",173},
+        {"Marina",0},{"Cartel",495},{"Balance",0}
+    }});
+    m_weapons.push_back({"P2000", 32, "Pistols", {
+        {"Fire Elemental",0},{"Imperial Dragon",0},{"Amber Fade",0},
+        {"Ocean Foam",0},{"Corticera",0},{"Imperial",0},
+        {"Handgun",0},{"Scorpion",0},{"Obsidian",0},
+        {"Pathfinder",0},{"Oceanic",0},{"Silver",0}
+    }});
+    m_weapons.push_back({"R8 Revolver", 64, "Pistols", {
+        {"Fade",38},{"Banana Cannon",904},{"Llama Cannon",0},
+        {"Crimson Web",12},{"Amber Fade",0},{"Memento",0},
+        {"Grip",0},{"Skull Crusher",0},{"Nitro",0},{"Bone Mask",0}
+    }});
 
-    m_weaponDB.push_back({"USP-S", {"Kill Confirmed", "Neo-Noir", "Printstream", "Caiman", "Cortex", "Monster Mashup",
-        "Blueprint", "Orion", "The Traitor", "Check Engine", "Flashback", "Serum", "Cyrex", "Guardian", "Stainless",
-        "Ticket to Hell", "Whiteout", "Road Rash", "Dark Water", "Overgrowth", "Night Ops", "Target Acquired",
-        "Purple DDPAT", "Pathfinder", "Ancient Visions", "Black Lotus"}});
+    // ── Rifles ──
+    m_weapons.push_back({"AK-47", 7, "Rifles", {
+        {"Wild Lotus",0},{"Fire Serpent",180},{"Vulcan",349},{"Neon Rider",786},
+        {"Redline",282},{"Asiimov",524},{"The Empress",712},{"Bloodsport",796},
+        {"Neon Revolution",656},{"Fuel Injector",653},{"Aquamarine Revenge",545},
+        {"Phantom Disruptor",0},{"Jaguar",441},{"Frontside Misty",550},
+        {"Point Disarray",624},{"Wasteland Rebel",511},{"Hydroponic",547},
+        {"Case Hardened",44},{"Ice Coaled",0},{"Nightwish",0},
+        {"Slate",0},{"X-Ray",312},{"Rat Rod",0},{"Orbit Mk01",662},
+        {"Head Shot",0},{"Legion of Anubis",0},{"Jet Set",0},
+        {"Blue Laminate",206},{"Safety Net",0},{"Inheritance",0}
+    }});
+    m_weapons.push_back({"M4A4", 16, "Rifles", {
+        {"Howl",309},{"Asiimov",255},{"Neo-Noir",770},{"Desolate Space",648},
+        {"The Emperor",749},{"Buzz Kill",0},{"Royal Paladin",0},
+        {"Dragon King",400},{"Spider Lily",0},{"In Living Color",0},
+        {"Tooth Fairy",0},{"The Coalition",0},{"Temukau",0},
+        {"Cyber Security",0},{"Radiation Hazard",0},{"Desert-Strike",0},
+        {"X-Ray",0},{"Mainframe",0},{"Daybreak",0},{"Poly Mag",0},
+        {"Eye of Horus",0},{"Global Offensive",0}
+    }});
+    m_weapons.push_back({"M4A1-S", 60, "Rifles", {
+        {"Printstream",1016},{"Hyper Beast",519},{"Chantico's Fire",639},
+        {"Golden Coil",632},{"Mecha Industries",0},{"Decimator",0},
+        {"Player Two",0},{"Leaded Glass",0},{"Night Terror",0},
+        {"Nightmare",0},{"Master Piece",0},{"Hot Rod",445},
+        {"Icarus Fell",524},{"Cyrex",360},{"Guardian",290},
+        {"Atomic Alloy",325},{"Knight",0},{"Welcome to the Jungle",0},
+        {"Blue Phosphor",0},{"Control Panel",0},{"Basilisk",0}
+    }});
+    m_weapons.push_back({"AWP", 9, "Rifles", {
+        {"Dragon Lore",344},{"Gungnir",0},{"Medusa",0},{"Fade",38},
+        {"Asiimov",279},{"Lightning Strike",141},{"Hyper Beast",520},
+        {"Containment Breach",0},{"The Prince",0},{"Wildfire",0},
+        {"Neo-Noir",0},{"Chromatic Aberration",0},{"Electric Hive",346},
+        {"Redline",282},{"BOOM",258},{"Corticera",0},{"Man-o'-war",0},
+        {"Fever Dream",0},{"Atheris",0},{"PAW",0},{"Silk Tiger",0},
+        {"Phobos",0},{"Sun in Leo",0},{"Duality",0},
+        {"Exoskeleton",0},{"Pit Viper",0},{"Graphite",0},
+        {"Desert Hydra",0},{"Capillary",0}
+    }});
+    m_weapons.push_back({"SG 553", 39, "Rifles", {
+        {"Integrale",0},{"Darkwing",0},{"Cyrex",0},{"Pulse",0},
+        {"Bulldozer",0},{"Tiger Moth",0},{"Phantom",0},
+        {"Danger Close",0},{"Ultraviolet",0},{"Tornado",0}
+    }});
+    m_weapons.push_back({"AUG", 8, "Rifles", {
+        {"Akihabara Accept",0},{"Chameleon",0},{"Flame Jinn",0},
+        {"Stymphalian",0},{"Midnight Lily",0},{"Momentum",0},
+        {"Fleet Flock",0},{"Syd Mead",0},{"Hot Rod",445},
+        {"Bengal Tiger",0},{"Arctic Wolf",0},{"Random Access",0}
+    }});
+    m_weapons.push_back({"FAMAS", 10, "Rifles", {
+        {"Eye of Athena",0},{"Mecha Industries",0},{"Roll Cage",0},
+        {"Commemoration",0},{"Valence",0},{"Neural Net",0},
+        {"Djinn",0},{"Pulse",0},{"Afterimage",0},
+        {"Decommissioned",0},{"Sundown",0},{"Sergeant",0}
+    }});
+    m_weapons.push_back({"Galil AR", 13, "Rifles", {
+        {"Chatterbox",0},{"Cerberus",0},{"Aqua Terrace",0},
+        {"Firefight",0},{"Sugar Rush",0},{"Eco",0},
+        {"Crimson Tsunami",0},{"Stone Cold",0},{"Rocket Pop",0},
+        {"Connexion",0},{"Akoben",0},{"Orange DDPAT",0}
+    }});
 
-    m_weaponDB.push_back({"P250", {"Asiimov", "See Ya Later", "Vino Primo", "Nevermore", "Undertow", "Muertos",
-        "Mehndi", "Supernova", "Nuclear Threat", "Cartel", "Wingshot", "Splash", "Exchanger", "Ripple Effect",
-        "Re.built", "Cassette", "Inferno", "Iron Clad", "Contamination"}});
+    // ── SMGs ──
+    m_weapons.push_back({"MAC-10", 17, "SMGs", {
+        {"Neon Rider",786},{"Stalker",0},{"Case Hardened",44},{"Disco Tech",0},
+        {"Heat",0},{"Pipe Down",0},{"Last Dive",0},{"Propaganda",0},
+        {"Fade",38},{"Copper Borre",0},{"Silver",0},{"Nuclear Garden",683},
+        {"Curse",0},{"Allure",0},{"Light Box",0}
+    }});
+    m_weapons.push_back({"MP9", 34, "SMGs", {
+        {"Wild Lily",0},{"Hydra",695},{"Bulldozer",0},{"Airlock",0},
+        {"Rose Iron",0},{"Music Box",0},{"Stained Glass",0},
+        {"Setting Sun",0},{"Bioleak",0},{"Food Chain",0},
+        {"Ruby Poison Dart",0},{"Mount Fuji",0},{"Old Roots",0}
+    }});
+    m_weapons.push_back({"UMP-45", 24, "SMGs", {
+        {"Primal Saber",0},{"Moonrise",837},{"Fade",38},{"Momentum",0},
+        {"Arctic Wolf",0},{"Plastique",0},{"Day Lily",0},
+        {"Oscillator",0},{"Wild Child",0},{"Exposure",0},
+        {"Scaffold",0},{"Corporal",0},{"Labyrinth",0}
+    }});
+    m_weapons.push_back({"MP7", 33, "SMGs", {
+        {"Nemesis",395},{"Bloodsport",0},{"Neon Ply",0},{"Impire",0},
+        {"Special Delivery",0},{"Fade",38},{"Skulls",0},
+        {"Teal Blossom",0},{"Akoben",0},{"Cirrus",0},
+        {"Armor Core",0},{"Whiteout",0}
+    }});
+    m_weapons.push_back({"P90", 19, "SMGs", {
+        {"Asiimov",551},{"Death by Kitty",0},{"Nostalgia",0},{"Shapewood",0},
+        {"Trigon",0},{"Emerald Dragon",0},{"Cold Blooded",0},
+        {"Run and Hide",0},{"Shallow Grave",0},{"Blind Spot",0},
+        {"Baroque Red",0},{"Off World",850},{"Facility Dark",0},
+        {"Virus",0},{"Elite Build",0},{"Desert Warfare",0}
+    }});
+    m_weapons.push_back({"PP-Bizon", 26, "SMGs", {
+        {"Judgement of Anubis",0},{"High Roller",0},{"Embargo",0},
+        {"Blue Streak",0},{"Fuel Rod",0},{"Antique",0},
+        {"Osiris",0},{"Carbon Fiber",0},{"Rust Coat",0}
+    }});
+    m_weapons.push_back({"MP5-SD", 23, "SMGs", {
+        {"Lab Rats",0},{"Phosphor",0},{"Agent",0},{"Gauss",0},
+        {"Oxide Oasis",0},{"Co-Processor",0},{"Condition Zero",0}
+    }});
 
-    m_weaponDB.push_back({"Desert Eagle", {"Blaze", "Printstream", "Code Red", "Mecha Industries", "Kumicho Dragon",
-        "Conspiracy", "Sunset Storm", "Trigger Discipline", "Ocean Drive", "Fennec Fox", "Light Rail", "Sputnik",
-        "Bronze Deco", "Midnight Storm", "Night", "Cobalt Disruption", "Emerald Jormungandr", "Golden Koi",
-        "Hypnotic", "Heirloom", "Hand Cannon", "Oxide Blaze"}});
+    // ── Shotguns ──
+    m_weapons.push_back({"Nova", 35, "Shotguns", {
+        {"Hyper Beast",0},{"Antique",0},{"Wild Six",0},{"Gila",0},
+        {"Toy Soldier",0},{"Exo",0},{"Koi",0},{"Graphite",0},
+        {"Bloomstick",0},{"Plume",0},{"Sand Dune",208}
+    }});
+    m_weapons.push_back({"XM1014", 25, "Shotguns", {
+        {"Incinegator",0},{"Ziggy",0},{"Tranquility",0},
+        {"Entombed",0},{"Bone Machine",0},{"Seasons",0},
+        {"Teclu Burner",0},{"Black Tie",0},{"Blue Steel",0}
+    }});
+    m_weapons.push_back({"MAG-7", 27, "Shotguns", {
+        {"Justice",0},{"SWAG-7",0},{"Heat",0},{"Prism Terrace",0},
+        {"Petroglyph",0},{"Cinquedea",0},{"Bulldozer",0},
+        {"Sonar",0},{"Popdog",0},{"Hard Water",0}
+    }});
+    m_weapons.push_back({"Sawed-Off", 29, "Shotguns", {
+        {"The Kraken",0},{"Apocalypto",0},{"Devourer",0},
+        {"Limelight",0},{"Morris",0},{"Copper",0},{"Brake Light",0}
+    }});
 
-    m_weaponDB.push_back({"Five-SeveN", {"Hyper Beast", "Monkey Business", "Angry Mob", "Neon Kimono", "Case Hardened",
-        "Fowl Play", "Berries And Cherries", "Fairy Tale", "Scrawl", "Flame Test", "Fall Hazard", "Triumvirate",
-        "Retrobution", "Copper Galaxy", "Nightshade", "Kami", "Silver Quartz"}});
+    // ── Machine Guns ──
+    m_weapons.push_back({"M249", 14, "Machine Guns", {
+        {"Magma",0},{"Spectre",0},{"Impact Drill",0},
+        {"System Lock",0},{"Shipping Forecast",0},{"Downtown",0}
+    }});
+    m_weapons.push_back({"Negev", 28, "Machine Guns", {
+        {"Power Loader",0},{"Loudmouth",0},{"Bratatat",0},
+        {"Lionfish",0},{"Dazzle",0},{"Dev Texture",0},{"Palm",0}
+    }});
 
-    m_weaponDB.push_back({"Tec-9", {"Fuel Injector", "Decimator", "Nuclear Threat", "Re-Entry", "Bamboozle",
-        "Remote Control", "Terrace", "Toxic", "Titanium Bit", "Isaac", "Avalanche", "Red Quartz", "Ice Cap",
-        "Snek-9", "Flash Out", "Brother", "Fubar"}});
+    // ── Snipers ──
+    m_weapons.push_back({"SSG 08", 40, "Snipers", {
+        {"Dragonfire",0},{"Blood in the Water",0},{"Big Iron",0},
+        {"Death Strike",0},{"Fever Dream",0},{"Necropos",0},
+        {"Ghost Crusader",0},{"Abyss",0},{"Dark Water",187},
+        {"Detour",0},{"Turbo Peek",0},{"Acid Fade",0}
+    }});
+    m_weapons.push_back({"SCAR-20", 38, "Snipers", {
+        {"Emerald",0},{"Cardiac",0},{"Cyrex",0},{"Bloodsport",796},
+        {"Jungle Slipstream",0},{"Blueprint",826},{"Torn",0}
+    }});
+    m_weapons.push_back({"G3SG1", 11, "Snipers", {
+        {"The Executioner",0},{"Flux",0},{"Scavenger",0},
+        {"Stinger",0},{"Chronos",0},{"High Seas",0},
+        {"Ventilator",0},{"Black Sand",0}
+    }});
 
-    m_weaponDB.push_back({"Dual Berettas", {"Cobalt Quartz", "Twin Turbo", "Melondrama", "Flora Carnivora",
-        "Dezastre", "Royal Consorts", "Urban Shock", "Hemoglobin", "Dualing Dragons", "Shred", "Elite 1.6",
-        "Stained", "Marina", "Balance", "Ventilators", "Cartel", "Hideout"}});
+    // ── Knives ──
+    m_weapons.push_back({"Karambit", 507, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Autotronic",619},{"Gamma Doppler",568},
+        {"Bright Water",0},{"Freehand",0},{"Black Laminate",0},
+        {"Vanilla",0},{"Damascus Steel",0},{"Ultraviolet",0},
+        {"Night Stripe",0},{"Rust Coat",0},{"Blue Steel",215},
+        {"Boreal Forest",77},{"Stained",173},{"Forest DDPAT",0},
+        {"Safari Mesh",72},{"Urban Masked",73},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Butterfly Knife", 515, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Autotronic",619},{"Gamma Doppler",568},
+        {"Vanilla",0},{"Damascus Steel",0},{"Ultraviolet",0},
+        {"Night Stripe",0},{"Rust Coat",0},{"Blue Steel",215},
+        {"Boreal Forest",77},{"Stained",173},{"Forest DDPAT",0},
+        {"Safari Mesh",72},{"Urban Masked",73},{"Scorched",175}
+    }});
+    m_weapons.push_back({"M9 Bayonet", 508, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Autotronic",619},{"Gamma Doppler",568},
+        {"Vanilla",0},{"Damascus Steel",0},{"Ultraviolet",0},
+        {"Blue Steel",215},{"Boreal Forest",77},{"Stained",173},
+        {"Forest DDPAT",0},{"Safari Mesh",72}
+    }});
+    m_weapons.push_back({"Bayonet", 500, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Autotronic",619},{"Vanilla",0},
+        {"Damascus Steel",0},{"Ultraviolet",0},{"Blue Steel",215},
+        {"Boreal Forest",77},{"Stained",173},{"Forest DDPAT",0},
+        {"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Skeleton Knife", 525, "Knives", {
+        {"Fade",38},{"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Blue Steel",215},{"Stained",173},{"Vanilla",0},
+        {"Night Stripe",0},{"Boreal Forest",77},{"Forest DDPAT",0},
+        {"Safari Mesh",72},{"Urban Masked",73},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Talon Knife", 520, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Vanilla",0},{"Damascus Steel",0},
+        {"Ultraviolet",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Stiletto Knife", 522, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Vanilla",0},{"Damascus Steel",0},{"Blue Steel",215},
+        {"Boreal Forest",77},{"Stained",173},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Ursus Knife", 519, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Vanilla",0},{"Damascus Steel",0},{"Blue Steel",215},
+        {"Boreal Forest",77},{"Stained",173},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Navaja Knife", 523, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Crimson Web",12},
+        {"Slaughter",59},{"Case Hardened",44},{"Vanilla",0},
+        {"Damascus Steel",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Huntsman Knife", 509, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Vanilla",0},{"Damascus Steel",0},
+        {"Blue Steel",215},{"Boreal Forest",77},{"Stained",173},
+        {"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Flip Knife", 505, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Gamma Doppler",568},{"Vanilla",0},
+        {"Damascus Steel",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Gut Knife", 506, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Gamma Doppler",568},{"Vanilla",0},
+        {"Blue Steel",215},{"Boreal Forest",77},{"Stained",173},
+        {"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Kukri Knife", 526, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Marble Fade",413},
+        {"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Lore",344},{"Gamma Doppler",568},{"Vanilla",0},
+        {"Damascus Steel",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Bowie Knife", 514, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Crimson Web",12},
+        {"Slaughter",59},{"Case Hardened",44},{"Lore",344},
+        {"Vanilla",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Falchion Knife", 512, "Knives", {
+        {"Doppler",418},{"Fade",38},{"Tiger Tooth",409},{"Crimson Web",12},
+        {"Slaughter",59},{"Case Hardened",44},{"Lore",344},
+        {"Vanilla",0},{"Blue Steel",215},{"Boreal Forest",77},
+        {"Stained",173},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Classic Knife", 503, "Knives", {
+        {"Fade",38},{"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Blue Steel",215},{"Vanilla",0},{"Boreal Forest",77},
+        {"Forest DDPAT",0},{"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Paracord Knife", 517, "Knives", {
+        {"Fade",38},{"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Blue Steel",215},{"Vanilla",0},{"Boreal Forest",77},
+        {"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Survival Knife", 518, "Knives", {
+        {"Fade",38},{"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Blue Steel",215},{"Vanilla",0},{"Boreal Forest",77},
+        {"Safari Mesh",72},{"Scorched",175}
+    }});
+    m_weapons.push_back({"Nomad Knife", 521, "Knives", {
+        {"Fade",38},{"Crimson Web",12},{"Slaughter",59},{"Case Hardened",44},
+        {"Blue Steel",215},{"Vanilla",0},{"Boreal Forest",77},
+        {"Safari Mesh",72},{"Scorched",175}
+    }});
 
-    m_weaponDB.push_back({"P2000", {"Fire Elemental", "Imperial Dragon", "Amber Fade", "Ocean Foam", "Corticera",
-        "Imperial", "Handgun", "Scorpion", "Gnarled", "Granite Marbleized", "Pathfinder", "Obsidian",
-        "Woven Dark", "Turf", "Oceanic", "Silver", "Grassland Leaves"}});
-
-    m_weaponDB.push_back({"CZ75-Auto", {"Victoria", "Xiangliu", "Emerald Quartz", "Vendetta", "Eco", "Tacticat",
-        "The Fuschia Is Now", "Trigger Discipline", "Poison Dart", "Red Astor", "Distressed", "Polymer",
-        "Circaetus", "Chalice", "Nitro", "Yellow Jacket"}});
-
-    m_weaponDB.push_back({"R8 Revolver", {"Fade", "Banana Cannon", "Llama Cannon", "Crimson Web", "Amber Fade",
-        "Memento", "Grip", "Skull Crusher", "Nitro", "Bone Mask", "Canal Spray", "Survival Galil"}});
-
-    // Rifles
-    m_weaponDB.push_back({"AK-47", {"Wild Lotus", "Fire Serpent", "Vulcan", "Neon Rider", "Redline", "Asiimov",
-        "The Empress", "Bloodsport", "Neon Revolution", "Fuel Injector", "Aquamarine Revenge", "Phantom Disruptor",
-        "Jaguar", "Frontside Misty", "Point Disarray", "Wasteland Rebel", "Hydroponic", "Case Hardened",
-        "Ice Coaled", "Nightwish", "Slate", "X-Ray", "Rat Rod", "Orbit Mk01", "Head Shot", "Legion of Anubis",
-        "Jet Set", "Leet Museo", "Blue Laminate", "Safety Net", "Inheritance"}});
-
-    m_weaponDB.push_back({"M4A4", {"Howl", "Asiimov", "Neo-Noir", "Desolate Space", "The Emperor", "Buzz Kill",
-        "Royal Paladin", "Dragon King", "Spider Lily", "In Living Color", "Tooth Fairy", "The Coalition",
-        "Temukau", "Cyber Security", "Radiation Hazard", "Desert-Strike", "X-Ray", "Mainframe",
-        "Daybreak", "Poly Mag", "Eye of Horus", "Global Offensive"}});
-
-    m_weaponDB.push_back({"M4A1-S", {"Printstream", "Hyper Beast", "Chantico's Fire", "Golden Coil", "Mecha Industries",
-        "Decimator", "Player Two", "Leaded Glass", "Night Terror", "Nightmare", "Master Piece", "Hot Rod",
-        "Icarus Fell", "Cyrex", "Guardian", "Atomic Alloy", "Knight", "Welcome to the Jungle", "Blue Phosphor",
-        "Emphorosaur-S", "Control Panel", "Imminent Danger", "Basilisk", "Fizzy POP"}});
-
-    m_weaponDB.push_back({"AWP", {"Dragon Lore", "Gungnir", "Medusa", "Fade", "Asiimov", "Lightning Strike",
-        "Hyper Beast", "Containment Breach", "The Prince", "Wildfire", "Neo-Noir", "Chromatic Aberration",
-        "Electric Hive", "Redline", "BOOM", "Corticera", "Man-o'-war", "Fever Dream", "Atheris",
-        "PAW", "Silk Tiger", "Phobos", "Sun in Leo", "Duality", "Exoskeleton", "Pit Viper",
-        "Worm God", "Mortis", "Graphite", "Desert Hydra", "Capillary"}});
-
-    m_weaponDB.push_back({"SG 553", {"Integrale", "Darkwing", "Cyrex", "Pulse", "Bulldozer", "Tiger Moth",
-        "Phantom", "Danger Close", "Atlas", "Triarch", "Aloha", "Barricade", "Aerial", "Heavy Metal",
-        "Colony IV", "Ultraviolet", "Tornado", "Anodized Navy", "Wave Spray"}});
-
-    m_weaponDB.push_back({"AUG", {"Akihabara Accept", "Chameleon", "Flame Jinn", "Stymphalian", "Midnight Lily",
-        "Momentum", "Fleet Flock", "Syd Mead", "Hot Rod", "Bengal Tiger", "Arctic Wolf", "Random Access",
-        "Aristocrat", "Amber Slipstream", "Torque", "Wings", "Triqua", "Carved Jade"}});
-
-    m_weaponDB.push_back({"FAMAS", {"Eye of Athena", "Mecha Industries", "Roll Cage", "Commemoration",
-        "Valence", "Neural Net", "Djinn", "Pulse", "Afterimage", "Decommissioned", "Step Ahead",
-        "Prime Conspiracy", "Sundown", "Sergeant", "Teardown", "Cyanospatter", "Macabre"}});
-
-    m_weaponDB.push_back({"Galil AR", {"Chatterbox", "Cerberus", "Aqua Terrace", "Firefight", "Sugar Rush",
-        "Eco", "Crimson Tsunami", "Chromatic Aberration", "Stone Cold", "Rocket Pop", "Signal",
-        "Connexion", "Akoben", "Dusk Ruins", "Winter Forest", "Orange DDPAT", "Sage Spray"}});
-
-    // SMGs
-    m_weaponDB.push_back({"MAC-10", {"Neon Rider", "Stalker", "Case Hardened", "Disco Tech", "Toybox",
-        "Heat", "Pipe Down", "Last Dive", "Propaganda", "Graven", "Leet", "Button Masher",
-        "Fade", "Copper Borre", "Whitefish", "Carnivore", "Classic Crate", "Allure", "Silver",
-        "Light Box", "Nuclear Garden", "Tatter", "Curse"}});
-
-    m_weaponDB.push_back({"MP9", {"Wild Lily", "Hydra", "Bulldozer", "Airlock", "Modest Threat",
-        "Rose Iron", "Music Box", "Stained Glass", "Capillary", "Setting Sun", "Bioleak",
-        "Goo", "Food Chain", "Slide", "Ruby Poison Dart", "Mount Fuji", "Featherweight",
-        "Old Roots", "Black Sand", "Dark Age", "Pandora's Box"}});
-
-    m_weaponDB.push_back({"UMP-45", {"Primal Saber", "Moonrise", "Fade", "Momentum", "Arctic Wolf",
-        "Plastique", "Day Lily", "Crime Scene", "Oscillator", "Wild Child", "Exposure",
-        "Riot", "Scaffold", "Metal Flowers", "Corporal", "Labyrinth", "Bone Pile"}});
-
-    m_weaponDB.push_back({"MP7", {"Nemesis", "Bloodsport", "Neon Ply", "Impire", "Special Delivery",
-        "Mischief", "Powercore", "Fade", "Skulls", "Teal Blossom", "Akoben", "Abyssal Apparition",
-        "Cirrus", "Armor Core", "Urban Hazard", "Asteria", "Motherboard", "Whiteout"}});
-
-    m_weaponDB.push_back({"PP-Bizon", {"Judgement of Anubis", "High Roller", "Embargo", "Blue Streak",
-        "Fuel Rod", "Antique", "Jungle Slipstream", "Seabird", "Night Riot", "Harvester",
-        "Osiris", "Carbon Fiber", "Photic Zone", "Space Cat", "Rust Coat"}});
-
-    m_weaponDB.push_back({"P90", {"Asiimov", "Death by Kitty", "Nostalgia", "Shapewood", "Trigon",
-        "Emerald Dragon", "Cold Blooded", "Run and Hide", "Shallow Grave", "Freight",
-        "Blind Spot", "Baroque Red", "Off World", "Traction", "Facility Dark", "Cocoa Rampage",
-        "Vent Rush", "Virus", "Sunset Lily", "Elite Build", "Desert Warfare"}});
-
-    m_weaponDB.push_back({"MP5-SD", {"Lab Rats", "Phosphor", "Agent", "Gauss", "Oxide Oasis",
-        "Co-Processor", "Acid Wash", "Condition Zero", "Kitbash", "Bamboo Garden", "Dirt Drop"}});
-
-    // Shotguns
-    m_weaponDB.push_back({"Nova", {"Hyper Beast", "Antique", "Wild Six", "Gila", "Toy Soldier",
-        "Exo", "Baroque Orange", "Koi", "Graphite", "Bloomstick", "Plume", "Dark Sigil",
-        "Sand Dune", "Moon in Libra", "Clear Polymer", "Caged Steel", "Mandrel"}});
-
-    m_weaponDB.push_back({"XM1014", {"Incinegator", "Ziggy", "Tranquility", "Entombed", "Bone Machine",
-        "Seasons", "Teclu Burner", "Black Tie", "Ancient Lore", "CaliCamo", "Blue Steel", "Oxide Blaze"}});
-
-    m_weaponDB.push_back({"Sawed-Off", {"The Kraken", "Apocalypto", "Devourer", "Limelight", "Origami",
-        "Wasteland Princess", "Morris", "Copper", "Yorick", "Black Sand", "Brake Light", "Amber Fade"}});
-
-    m_weaponDB.push_back({"MAG-7", {"Justice", "SWAG-7", "Heat", "Prism Terrace", "Monster Call",
-        "Petroglyph", "Cinquedea", "Bulldozer", "Sonar", "Popdog", "Carbon Fiber", "Hard Water"}});
-
-    // Machine Guns
-    m_weaponDB.push_back({"M249", {"Magma", "Nebula Crusader", "Spectre", "Emerald Poison Dart",
-        "Impact Drill", "System Lock", "Shipping Forecast", "Downtown", "Jungle DDPAT"}});
-
-    m_weaponDB.push_back({"Negev", {"Power Loader", "Loudmouth", "Bratatat", "Prototype",
-        "Lionfish", "Dazzle", "Bulkhead", "Dev Texture", "Terrain", "Drop Me", "Palm"}});
-
-    // Knives
-    m_weaponDB.push_back({"Karambit", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Bright Water",
-        "Freehand", "Black Laminate", "Vanilla", "Damascus Steel", "Ultraviolet", "Night Stripe",
-        "Rust Coat", "Blue Steel", "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh",
-        "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Butterfly Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Bright Water",
-        "Freehand", "Black Laminate", "Vanilla", "Damascus Steel", "Ultraviolet", "Night Stripe",
-        "Rust Coat", "Blue Steel", "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh",
-        "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"M9 Bayonet", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Bright Water",
-        "Freehand", "Black Laminate", "Vanilla", "Damascus Steel", "Ultraviolet", "Night Stripe",
-        "Rust Coat", "Blue Steel", "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh"}});
-
-    m_weaponDB.push_back({"Bayonet", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Vanilla",
-        "Damascus Steel", "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel",
-        "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Skeleton Knife", {"Fade", "Crimson Web", "Slaughter", "Case Hardened",
-        "Blue Steel", "Stained", "Night Stripe", "Boreal Forest", "Forest DDPAT",
-        "Safari Mesh", "Urban Masked", "Scorched", "Vanilla"}});
-
-    m_weaponDB.push_back({"Talon Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Vanilla", "Damascus Steel",
-        "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest",
-        "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Stiletto Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Vanilla", "Damascus Steel", "Ultraviolet",
-        "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest", "Stained",
-        "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Ursus Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Vanilla", "Damascus Steel", "Ultraviolet",
-        "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest", "Stained",
-        "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Navaja Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Vanilla", "Damascus Steel", "Ultraviolet",
-        "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest", "Stained",
-        "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Huntsman Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Vanilla", "Damascus Steel",
-        "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest",
-        "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Bowie Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Vanilla", "Damascus Steel",
-        "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest",
-        "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Falchion Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Vanilla", "Damascus Steel",
-        "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel", "Boreal Forest",
-        "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Flip Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Vanilla",
-        "Damascus Steel", "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel",
-        "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Gut Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Vanilla",
-        "Damascus Steel", "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel",
-        "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Classic Knife", {"Fade", "Crimson Web", "Slaughter", "Case Hardened",
-        "Blue Steel", "Vanilla", "Boreal Forest", "Forest DDPAT", "Safari Mesh",
-        "Urban Masked", "Night Stripe", "Scorched", "Stained"}});
-
-    m_weaponDB.push_back({"Paracord Knife", {"Fade", "Crimson Web", "Slaughter", "Case Hardened",
-        "Blue Steel", "Stained", "Vanilla", "Night Stripe", "Boreal Forest", "Forest DDPAT",
-        "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    m_weaponDB.push_back({"Survival Knife", {"Fade", "Crimson Web", "Slaughter", "Case Hardened",
-        "Blue Steel", "Vanilla", "Night Stripe", "Boreal Forest", "Forest DDPAT",
-        "Safari Mesh", "Urban Masked", "Scorched", "Stained"}});
-
-    m_weaponDB.push_back({"Nomad Knife", {"Fade", "Crimson Web", "Slaughter", "Case Hardened",
-        "Blue Steel", "Vanilla", "Night Stripe", "Boreal Forest", "Forest DDPAT",
-        "Safari Mesh", "Urban Masked", "Scorched", "Stained"}});
-
-    m_weaponDB.push_back({"Kukri Knife", {"Doppler", "Fade", "Tiger Tooth", "Marble Fade", "Crimson Web",
-        "Slaughter", "Case Hardened", "Lore", "Autotronic", "Gamma Doppler", "Vanilla",
-        "Damascus Steel", "Ultraviolet", "Night Stripe", "Rust Coat", "Blue Steel",
-        "Boreal Forest", "Stained", "Forest DDPAT", "Safari Mesh", "Urban Masked", "Scorched"}});
-
-    // Gloves
-    m_weaponDB.push_back({"Sport Gloves", {"Pandora's Box", "Hedge Maze", "Superconductor", "Vice",
-        "Amphibious", "Bronze Morph", "Omega", "Arid", "Scarlet Shamagh", "Slingshot",
-        "Nocts", "Big Game"}});
-
-    m_weaponDB.push_back({"Specialist Gloves", {"Crimson Kimono", "Emerald Web", "Fade", "Mogul",
-        "Foundation", "Marble Fade", "Field Agent", "Forest DDPAT", "Buckshot",
-        "Tiger Strike", "Lt. Commander", "Cool Mint"}});
-
-    m_weaponDB.push_back({"Driver Gloves", {"King Snake", "Imperial Plaid", "Crimson Weave", "Lunar Weave",
-        "Diamondback", "Overtake", "Racing Green", "Convoy", "Queen Jaguar", "Rezan the Red",
-        "Snow Leopard", "Black Tie"}});
-
-    m_weaponDB.push_back({"Hand Wraps", {"Cobalt Skulls", "Overprint", "Slaughter", "Leather",
-        "Badlands", "Spruce DDPAT", "Duct Tape", "Arboreal", "Giraffe", "Cashmere",
-        "Constrictor", "Desert Shamagh"}});
-
-    m_weaponDB.push_back({"Moto Gloves", {"Spearmint", "Cool Mint", "Polygon", "Boom!",
-        "Eclipse", "Transport", "Turtle", "POW!", "Finish Line", "Blood Pressure",
-        "Smoke Out", "Snakebite"}});
-
-    m_weaponDB.push_back({"Hydra Gloves", {"Case Hardened", "Emerald", "Rattler", "Mangrove",
-        "Circuit Board"}});
-
-    m_weaponDB.push_back({"Broken Fang Gloves", {"Jade", "Yellow-banded", "Unhinged", "Needle Point",
-        "Finisher"}});
-
-    // Snipers/MGs
-    m_weaponDB.push_back({"SSG 08", {"Dragonfire", "Blood in the Water", "Big Iron", "Death Strike",
-        "Fever Dream", "Necropos", "Ghost Crusader", "Abyss", "Dark Water", "Detour",
-        "Turbo Peek", "Sea Calico", "Hand Brake", "Acid Fade", "Blue Spruce"}});
-
-    m_weaponDB.push_back({"SCAR-20", {"Emerald", "Cardiac", "Cyrex", "Bloodsport", "Jungle Slipstream",
-        "Enforcer", "Assault", "Blueprint", "Torn", "Poultry Manager", "Stone Mosaico"}});
-
-    m_weaponDB.push_back({"G3SG1", {"The Executioner", "Flux", "Scavenger", "Stinger", "Chronos",
-        "High Seas", "Ventilator", "Demeter", "Black Sand", "Orange Crash", "Polar Camo"}});
+    // ── Gloves ──
+    m_weapons.push_back({"Sport Gloves", 5030, "Gloves", {
+        {"Pandora's Box",0},{"Hedge Maze",0},{"Superconductor",0},{"Vice",0},
+        {"Amphibious",0},{"Bronze Morph",0},{"Omega",0},{"Arid",0},
+        {"Scarlet Shamagh",0},{"Slingshot",0},{"Nocts",0},{"Big Game",0}
+    }});
+    m_weapons.push_back({"Specialist Gloves", 5033, "Gloves", {
+        {"Crimson Kimono",0},{"Emerald Web",0},{"Fade",38},{"Mogul",0},
+        {"Foundation",0},{"Marble Fade",0},{"Field Agent",0},
+        {"Forest DDPAT",0},{"Buckshot",0},{"Tiger Strike",0},
+        {"Lt. Commander",0},{"Cool Mint",0}
+    }});
+    m_weapons.push_back({"Driver Gloves", 5031, "Gloves", {
+        {"King Snake",0},{"Imperial Plaid",0},{"Crimson Weave",0},
+        {"Lunar Weave",0},{"Diamondback",0},{"Overtake",0},
+        {"Racing Green",0},{"Convoy",0},{"Queen Jaguar",0},
+        {"Snow Leopard",0},{"Black Tie",0}
+    }});
+    m_weapons.push_back({"Hand Wraps", 5032, "Gloves", {
+        {"Cobalt Skulls",0},{"Overprint",0},{"Slaughter",59},{"Leather",0},
+        {"Badlands",0},{"Spruce DDPAT",0},{"Duct Tape",0},
+        {"Arboreal",0},{"Giraffe",0},{"Cashmere",0},{"Constrictor",0}
+    }});
+    m_weapons.push_back({"Moto Gloves", 5034, "Gloves", {
+        {"Spearmint",0},{"Cool Mint",0},{"Polygon",0},{"Boom!",0},
+        {"Eclipse",0},{"Transport",0},{"Turtle",0},{"POW!",0},
+        {"Finish Line",0},{"Blood Pressure",0},{"Smoke Out",0}
+    }});
+    m_weapons.push_back({"Hydra Gloves", 5035, "Gloves", {
+        {"Case Hardened",44},{"Emerald",0},{"Rattler",0},
+        {"Mangrove",0},{"Circuit Board",0}
+    }});
+    m_weapons.push_back({"Broken Fang Gloves", 5036, "Gloves", {
+        {"Jade",0},{"Yellow-banded",0},{"Unhinged",0},
+        {"Needle Point",0},{"Finisher",0}
+    }});
 }
 
-// ────────────────────────────────────────────────
+// ============================================================================
 //  Mouse
-// ────────────────────────────────────────────────
+// ============================================================================
 void GameMenu::OnMouseMove(int x, int y) {
-    m_mouseX = x;
-    m_mouseY = y;
-    // Slider dragging
-    if (m_sliderDrag && m_invView == INV_DETAIL) {
-        int sx = m_sliderRect.x;
-        int sw = m_sliderRect.w;
-        float t = (float)(x - sx) / (float)sw;
-        if (t < 0.0f) t = 0.0f;
-        if (t > 1.0f) t = 1.0f;
+    m_mouseX = x; m_mouseY = y;
+    if (m_sliderDrag && m_view == INV_DETAIL) {
+        float t = (float)(x - m_sliderR.x) / (float)m_sliderR.w;
+        if (t < 0.f) t = 0.f; if (t > 1.f) t = 1.f;
         m_detailFloat = t;
     }
 }
 
+void GameMenu::OnMouseUp() { m_sliderDrag = false; }
+
 void GameMenu::OnMouseClick(int x, int y) {
     if (!m_visible) return;
 
-    // Sidebar
+    // Sidebar nav
     for (int i = 0; i < PAGE_COUNT; i++) {
-        if (HitTest(m_sidebarRects[i], x, y)) {
-            m_activePage = (Page)i;
-            m_scrollOffset = 0;
-            if (i == PAGE_INVENTORY) m_invView = INV_EQUIPPED;
+        if (Hit(m_sideR[i], x, y)) {
+            m_page = (Page)i;
+            m_scroll = 0;
+            if (i == PAGE_INVENTORY) m_view = INV_EQUIPPED;
+            if (i == PAGE_CONFIGS) ScanPresets();
             return;
         }
     }
 
-    if (m_activePage == PAGE_INVENTORY) {
+    if (m_page == PAGE_INVENTORY) {
         // "Tilf\xF8j Skin" button
-        if (HitTest(m_addBtnRect, x, y)) {
-            m_invView = INV_WEAPONS;
-            m_scrollOffset = 0;
-            return;
-        }
+        if (Hit(m_addBtn, x, y)) { m_view = INV_WEAPONS; m_scroll = 0; return; }
         // Back button
-        if (HitTest(m_backBtnRect, x, y)) {
-            if (m_invView == INV_DETAIL)      { m_invView = INV_SKINS; m_scrollOffset = 0; }
-            else if (m_invView == INV_SKINS)  { m_invView = INV_WEAPONS; m_scrollOffset = 0; }
-            else if (m_invView == INV_WEAPONS){ m_invView = INV_EQUIPPED; m_scrollOffset = 0; }
+        if (Hit(m_backBtn, x, y)) {
+            if      (m_view == INV_DETAIL)  { m_view = INV_SKINS;   m_scroll = 0; }
+            else if (m_view == INV_SKINS)   { m_view = INV_WEAPONS; m_scroll = 0; }
+            else if (m_view == INV_WEAPONS) { m_view = INV_EQUIPPED; m_scroll = 0; }
             return;
         }
-        // Apply / Tilf\xF8j button in detail view
-        if (m_invView == INV_DETAIL && HitTest(m_applyBtnRect, x, y)) {
-            if (m_selWeapon >= 0 && m_selWeapon < (int)m_weaponDB.size()) {
-                auto& wd = m_weaponDB[m_selWeapon];
-                if (m_selSkin >= 0 && m_selSkin < (int)wd.skins.size()) {
-                    // Check if already equipped, if so update float
+        // Apply (Tilf\xF8j) in detail
+        if (m_view == INV_DETAIL && Hit(m_applyBtn, x, y)) {
+            if (m_selWeapon >= 0 && m_selWeapon < (int)m_weapons.size()) {
+                auto& w = m_weapons[m_selWeapon];
+                if (m_selSkin >= 0 && m_selSkin < (int)w.skins.size()) {
                     bool found = false;
-                    for (auto& eq : m_equipped) {
-                        if (eq.weapon == wd.name && eq.skin == wd.skins[m_selSkin]) {
-                            eq.floatVal = m_detailFloat;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        m_equipped.push_back({ wd.name, wd.skins[m_selSkin], m_detailFloat });
-                    }
-                    m_invView = INV_EQUIPPED;
-                    m_scrollOffset = 0;
+                    for (auto& eq : m_equipped)
+                        if (eq.weapon == w.name && eq.skin == w.skins[m_selSkin].name)
+                            { eq.floatVal = m_detailFloat; found = true; break; }
+                    if (!found)
+                        m_equipped.push_back({w.name, w.skins[m_selSkin].name,
+                            w.weaponId, w.skins[m_selSkin].paintKit, m_detailFloat});
+                    m_view = INV_EQUIPPED; m_scroll = 0;
                 }
             }
             return;
         }
-        // Float slider click → start drag
-        if (m_invView == INV_DETAIL && HitTest(m_sliderRect, x, y)) {
+        // Slider
+        if (m_view == INV_DETAIL && Hit(m_sliderR, x, y)) {
             m_sliderDrag = true;
-            float t = (float)(x - m_sliderRect.x) / (float)m_sliderRect.w;
-            if (t < 0.0f) t = 0.0f;
-            if (t > 1.0f) t = 1.0f;
+            float t = (float)(x - m_sliderR.x) / (float)m_sliderR.w;
+            if (t < 0.f) t = 0.f; if (t > 1.f) t = 1.f;
             m_detailFloat = t;
             return;
         }
-        // Grid clicks (weapons or skins)
-        for (int i = 0; i < m_gridCount; i++) {
-            if (HitTest(m_gridRects[i], x, y)) {
-                if (m_invView == INV_WEAPONS) {
-                    m_selWeapon = m_gridIds[i];
-                    m_invView = INV_SKINS;
-                    m_scrollOffset = 0;
-                } else if (m_invView == INV_SKINS) {
-                    m_selSkin = m_gridIds[i];
-                    m_detailFloat = 0.01f;
-                    m_invView = INV_DETAIL;
-                    m_scrollOffset = 0;
-                }
+        // Grid clicks
+        for (int i = 0; i < m_gN; i++) {
+            if (Hit(m_gR[i], x, y)) {
+                if (m_view == INV_WEAPONS) { m_selWeapon = m_gId[i]; m_view = INV_SKINS; m_scroll = 0; }
+                else if (m_view == INV_SKINS) { m_selSkin = m_gId[i]; m_detailFloat = 0.01f; m_view = INV_DETAIL; m_scroll = 0; }
                 return;
             }
         }
-        // Remove buttons in equipped view
-        for (int i = 0; i < m_invRemoveCount; i++) {
-            if (HitTest(m_invRemoveRects[i], x, y)) {
-                if (i < (int)m_equipped.size()) {
-                    m_equipped.erase(m_equipped.begin() + i);
-                }
+        // Remove buttons
+        for (int i = 0; i < m_remN; i++) {
+            if (Hit(m_remR[i], x, y)) {
+                if (i < (int)m_equipped.size()) m_equipped.erase(m_equipped.begin() + i);
                 return;
             }
         }
     }
 
-    if (m_activePage == PAGE_CONFIGS) {
-        for (int i = 0; i < m_toggleCount; i++) {
-            if (HitTest(m_toggleRects[i], x, y)) {
-                bool* vals[] = { &m_skinChangerEnabled, &m_knifeChangerEnabled, &m_gloveChangerEnabled };
-                if (i < 3) *vals[i] = !*vals[i];
-                return;
-            }
+    if (m_page == PAGE_CONFIGS) {
+        // Save button
+        if (Hit(m_saveBtn, x, y)) { SavePreset(); ScanPresets(); return; }
+        // Apply to game button
+        if (Hit(m_applyGameBtn, x, y)) {
+            // The SkinChanger integration would write to CS2 memory here.
+            // For now, this is a placeholder that logs the action.
+            DbgLog("ApplyToGame: %d items in inventory", (int)m_equipped.size());
+            return;
+        }
+        // Preset load/delete
+        for (int i = 0; i < m_pN; i++) {
+            if (Hit(m_pLoadR[i], x, y)) { LoadPreset(i); return; }
+            if (Hit(m_pDelR[i], x, y)) { DeletePreset(i); ScanPresets(); return; }
         }
     }
 }
 
 void GameMenu::OnMouseWheel(int delta) {
     if (!m_visible) return;
-    m_scrollOffset -= delta / 40;
-    if (m_scrollOffset < 0) m_scrollOffset = 0;
+    m_scroll -= delta / 40;
+    if (m_scroll < 0) m_scroll = 0;
 }
 
-void GameMenu::OnMouseUp() {
-    m_sliderDrag = false;
-}
-
-// ────────────────────────────────────────────────
-//  Drawing helpers
-// ────────────────────────────────────────────────
-void GameMenu::DrawRoundRect(HDC hdc, int x, int y, int w, int h, int r,
-                             COLORREF fill, COLORREF border) {
+// ============================================================================
+//  GDI Helpers
+// ============================================================================
+void GameMenu::RRect(HDC hdc, int x, int y, int w, int h, int r,
+                     COLORREF fill, COLORREF brd) {
     HBRUSH br = CreateSolidBrush(fill);
-    HPEN   pn = CreatePen(PS_SOLID, 1, border);
+    HPEN   pn = CreatePen(PS_SOLID, 1, brd);
     HBRUSH ob = (HBRUSH)SelectObject(hdc, br);
     HPEN   op = (HPEN)SelectObject(hdc, pn);
     RoundRect(hdc, x, y, x + w, y + h, r * 2, r * 2);
-    SelectObject(hdc, ob);
-    SelectObject(hdc, op);
-    DeleteObject(br);
-    DeleteObject(pn);
+    SelectObject(hdc, ob); SelectObject(hdc, op);
+    DeleteObject(br); DeleteObject(pn);
 }
 
-void GameMenu::DrawText_(HDC hdc, const char* text, int x, int y, int w, int h,
-                         COLORREF col, HFONT font, UINT fmt) {
-    HFONT old = (HFONT)SelectObject(hdc, font);
-    SetTextColor(hdc, col);
-    SetBkMode(hdc, TRANSPARENT);
-    RECT rc = { x, y, x + w, y + h };
-    DrawTextA(hdc, text, -1, &rc, fmt);
-    SelectObject(hdc, old);
+void GameMenu::Txt(HDC hdc, const char* s, int x, int y, int w, int h,
+                   COLORREF c, HFONT f, UINT fmt) {
+    HFONT of = (HFONT)SelectObject(hdc, f);
+    SetTextColor(hdc, c); SetBkMode(hdc, TRANSPARENT);
+    RECT rc = {x, y, x+w, y+h};
+    DrawTextA(hdc, s, -1, &rc, fmt);
+    SelectObject(hdc, of);
 }
 
-void GameMenu::DrawButton(HDC hdc, int x, int y, int w, int h, const char* text,
-                          bool hov, COLORREF bg, COLORREF bgHov) {
-    DrawRoundRect(hdc, x, y, w, h, 6, hov ? bgHov : bg, hov ? MENU_ACCENT_L : MENU_ACCENT);
-    DrawText_(hdc, text, x, y, w, h, MENU_WHITE, m_fontBold, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+void GameMenu::Btn(HDC hdc, int x, int y, int w, int h,
+                   const char* text, bool hov, COLORREF bg, COLORREF bgH) {
+    RRect(hdc, x, y, w, h, 6, hov ? bgH : bg, hov ? NL_ACCENT_L : NL_ACCENT);
+    Txt(hdc, text, x, y, w, h, NL_WHITE, m_fBold, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 }
 
-// ────────────────────────────────────────────────
-//  Render
-// ────────────────────────────────────────────────
+// ============================================================================
+//  Render – main dispatcher
+// ============================================================================
 void GameMenu::Render(HDC hdc, int winW, int winH) {
     if (!m_visible) return;
+    int mx = (winW - MENU_W) / 2, my = (winH - MENU_H) / 2;
+    m_menuX = mx; m_menuY = my;
+    m_gN = 0; m_remN = 0; m_pN = 0;
 
-    int mx = (winW - MENU_WIDTH) / 2;
-    int my = (winH - MENU_HEIGHT) / 2;
-    m_menuX = mx;  m_menuY = my;
-    m_gridCount = 0;
-    m_invRemoveCount = 0;
-    m_toggleCount = 0;
+    // Drop shadow
+    RRect(hdc, mx+6, my+6, MENU_W, MENU_H, RAD, RGB(3,3,5), RGB(3,3,5));
+    // Main frame
+    RRect(hdc, mx, my, MENU_W, MENU_H, RAD, NL_BG, NL_BORDER);
 
-    // Shadow + background
-    DrawRoundRect(hdc, mx + 5, my + 5, MENU_WIDTH, MENU_HEIGHT, MENU_RAD, RGB(2, 2, 4), RGB(2, 2, 4));
-    DrawRoundRect(hdc, mx, my, MENU_WIDTH, MENU_HEIGHT, MENU_RAD, MENU_BG, MENU_BORDER);
+    DrawSidebar(hdc, mx, my, MENU_H);
 
-    // Sidebar
-    DrawSidebar(hdc, mx, my, MENU_HEIGHT);
-
-    // Content
-    int cx = mx + MENU_SIDEBAR_W;
-    int cw = MENU_WIDTH - MENU_SIDEBAR_W;
-
-    // Header
+    int cx = mx + SIDE_W, cw = MENU_W - SIDE_W;
     DrawHeader(hdc, cx, my, cw);
 
-    // Content body
-    int contentY = my + MENU_HEADER_H;
-    int contentH = MENU_HEIGHT - MENU_HEADER_H;
-
-    HRGN clip = CreateRectRgn(cx, contentY, cx + cw, my + MENU_HEIGHT);
+    int cy = my + HDR_H, ch = MENU_H - HDR_H;
+    HRGN clip = CreateRectRgn(cx, cy, cx + cw, my + MENU_H);
     SelectClipRgn(hdc, clip);
 
-    if (m_activePage == PAGE_INVENTORY) {
-        switch (m_invView) {
-        case INV_EQUIPPED: DrawEquipped(hdc, cx, contentY, cw, contentH); break;
-        case INV_WEAPONS:  DrawWeaponGrid(hdc, cx, contentY, cw, contentH); break;
-        case INV_SKINS:    DrawSkinGrid(hdc, cx, contentY, cw, contentH); break;
-        case INV_DETAIL:   DrawSkinDetail(hdc, cx, contentY, cw, contentH); break;
+    if (m_page == PAGE_INVENTORY) {
+        switch (m_view) {
+        case INV_EQUIPPED: DrawEquipped(hdc, cx, cy, cw, ch); break;
+        case INV_WEAPONS:  DrawWeapons(hdc, cx, cy, cw, ch);  break;
+        case INV_SKINS:    DrawSkins(hdc, cx, cy, cw, ch);    break;
+        case INV_DETAIL:   DrawDetail(hdc, cx, cy, cw, ch);   break;
         }
     } else {
-        DrawConfigs(hdc, cx, contentY, cw, contentH);
+        DrawConfigs(hdc, cx, cy, cw, ch);
     }
 
     SelectClipRgn(hdc, nullptr);
     DeleteObject(clip);
 }
 
+// ============================================================================
+//  Sidebar  –  exact NEVERLOSE layout
+// ============================================================================
 void GameMenu::DrawSidebar(HDC hdc, int x, int y, int h) {
-    RECT sbr = { x, y, x + MENU_SIDEBAR_W, y + h };
-    HBRUSH sbb = CreateSolidBrush(MENU_SIDEBAR_C);
+    // Sidebar panel
+    RECT sbr = {x, y, x + SIDE_W, y + h};
+    HBRUSH sbb = CreateSolidBrush(NL_SIDEBAR);
     FillRect(hdc, &sbr, sbb);
     DeleteObject(sbb);
 
     // Right border
-    HPEN bp = CreatePen(PS_SOLID, 1, MENU_SIDEBAR_BR);
+    HPEN bp = CreatePen(PS_SOLID, 1, NL_SIDEBAR_BR);
     HPEN obp = (HPEN)SelectObject(hdc, bp);
-    MoveToEx(hdc, x + MENU_SIDEBAR_W - 1, y, nullptr);
-    LineTo(hdc, x + MENU_SIDEBAR_W - 1, y + h);
-    SelectObject(hdc, obp);
-    DeleteObject(bp);
+    MoveToEx(hdc, x + SIDE_W - 1, y, nullptr);
+    LineTo(hdc, x + SIDE_W - 1, y + h);
+    SelectObject(hdc, obp); DeleteObject(bp);
 
-    // Logo
-    DrawText_(hdc, "NEVERLOSE", x + 14, y + 14, MENU_SIDEBAR_W - 28, 28,
-              MENU_WHITE, m_fontLogo, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    // Logo area
+    // Blue accent square
+    RRect(hdc, x + 20, y + 18, 36, 36, 8, NL_ACCENT, NL_ACCENT_D);
+    Txt(hdc, "AC", x + 20, y + 18, 36, 36, NL_WHITE, m_fBold,
+        DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    // Brand name
+    Txt(hdc, "AC Changer", x + 64, y + 20, SIDE_W - 72, 18, NL_WHITE, m_fBold,
+        DT_LEFT|DT_SINGLELINE);
+    Txt(hdc, "v2.0 · NEVERLOSE", x + 64, y + 38, SIDE_W - 72, 14, NL_TEXT3, m_fSmall,
+        DT_LEFT|DT_SINGLELINE);
 
     // Separator
-    HPEN sp = CreatePen(PS_SOLID, 1, MENU_SIDEBAR_BR);
-    HPEN osp = (HPEN)SelectObject(hdc, sp);
-    MoveToEx(hdc, x + 14, y + 50, nullptr);
-    LineTo(hdc, x + MENU_SIDEBAR_W - 14, y + 50);
-    SelectObject(hdc, osp);
-    DeleteObject(sp);
+    HPEN sep = CreatePen(PS_SOLID, 1, NL_SIDEBAR_BR);
+    HPEN osep = (HPEN)SelectObject(hdc, sep);
+    MoveToEx(hdc, x + 16, y + 65, nullptr);
+    LineTo(hdc, x + SIDE_W - 16, y + 65);
+    SelectObject(hdc, osep); DeleteObject(sep);
 
-    // Nav items
-    const char* labels[PAGE_COUNT] = { "Inventory Changer", "Configs" };
-    const char* icons[PAGE_COUNT] = { "\xB7", "\xB7" };
-    int navY = y + 62;
+    // Section label
+    Txt(hdc, "MAIN MENU", x + 20, y + 74, SIDE_W - 40, 16, NL_TEXT3, m_fSmall,
+        DT_LEFT|DT_SINGLELINE);
+
+    // Navigation items
+    const char* labels[PAGE_COUNT] = {"Inventory Changer", "Configs"};
+    const char* icons[PAGE_COUNT]  = {"I", "C"};  // Single letter icon
+    int ny = y + 96;
 
     for (int i = 0; i < PAGE_COUNT; i++) {
-        bool sel = ((int)m_activePage == i);
-        bool hov = HitTest({x + 8, navY, MENU_SIDEBAR_W - 16, 34}, m_mouseX, m_mouseY);
+        bool sel = ((int)m_page == i);
+        bool hov = Hit({x + 8, ny, SIDE_W - 16, 38}, m_mouseX, m_mouseY);
 
         if (sel) {
-            DrawRoundRect(hdc, x + 8, navY, MENU_SIDEBAR_W - 16, 34, 6,
-                          RGB(30, 50, 80), MENU_ACCENT);
+            // Active: blue-tinted card with left accent bar
+            RRect(hdc, x + 8, ny, SIDE_W - 16, 38, 6, NL_CARD_SEL, NL_ACCENT_D);
+            // Left accent bar (3px wide blue bar – NEVERLOSE signature)
+            RECT bar = {x + 8, ny + 6, x + 11, ny + 32};
+            HBRUSH ab = CreateSolidBrush(NL_ACCENT);
+            FillRect(hdc, &bar, ab); DeleteObject(ab);
         } else if (hov) {
-            DrawRoundRect(hdc, x + 8, navY, MENU_SIDEBAR_W - 16, 34, 6,
-                          RGB(25, 25, 32), MENU_SIDEBAR_BR);
+            RRect(hdc, x + 8, ny, SIDE_W - 16, 38, 6, RGB(22,22,30), NL_SIDEBAR_BR);
         }
 
-        COLORREF nc = sel ? MENU_ACCENT_L : (hov ? MENU_TEXT : MENU_TEXT_DIM);
-        char buf[64];
-        snprintf(buf, sizeof(buf), "  %s  %s", icons[i], labels[i]);
-        DrawText_(hdc, buf, x + 12, navY, MENU_SIDEBAR_W - 24, 34,
-                  nc, m_fontBody, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        // Icon circle
+        COLORREF ic = sel ? NL_ACCENT : NL_TEXT3;
+        RRect(hdc, x + 18, ny + 8, 22, 22, 11, sel ? NL_ACCENT_D : RGB(30,30,38), ic);
+        Txt(hdc, icons[i], x + 18, ny + 8, 22, 22, sel ? NL_WHITE : NL_TEXT2, m_fSmall,
+            DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 
-        m_sidebarRects[i] = { x + 8, navY, MENU_SIDEBAR_W - 16, 34 };
-        navY += 40;
+        // Label
+        COLORREF lc = sel ? NL_ACCENT_L : (hov ? NL_TEXT : NL_TEXT2);
+        Txt(hdc, labels[i], x + 46, ny, SIDE_W - 54, 38, lc, m_fBody,
+            DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+
+        m_sideR[i] = {x + 8, ny, SIDE_W - 16, 38};
+        ny += 44;
     }
+
+    // Bottom status
+    int sy = y + h - 52;
+    HPEN bsep = CreatePen(PS_SOLID, 1, NL_SIDEBAR_BR);
+    HPEN obsep = (HPEN)SelectObject(hdc, bsep);
+    MoveToEx(hdc, x + 16, sy, nullptr);
+    LineTo(hdc, x + SIDE_W - 16, sy);
+    SelectObject(hdc, obsep); DeleteObject(bsep);
+
+    // Green dot + "Connected"
+    HBRUSH gd = CreateSolidBrush(NL_GREEN);
+    HPEN gp = CreatePen(PS_SOLID, 1, NL_GREEN);
+    SelectObject(hdc, gd); SelectObject(hdc, gp);
+    Ellipse(hdc, x + 20, sy + 16, x + 28, sy + 24);
+    DeleteObject(gd); DeleteObject(gp);
+    Txt(hdc, "Connected to CS2", x + 34, sy + 8, SIDE_W - 50, 22, NL_GREEN, m_fSmall,
+        DT_LEFT|DT_VCENTER|DT_SINGLELINE);
 }
 
+// ============================================================================
+//  Header
+// ============================================================================
 void GameMenu::DrawHeader(HDC hdc, int x, int y, int w) {
-    RECT hr = { x, y, x + w, y + MENU_HEADER_H };
-    HBRUSH hb = CreateSolidBrush(MENU_BG_HEADER);
-    FillRect(hdc, &hr, hb);
-    DeleteObject(hb);
+    RECT hr = {x, y, x + w, y + HDR_H};
+    HBRUSH hb = CreateSolidBrush(NL_HEADER);
+    FillRect(hdc, &hr, hb); DeleteObject(hb);
 
-    // Separator
-    HPEN sp = CreatePen(PS_SOLID, 1, MENU_BORDER);
+    // Bottom border
+    HPEN sp = CreatePen(PS_SOLID, 1, NL_BORDER);
     HPEN op = (HPEN)SelectObject(hdc, sp);
-    MoveToEx(hdc, x, y + MENU_HEADER_H - 1, nullptr);
-    LineTo(hdc, x + w, y + MENU_HEADER_H - 1);
-    SelectObject(hdc, op);
-    DeleteObject(sp);
+    MoveToEx(hdc, x, y + HDR_H - 1, nullptr);
+    LineTo(hdc, x + w, y + HDR_H - 1);
+    SelectObject(hdc, op); DeleteObject(sp);
 
-    // Title based on current view
+    // Title
     const char* title = "";
-    if (m_activePage == PAGE_INVENTORY) {
-        switch (m_invView) {
+    if (m_page == PAGE_INVENTORY) {
+        switch (m_view) {
         case INV_EQUIPPED: title = "Inventory"; break;
         case INV_WEAPONS:  title = "V\xE6lg V\xE5""ben"; break;
         case INV_SKINS:
-            if (m_selWeapon >= 0 && m_selWeapon < (int)m_weaponDB.size())
-                title = m_weaponDB[m_selWeapon].name.c_str();
+            if (m_selWeapon >= 0 && m_selWeapon < (int)m_weapons.size())
+                title = m_weapons[m_selWeapon].name.c_str();
             else title = "Skins";
             break;
-        case INV_DETAIL:   title = "Skin Detaljer"; break;
+        case INV_DETAIL: title = "Skin Detaljer"; break;
         }
-    } else {
-        title = "Configs";
-    }
-    DrawText_(hdc, title, x + MENU_PAD, y, 300, MENU_HEADER_H,
-              MENU_WHITE, m_fontTitle, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    } else title = "Configs";
 
-    // "Tilf\xF8j Skin" button (only in equipped view)
-    if (m_activePage == PAGE_INVENTORY && m_invView == INV_EQUIPPED) {
-        int bw = 110, bh = 30;
-        int bx = x + w - bw - MENU_PAD;
-        int by = y + (MENU_HEADER_H - bh) / 2;
-        bool hov = HitTest({bx, by, bw, bh}, m_mouseX, m_mouseY);
-        DrawButton(hdc, bx, by, bw, bh, "+ Tilf\xF8j Skin", hov, MENU_BTN_BG, MENU_BTN_HOV);
-        m_addBtnRect = { bx, by, bw, bh };
-    } else {
-        m_addBtnRect = { 0, 0, 0, 0 };
-    }
+    Txt(hdc, title, x + PAD, y, 300, HDR_H, NL_WHITE, m_fTitle,
+        DT_LEFT|DT_VCENTER|DT_SINGLELINE);
 
-    // Back button (in weapons/skins/detail views)
-    if (m_activePage == PAGE_INVENTORY && m_invView != INV_EQUIPPED) {
-        int bw = 70, bh = 28;
-        int bx = x + w - bw - MENU_PAD;
-        int by = y + (MENU_HEADER_H - bh) / 2;
-        // Move left if addBtn is visible
-        if (m_invView == INV_EQUIPPED) bx -= 120;
-        bool hov = HitTest({bx, by, bw, bh}, m_mouseX, m_mouseY);
-        DrawButton(hdc, bx, by, bw, bh, "\x3C Tilbage", hov, RGB(50, 50, 60), RGB(65, 65, 78));
-        m_backBtnRect = { bx, by, bw, bh };
-    } else {
-        m_backBtnRect = { 0, 0, 0, 0 };
-    }
+    // "+ Tilf\xF8j Skin" button (equipped view only)
+    if (m_page == PAGE_INVENTORY && m_view == INV_EQUIPPED) {
+        int bw = 120, bh = 32, bx = x + w - bw - PAD, by = y + (HDR_H - bh) / 2;
+        bool hov = Hit({bx, by, bw, bh}, m_mouseX, m_mouseY);
+        Btn(hdc, bx, by, bw, bh, "+ Tilf\xF8j Skin", hov, NL_ACCENT, NL_ACCENT_L);
+        m_addBtn = {bx, by, bw, bh};
+    } else m_addBtn = {0,0,0,0};
+
+    // Back button (weapons/skins/detail)
+    if (m_page == PAGE_INVENTORY && m_view != INV_EQUIPPED) {
+        int bw = 80, bh = 28, bx = x + w - bw - PAD, by = y + (HDR_H - bh) / 2;
+        bool hov = Hit({bx, by, bw, bh}, m_mouseX, m_mouseY);
+        Btn(hdc, bx, by, bw, bh, "\x3C Tilbage", hov, RGB(35,35,45), RGB(45,45,58));
+        m_backBtn = {bx, by, bw, bh};
+    } else m_backBtn = {0,0,0,0};
 }
 
+// ============================================================================
+//  Equipped Inventory  –  grid of added items
+// ============================================================================
 void GameMenu::DrawEquipped(HDC hdc, int x, int y, int w, int h) {
-    int py = y + 12 - m_scrollOffset;
+    int py = y + PAD - m_scroll;
 
     if (m_equipped.empty()) {
-        DrawText_(hdc, "Ingen skins udstyret endnu.", x + MENU_PAD, py + 40, w - MENU_PAD * 2, 30,
-                  MENU_TEXT_DIM, m_fontBody, DT_CENTER | DT_SINGLELINE);
-        DrawText_(hdc, "Klik \"+ Tilf\xF8j Skin\" for at tilf\xF8je skins til dit inventory.",
-                  x + MENU_PAD, py + 70, w - MENU_PAD * 2, 24,
-                  MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
+        Txt(hdc, "Ingen skins tilf\xF8jet endnu.", x + PAD, py + 60, w - PAD*2, 24,
+            NL_TEXT2, m_fBody, DT_CENTER|DT_SINGLELINE);
+        Txt(hdc, "Klik \"+ Tilf\xF8j Skin\" for at tilf\xF8je skins til dit CS2 inventory.",
+            x + PAD, py + 90, w - PAD*2, 20, NL_TEXT3, m_fSmall, DT_CENTER|DT_SINGLELINE);
+
+        // Instruction box
+        int bx = x + 80, bw = w - 160, infoY = py + 140;
+        RRect(hdc, bx, infoY, bw, 90, 8, NL_CARD, NL_BORDER);
+        Txt(hdc, "S\xE5""dan virker det:", bx + PAD, infoY + 10, bw - PAD*2, 18,
+            NL_ACCENT_L, m_fBold, DT_LEFT|DT_SINGLELINE);
+        Txt(hdc, "1. Klik \"+ Tilf\xF8j Skin\" og v\xE6lg et v\xE5""ben",
+            bx + PAD, infoY + 32, bw - PAD*2, 16, NL_TEXT, m_fSmall, DT_LEFT|DT_SINGLELINE);
+        Txt(hdc, "2. V\xE6lg en skin og indstil float v\xE6rdien",
+            bx + PAD, infoY + 50, bw - PAD*2, 16, NL_TEXT, m_fSmall, DT_LEFT|DT_SINGLELINE);
+        Txt(hdc, "3. G\xE5 til Configs og klik \"Anvend p\xE5 CS2\"",
+            bx + PAD, infoY + 68, bw - PAD*2, 16, NL_TEXT, m_fSmall, DT_LEFT|DT_SINGLELINE);
         return;
     }
 
-    // Grid of equipped items
     int cols = 4;
-    int cardW = (w - MENU_PAD * 2 - (cols - 1) * GRID_GAP) / cols;
-    int cardH = 130;
-    int col = 0;
-    int startX = x + MENU_PAD;
+    int cardW = (w - PAD*2 - (cols-1)*GGAP) / cols;
+    int cardH = 140;
+    int col = 0, startX = x + PAD;
 
     for (int i = 0; i < (int)m_equipped.size(); i++) {
         auto& eq = m_equipped[i];
-        int cx = startX + col * (cardW + GRID_GAP);
+        int cx = startX + col * (cardW + GGAP);
         int cy = py;
 
         if (cy + cardH > y && cy < y + h) {
-            bool hov = HitTest({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
+            bool hov = Hit({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
 
-            // Card background with orange-ish left border (like image 2)
-            DrawRoundRect(hdc, cx, cy, cardW, cardH, 6, MENU_CARD, hov ? MENU_CARD_BR : MENU_BORDER);
+            // Card
+            RRect(hdc, cx, cy, cardW, cardH, 8,
+                  hov ? NL_CARD_HOV : NL_CARD,
+                  hov ? NL_ACCENT : NL_BORDER);
 
-            // Orange left accent
-            RECT accent = { cx, cy + 4, cx + 3, cy + cardH - 4 };
-            HBRUSH ab = CreateSolidBrush(MENU_ORANGE);
-            FillRect(hdc, &accent, ab);
-            DeleteObject(ab);
+            // Left accent stripe (orange, like steam inventory)
+            RECT ac = {cx + 1, cy + 8, cx + 4, cy + cardH - 8};
+            HBRUSH ab = CreateSolidBrush(NL_ORANGE);
+            FillRect(hdc, &ac, ab); DeleteObject(ab);
 
-            // Weapon + skin name
-            DrawText_(hdc, eq.weapon.c_str(), cx + 10, cy + 10, cardW - 20, 18,
-                      MENU_WHITE, m_fontBold, DT_LEFT | DT_SINGLELINE);
-            DrawText_(hdc, eq.skin.c_str(), cx + 10, cy + 30, cardW - 20, 18,
-                      MENU_TEXT, m_fontBody, DT_LEFT | DT_SINGLELINE);
+            // Weapon
+            Txt(hdc, eq.weapon.c_str(), cx + 12, cy + 10, cardW - 24, 16,
+                NL_WHITE, m_fBold, DT_LEFT|DT_SINGLELINE);
+            // Skin
+            Txt(hdc, eq.skin.c_str(), cx + 12, cy + 28, cardW - 24, 16,
+                NL_TEXT, m_fBody, DT_LEFT|DT_SINGLELINE);
 
-            // Float value
-            char floatBuf[32];
-            snprintf(floatBuf, sizeof(floatBuf), "Float: %.4f", eq.floatVal);
-            DrawText_(hdc, floatBuf, cx + 10, cy + 52, cardW - 20, 16,
-                      MENU_TEXT_DIM, m_fontSmall, DT_LEFT | DT_SINGLELINE);
+            // Float + wear
+            char fb[32]; snprintf(fb, sizeof(fb), "Float: %.4f", eq.floatVal);
+            Txt(hdc, fb, cx + 12, cy + 50, cardW - 24, 14, NL_TEXT2, m_fSmall, DT_LEFT|DT_SINGLELINE);
+            Txt(hdc, WearName(eq.floatVal), cx + 12, cy + 66, cardW - 24, 14,
+                NL_GREEN, m_fSmall, DT_LEFT|DT_SINGLELINE);
 
-            // Wear name
-            const char* wear = "Factory New";
-            if (eq.floatVal > 0.07f) wear = "Minimal Wear";
-            if (eq.floatVal > 0.15f) wear = "Field-Tested";
-            if (eq.floatVal > 0.38f) wear = "Well-Worn";
-            if (eq.floatVal > 0.45f) wear = "Battle-Scarred";
-            DrawText_(hdc, wear, cx + 10, cy + 70, cardW - 20, 16,
-                      MENU_GREEN, m_fontSmall, DT_LEFT | DT_SINGLELINE);
+            // Paint kit ID
+            if (eq.paintKit > 0) {
+                char pk[32]; snprintf(pk, sizeof(pk), "Kit: %d", eq.paintKit);
+                Txt(hdc, pk, cx + 12, cy + 82, cardW - 24, 14, NL_TEXT3, m_fSmall, DT_LEFT|DT_SINGLELINE);
+            }
 
             // Remove button
-            int rbw = 60, rbh = 22;
-            int rbx = cx + (cardW - rbw) / 2;
-            int rby = cy + cardH - rbh - 8;
-            bool rhov = HitTest({rbx, rby, rbw, rbh}, m_mouseX, m_mouseY);
-            DrawRoundRect(hdc, rbx, rby, rbw, rbh, 4,
-                          rhov ? RGB(70, 30, 30) : RGB(50, 22, 22),
-                          MENU_RED);
-            DrawText_(hdc, "Fjern", rbx, rby, rbw, rbh,
-                      MENU_RED, m_fontSmall, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            int rbw = 55, rbh = 22;
+            int rbx = cx + (cardW - rbw) / 2, rby = cy + cardH - rbh - 10;
+            bool rh = Hit({rbx, rby, rbw, rbh}, m_mouseX, m_mouseY);
+            RRect(hdc, rbx, rby, rbw, rbh, 4,
+                  rh ? RGB(60,25,25) : RGB(40,18,18), NL_RED);
+            Txt(hdc, "Fjern", rbx, rby, rbw, rbh, NL_RED, m_fSmall,
+                DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 
-            if (m_invRemoveCount < MAX_INV) {
-                m_invRemoveRects[m_invRemoveCount++] = { rbx, rby, rbw, rbh };
-            }
+            if (m_remN < MI) m_remR[m_remN++] = {rbx, rby, rbw, rbh};
         }
 
         col++;
-        if (col >= cols) {
-            col = 0;
-            py += cardH + GRID_GAP;
-        }
+        if (col >= cols) { col = 0; py += cardH + GGAP; }
     }
 }
 
-void GameMenu::DrawWeaponGrid(HDC hdc, int x, int y, int w, int h) {
-    int py = y + 12 - m_scrollOffset;
-    int cols = GRID_COLS;
-    int cardW = (w - MENU_PAD * 2 - (cols - 1) * GRID_GAP) / cols;
-    int cardH = 70;
-    int col = 0;
-    int startX = x + MENU_PAD;
+// ============================================================================
+//  Weapon Grid  –  category cards
+// ============================================================================
+void GameMenu::DrawWeapons(HDC hdc, int x, int y, int w, int h) {
+    int py = y + PAD - m_scroll;
+    int cols = GCOLS;
+    int cardW = (w - PAD*2 - (cols-1)*GGAP) / cols;
+    int cardH = 80;
+    int col = 0, startX = x + PAD;
 
-    for (int i = 0; i < (int)m_weaponDB.size(); i++) {
-        int cx = startX + col * (cardW + GRID_GAP);
+    // Category tracking for section headers
+    std::string lastCat;
+
+    for (int i = 0; i < (int)m_weapons.size(); i++) {
+        // Section header
+        if (m_weapons[i].category != lastCat) {
+            if (col != 0) { col = 0; py += cardH + GGAP; }
+            lastCat = m_weapons[i].category;
+            if (py + 24 > y && py < y + h) {
+                Txt(hdc, lastCat.c_str(), startX, py, w - PAD*2, 20,
+                    NL_ACCENT_L, m_fBold, DT_LEFT|DT_SINGLELINE);
+            }
+            py += 28;
+        }
+
+        int cx = startX + col * (cardW + GGAP);
         int cy = py;
 
         if (cy + cardH > y && cy < y + h) {
-            bool hov = HitTest({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
+            bool hov = Hit({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
 
-            DrawRoundRect(hdc, cx, cy, cardW, cardH, 6,
-                          hov ? MENU_CARD_HOV : MENU_CARD,
-                          hov ? MENU_ACCENT : MENU_BORDER);
+            RRect(hdc, cx, cy, cardW, cardH, 8,
+                  hov ? NL_CARD_HOV : NL_CARD,
+                  hov ? NL_ACCENT : NL_BORDER);
 
             // Weapon name centered
-            DrawText_(hdc, m_weaponDB[i].name.c_str(), cx + 8, cy, cardW - 16, cardH,
-                      hov ? MENU_WHITE : MENU_TEXT, m_fontBold,
-                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            Txt(hdc, m_weapons[i].name.c_str(), cx + 8, cy + 8, cardW - 16, 30,
+                hov ? NL_WHITE : NL_TEXT, m_fBold,
+                DT_CENTER|DT_VCENTER|DT_SINGLELINE);
 
             // Skin count
-            char countBuf[16];
-            snprintf(countBuf, sizeof(countBuf), "%d skins", (int)m_weaponDB[i].skins.size());
-            DrawText_(hdc, countBuf, cx + 8, cy + cardH - 20, cardW - 16, 16,
-                      MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
+            char cb[24]; snprintf(cb, sizeof(cb), "%d skins", (int)m_weapons[i].skins.size());
+            Txt(hdc, cb, cx + 8, cy + 40, cardW - 16, 16, NL_TEXT2, m_fSmall,
+                DT_CENTER|DT_SINGLELINE);
 
-            if (m_gridCount < MAX_GRID) {
-                m_gridRects[m_gridCount] = { cx, cy, cardW, cardH };
-                m_gridIds[m_gridCount] = i;
-                m_gridCount++;
-            }
+            // Weapon ID small
+            char idBuf[16]; snprintf(idBuf, sizeof(idBuf), "ID: %d", m_weapons[i].weaponId);
+            Txt(hdc, idBuf, cx + 8, cy + cardH - 20, cardW - 16, 14, NL_TEXT3, m_fSmall,
+                DT_CENTER|DT_SINGLELINE);
+
+            if (m_gN < MG) { m_gR[m_gN] = {cx, cy, cardW, cardH}; m_gId[m_gN] = i; m_gN++; }
         }
 
         col++;
-        if (col >= cols) {
-            col = 0;
-            py += cardH + GRID_GAP;
-        }
+        if (col >= cols) { col = 0; py += cardH + GGAP; }
     }
 }
 
-void GameMenu::DrawSkinGrid(HDC hdc, int x, int y, int w, int h) {
-    if (m_selWeapon < 0 || m_selWeapon >= (int)m_weaponDB.size()) return;
-    auto& wd = m_weaponDB[m_selWeapon];
+// ============================================================================
+//  Skin Grid  –  all skins for selected weapon
+// ============================================================================
+void GameMenu::DrawSkins(HDC hdc, int x, int y, int w, int h) {
+    if (m_selWeapon < 0 || m_selWeapon >= (int)m_weapons.size()) return;
+    auto& wd = m_weapons[m_selWeapon];
 
-    int py = y + 12 - m_scrollOffset;
-    int cols = GRID_COLS;
-    int cardW = (w - MENU_PAD * 2 - (cols - 1) * GRID_GAP) / cols;
-    int cardH = GRID_CARD_H;
-    int col = 0;
-    int startX = x + MENU_PAD;
+    int py = y + PAD - m_scroll;
+    int cols = GCOLS;
+    int cardW = (w - PAD*2 - (cols-1)*GGAP) / cols;
+    int cardH = GCARDH;
+    int col = 0, startX = x + PAD;
 
     for (int i = 0; i < (int)wd.skins.size(); i++) {
-        int cx = startX + col * (cardW + GRID_GAP);
+        int cx = startX + col * (cardW + GGAP);
         int cy = py;
 
         if (cy + cardH > y && cy < y + h) {
-            bool hov = HitTest({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
+            bool hov = Hit({cx, cy, cardW, cardH}, m_mouseX, m_mouseY);
 
-            // Check if equipped
-            bool isEquipped = false;
-            for (auto& eq : m_equipped) {
-                if (eq.weapon == wd.name && eq.skin == wd.skins[i]) { isEquipped = true; break; }
+            // Check equipped
+            bool eq = false;
+            for (auto& e : m_equipped)
+                if (e.weapon == wd.name && e.skin == wd.skins[i].name) { eq = true; break; }
+
+            COLORREF bg = eq ? RGB(20,35,25) : (hov ? NL_CARD_HOV : NL_CARD);
+            COLORREF br = eq ? NL_GREEN : (hov ? NL_ACCENT : NL_BORDER);
+
+            RRect(hdc, cx, cy, cardW, cardH, 8, bg, br);
+
+            // Rarity color bar at top
+            COLORREF rc = RarityColor(i);
+            RECT tb = {cx+2, cy+2, cx+cardW-2, cy+5};
+            HBRUSH tbr = CreateSolidBrush(rc);
+            FillRect(hdc, &tb, tbr); DeleteObject(tbr);
+
+            // Weapon name (small, dim)
+            Txt(hdc, wd.name.c_str(), cx + 8, cy + 12, cardW - 16, 14,
+                NL_TEXT3, m_fSmall, DT_CENTER|DT_SINGLELINE);
+
+            // Skin name (centered, main)
+            Txt(hdc, wd.skins[i].name.c_str(), cx + 6, cy + 32, cardW - 12, 40,
+                hov ? NL_WHITE : NL_TEXT, m_fGrid, DT_CENTER|DT_WORDBREAK);
+
+            // Paint kit ID
+            if (wd.skins[i].paintKit > 0) {
+                char pk[24]; snprintf(pk, sizeof(pk), "#%d", wd.skins[i].paintKit);
+                Txt(hdc, pk, cx + 8, cy + cardH - 20, cardW - 16, 14,
+                    NL_TEXT3, m_fSmall, DT_LEFT|DT_SINGLELINE);
             }
-
-            COLORREF bg = isEquipped ? RGB(25, 40, 30) : (hov ? MENU_CARD_HOV : MENU_CARD);
-            COLORREF br = isEquipped ? MENU_GREEN : (hov ? MENU_ACCENT : MENU_BORDER);
-
-            DrawRoundRect(hdc, cx, cy, cardW, cardH, 6, bg, br);
-
-            // Colored top bar (simulates skin rarity like in image 2)
-            COLORREF rarityCol = MENU_ACCENT;
-            // Simplified rarity based on position
-            if (i < 3) rarityCol = RGB(200, 50, 50);       // red = covert
-            else if (i < 8) rarityCol = RGB(180, 60, 180);  // pink = classified
-            else if (i < 15) rarityCol = RGB(100, 80, 200); // purple = restricted
-            else rarityCol = RGB(60, 120, 200);             // blue = mil-spec
-
-            RECT topBar = { cx + 1, cy + 1, cx + cardW - 1, cy + 4 };
-            HBRUSH tb = CreateSolidBrush(rarityCol);
-            FillRect(hdc, &topBar, tb);
-            DeleteObject(tb);
-
-            // Skin name (centered, two lines)
-            DrawText_(hdc, wd.skins[i].c_str(), cx + 8, cy + 30, cardW - 16, 50,
-                      hov ? MENU_WHITE : MENU_TEXT, m_fontGrid,
-                      DT_CENTER | DT_WORDBREAK);
-
-            // Weapon name small at top
-            DrawText_(hdc, wd.name.c_str(), cx + 8, cy + 10, cardW - 16, 16,
-                      MENU_TEXT_DIM, m_fontSmall, DT_CENTER | DT_SINGLELINE);
 
             // Equipped badge
-            if (isEquipped) {
-                DrawText_(hdc, "EQUIPPED", cx + 8, cy + cardH - 22, cardW - 16, 16,
-                          MENU_GREEN, m_fontSmall, DT_CENTER | DT_SINGLELINE);
+            if (eq) {
+                Txt(hdc, "EQUIPPED", cx + 8, cy + cardH - 20, cardW - 16, 14,
+                    NL_GREEN, m_fSmall, DT_RIGHT|DT_SINGLELINE);
             }
 
-            if (m_gridCount < MAX_GRID) {
-                m_gridRects[m_gridCount] = { cx, cy, cardW, cardH };
-                m_gridIds[m_gridCount] = i;
-                m_gridCount++;
-            }
+            if (m_gN < MG) { m_gR[m_gN] = {cx, cy, cardW, cardH}; m_gId[m_gN] = i; m_gN++; }
         }
 
         col++;
-        if (col >= cols) {
-            col = 0;
-            py += cardH + GRID_GAP;
-        }
+        if (col >= cols) { col = 0; py += cardH + GGAP; }
     }
 }
 
-void GameMenu::DrawSkinDetail(HDC hdc, int x, int y, int w, int h) {
-    if (m_selWeapon < 0 || m_selWeapon >= (int)m_weaponDB.size()) return;
-    auto& wd = m_weaponDB[m_selWeapon];
+// ============================================================================
+//  Skin Detail  –  float slider + apply
+// ============================================================================
+void GameMenu::DrawDetail(HDC hdc, int x, int y, int w, int h) {
+    if (m_selWeapon < 0 || m_selWeapon >= (int)m_weapons.size()) return;
+    auto& wd = m_weapons[m_selWeapon];
     if (m_selSkin < 0 || m_selSkin >= (int)wd.skins.size()) return;
 
     int py = y + 20;
-    int cw = w - MENU_PAD * 2;
+    int cw = w - PAD*2;
 
-    // Large skin card
-    int cardH = 200;
-    DrawRoundRect(hdc, x + MENU_PAD, py, cw, cardH, 8, MENU_CARD, MENU_BORDER);
+    // Large detail card
+    int cardH = 190;
+    RRect(hdc, x + PAD, py, cw, cardH, 10, NL_CARD, NL_BORDER);
 
     // Rarity bar
-    COLORREF rarityCol = MENU_ACCENT;
-    if (m_selSkin < 3) rarityCol = RGB(200, 50, 50);
-    else if (m_selSkin < 8) rarityCol = RGB(180, 60, 180);
-    else if (m_selSkin < 15) rarityCol = RGB(100, 80, 200);
-    else rarityCol = RGB(60, 120, 200);
-    RECT topBar = { x + MENU_PAD + 1, py + 1, x + MENU_PAD + cw - 1, py + 5 };
-    HBRUSH tb = CreateSolidBrush(rarityCol);
-    FillRect(hdc, &topBar, tb);
-    DeleteObject(tb);
+    COLORREF rc = RarityColor(m_selSkin);
+    RECT tb = {x + PAD + 2, py + 2, x + PAD + cw - 2, py + 6};
+    HBRUSH tbr = CreateSolidBrush(rc);
+    FillRect(hdc, &tb, tbr); DeleteObject(tbr);
 
-    // Weapon name
-    DrawText_(hdc, wd.name.c_str(), x + MENU_PAD + 20, py + 20, cw - 40, 24,
-              MENU_TEXT_DIM, m_fontBody, DT_LEFT | DT_SINGLELINE);
+    // Weapon name (dim)
+    Txt(hdc, wd.name.c_str(), x + PAD + 24, py + 16, cw - 48, 18,
+        NL_TEXT2, m_fBody, DT_LEFT|DT_SINGLELINE);
 
     // Skin name (large)
-    DrawText_(hdc, wd.skins[m_selSkin].c_str(), x + MENU_PAD + 20, py + 50, cw - 40, 30,
-              MENU_WHITE, m_fontTitle, DT_LEFT | DT_SINGLELINE);
+    Txt(hdc, wd.skins[m_selSkin].name.c_str(), x + PAD + 24, py + 40, cw - 48, 28,
+        NL_WHITE, m_fTitle, DT_LEFT|DT_SINGLELINE);
 
     // Wear name
-    const char* wear = "Factory New";
-    if (m_detailFloat > 0.07f) wear = "Minimal Wear";
-    if (m_detailFloat > 0.15f) wear = "Field-Tested";
-    if (m_detailFloat > 0.38f) wear = "Well-Worn";
-    if (m_detailFloat > 0.45f) wear = "Battle-Scarred";
+    Txt(hdc, WearName(m_detailFloat), x + PAD + 24, py + 74, cw - 48, 20,
+        NL_GREEN, m_fBold, DT_LEFT|DT_SINGLELINE);
 
-    DrawText_(hdc, wear, x + MENU_PAD + 20, py + 90, cw - 40, 22,
-              MENU_GREEN, m_fontBold, DT_LEFT | DT_SINGLELINE);
+    // Float value
+    char fb[48]; snprintf(fb, sizeof(fb), "Float Value: %.6f", m_detailFloat);
+    Txt(hdc, fb, x + PAD + 24, py + 98, cw - 48, 18,
+        NL_TEXT, m_fBody, DT_LEFT|DT_SINGLELINE);
 
-    // Float value display
-    char floatBuf[64];
-    snprintf(floatBuf, sizeof(floatBuf), "Float Value: %.6f", m_detailFloat);
-    DrawText_(hdc, floatBuf, x + MENU_PAD + 20, py + 116, cw - 40, 20,
-              MENU_TEXT, m_fontBody, DT_LEFT | DT_SINGLELINE);
-
-    py += cardH + 20;
-
-    // Float slider
-    DrawText_(hdc, "Float Slider", x + MENU_PAD, py, cw, 20,
-              MENU_TEXT, m_fontBold, DT_LEFT | DT_SINGLELINE);
-    py += 26;
-
-    // Slider labels
-    DrawText_(hdc, "0.00", x + MENU_PAD, py - 2, 40, 16, MENU_TEXT_DIM, m_fontSmall, DT_LEFT | DT_SINGLELINE);
-    DrawText_(hdc, "1.00", x + MENU_PAD + cw - 40, py - 2, 40, 16, MENU_TEXT_DIM, m_fontSmall, DT_RIGHT | DT_SINGLELINE);
-
-    int sliderX = x + MENU_PAD + 40;
-    int sliderW = cw - 80;
-    int sliderY = py;
-    int sliderH = 20;
-
-    // Track background
-    DrawRoundRect(hdc, sliderX, sliderY + 6, sliderW, 8, 4, RGB(40, 40, 50), MENU_BORDER);
-
-    // Filled portion
-    int fillW = (int)(sliderW * m_detailFloat);
-    if (fillW > 2) {
-        DrawRoundRect(hdc, sliderX, sliderY + 6, fillW, 8, 4, MENU_ACCENT, MENU_ACCENT);
+    // Paint kit
+    if (wd.skins[m_selSkin].paintKit > 0) {
+        char pk[48]; snprintf(pk, sizeof(pk), "Paint Kit ID: %d", wd.skins[m_selSkin].paintKit);
+        Txt(hdc, pk, x + PAD + 24, py + 120, cw - 48, 18,
+            NL_TEXT2, m_fBody, DT_LEFT|DT_SINGLELINE);
     }
 
+    // Weapon ID
+    char wid[48]; snprintf(wid, sizeof(wid), "Weapon ID: %d", wd.weaponId);
+    Txt(hdc, wid, x + PAD + 24, py + 142, cw - 48, 18,
+        NL_TEXT2, m_fBody, DT_LEFT|DT_SINGLELINE);
+
+    py += cardH + 24;
+
+    // ── Float Slider ──
+    Txt(hdc, "Float Slider", x + PAD, py, cw, 18, NL_TEXT, m_fBold, DT_LEFT|DT_SINGLELINE);
+    py += 24;
+
+    // Labels
+    Txt(hdc, "0.00", x + PAD, py - 2, 35, 14, NL_TEXT3, m_fSmall, DT_LEFT|DT_SINGLELINE);
+    Txt(hdc, "1.00", x + PAD + cw - 35, py - 2, 35, 14, NL_TEXT3, m_fSmall, DT_RIGHT|DT_SINGLELINE);
+
+    int sx = x + PAD + 40, sw = cw - 80, sy = py, sh = 20;
+
+    // Track bg
+    RRect(hdc, sx, sy + 6, sw, 8, 4, RGB(35,35,45), NL_BORDER);
+    // Filled
+    int fw = (int)(sw * m_detailFloat);
+    if (fw > 3) RRect(hdc, sx, sy + 6, fw, 8, 4, NL_ACCENT, NL_ACCENT);
     // Knob
-    int knobX = sliderX + fillW - 8;
-    if (knobX < sliderX) knobX = sliderX;
-    DrawRoundRect(hdc, knobX, sliderY + 2, 16, 16, 8, MENU_WHITE, MENU_ACCENT_L);
+    int kx = sx + fw - 8; if (kx < sx) kx = sx;
+    RRect(hdc, kx, sy + 2, 16, 16, 8, NL_WHITE, NL_ACCENT_L);
 
-    m_sliderRect = { sliderX, sliderY, sliderW, sliderH };
+    m_sliderR = {sx, sy, sw, sh};
 
-    // Wear zone indicators
-    py += 30;
-    const char* zones[] = { "FN", "MW", "FT", "WW", "BS" };
-    float zoneEnds[] = { 0.07f, 0.15f, 0.38f, 0.45f, 1.0f };
-    float zoneStart = 0.0f;
-    COLORREF zoneColors[] = { MENU_GREEN, RGB(130,200,80), RGB(200,180,50), MENU_ORANGE, MENU_RED };
-
+    // Wear zones
+    py += 32;
+    const char* zones[] = {"FN","MW","FT","WW","BS"};
+    float ends[] = {0.07f, 0.15f, 0.38f, 0.45f, 1.0f};
+    COLORREF zc[] = {NL_GREEN, RGB(120,200,70), NL_ORANGE, RGB(200,120,40), NL_RED};
+    float zs = 0.f;
     for (int i = 0; i < 5; i++) {
-        int zx = sliderX + (int)(sliderW * zoneStart);
-        int zw = (int)(sliderW * (zoneEnds[i] - zoneStart));
-        DrawRoundRect(hdc, zx, py, zw, 14, 2, RGB(30, 30, 38), zoneColors[i]);
-        DrawText_(hdc, zones[i], zx, py, zw, 14, MENU_WHITE, m_fontSmall, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        zoneStart = zoneEnds[i];
+        int zx = sx + (int)(sw * zs);
+        int zw = (int)(sw * (ends[i] - zs));
+        RRect(hdc, zx, py, zw, 16, 2, RGB(25,25,32), zc[i]);
+        Txt(hdc, zones[i], zx, py, zw, 16, NL_WHITE, m_fSmall,
+            DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+        zs = ends[i];
     }
 
-    py += 34;
+    py += 40;
 
-    // "Tilf\xF8j" button
-    int btnW = 160, btnH = 40;
-    int btnX = x + (w - btnW) / 2;
-    bool hov = HitTest({btnX, py, btnW, btnH}, m_mouseX, m_mouseY);
-    DrawButton(hdc, btnX, py, btnW, btnH, "Tilf\xF8j til Inventory", hov, MENU_BTN_BG, MENU_BTN_HOV);
-    m_applyBtnRect = { btnX, py, btnW, btnH };
+    // Apply button
+    int bw = 200, bh = 42;
+    int bx = x + (w - bw) / 2;
+    bool hov = Hit({bx, py, bw, bh}, m_mouseX, m_mouseY);
+    Btn(hdc, bx, py, bw, bh, "Tilf\xF8j til Inventory", hov, NL_ACCENT, NL_ACCENT_L);
+    m_applyBtn = {bx, py, bw, bh};
 }
 
+// ============================================================================
+//  Configs  –  preset save/load/delete + apply to CS2
+// ============================================================================
 void GameMenu::DrawConfigs(HDC hdc, int x, int y, int w, int h) {
-    struct Setting { const char* name; const char* desc; bool* value; };
-    Setting settings[] = {
-        { "Skin Changer", "Aktiver skin changer", &m_skinChangerEnabled },
-        { "Knife Changer", "Skift kniv model", &m_knifeChangerEnabled },
-        { "Glove Changer", "Skift handske model", &m_gloveChangerEnabled },
-    };
-    int count = 3;
-    m_toggleCount = 0;
+    int py = y + PAD;
+    int cw = w - PAD*2;
 
-    int py = y + 16;
-    for (int i = 0; i < count; i++) {
-        int cardH = 50;
-        bool hov = HitTest({x + MENU_PAD, py, w - MENU_PAD * 2, cardH}, m_mouseX, m_mouseY);
+    // Section: Current Inventory
+    RRect(hdc, x + PAD, py, cw, 60, 8, NL_CARD, NL_BORDER);
+    Txt(hdc, "Nuv\xE6rende Inventory", x + PAD + 16, py + 6, cw - 32, 18,
+        NL_WHITE, m_fBold, DT_LEFT|DT_SINGLELINE);
 
-        DrawRoundRect(hdc, x + MENU_PAD, py, w - MENU_PAD * 2, cardH, 6,
-                      hov ? MENU_CARD_HOV : MENU_CARD, hov ? MENU_CARD_BR : MENU_BORDER);
+    char countBuf[64];
+    snprintf(countBuf, sizeof(countBuf), "%d skins tilf\xF8jet", (int)m_equipped.size());
+    Txt(hdc, countBuf, x + PAD + 16, py + 28, cw - 200, 18,
+        NL_TEXT2, m_fBody, DT_LEFT|DT_SINGLELINE);
 
-        DrawText_(hdc, settings[i].name, x + MENU_PAD + 14, py + 6, w - MENU_PAD * 2 - 80, 20,
-                  MENU_WHITE, m_fontBold, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    // Save button
+    int sbw = 100, sbh = 28;
+    int sbx = x + PAD + cw - sbw - 16, sby = py + 16;
+    bool shov = Hit({sbx, sby, sbw, sbh}, m_mouseX, m_mouseY);
+    Btn(hdc, sbx, sby, sbw, sbh, "Gem Preset", shov, NL_ACCENT, NL_ACCENT_L);
+    m_saveBtn = {sbx, sby, sbw, sbh};
 
-        DrawText_(hdc, settings[i].desc, x + MENU_PAD + 14, py + 26, w - MENU_PAD * 2 - 80, 16,
-                  MENU_TEXT_DIM, m_fontSmall, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    py += 72;
 
-        // Toggle circle
-        bool on = *settings[i].value;
-        int tw = 40, th = 20;
-        int tx = x + w - MENU_PAD - tw - 10;
-        int ty = py + (cardH - th) / 2;
+    // Apply to CS2 button
+    int abw = cw, abh = 42;
+    int abx = x + PAD;
+    bool ahov = Hit({abx, py, abw, abh}, m_mouseX, m_mouseY);
+    RRect(hdc, abx, py, abw, abh, 8,
+          ahov ? RGB(25,55,35) : RGB(18,45,28),
+          NL_GREEN);
+    Txt(hdc, "Anvend p\xE5 CS2 Inventory", abx, py, abw, abh,
+        NL_GREEN, m_fBold, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    m_applyGameBtn = {abx, py, abw, abh};
 
-        DrawRoundRect(hdc, tx, ty, tw, th, th / 2, on ? MENU_TOGGLE_ON : MENU_TOGGLE_OFF,
-                      on ? MENU_ACCENT_L : RGB(80, 80, 90));
+    py += abh + 20;
 
-        int knobD = th - 4;
-        int knobX = on ? (tx + tw - knobD - 2) : (tx + 2);
-        DrawRoundRect(hdc, knobX, ty + 2, knobD, knobD, knobD / 2, MENU_WHITE, MENU_WHITE);
+    // Section: Saved Presets
+    Txt(hdc, "GEMTE PRESETS", x + PAD, py, cw, 18, NL_TEXT3, m_fSmall, DT_LEFT|DT_SINGLELINE);
+    py += 24;
 
-        if (m_toggleCount < 8) {
-            m_toggleRects[m_toggleCount++] = { x + MENU_PAD, py, w - MENU_PAD * 2, cardH };
-        }
+    // Separator
+    HPEN sep = CreatePen(PS_SOLID, 1, NL_BORDER);
+    HPEN osep = (HPEN)SelectObject(hdc, sep);
+    MoveToEx(hdc, x + PAD, py, nullptr);
+    LineTo(hdc, x + PAD + cw, py);
+    SelectObject(hdc, osep); DeleteObject(sep);
+    py += 8;
 
-        py += cardH + 10;
+    if (m_presets.empty()) {
+        Txt(hdc, "Ingen gemte presets fundet.", x + PAD, py + 20, cw, 20,
+            NL_TEXT2, m_fBody, DT_CENTER|DT_SINGLELINE);
+        Txt(hdc, "Brug \"Gem Preset\" for at gemme dit nuv\xE6rende inventory.",
+            x + PAD, py + 44, cw, 18, NL_TEXT3, m_fSmall, DT_CENTER|DT_SINGLELINE);
+        return;
+    }
+
+    m_pN = 0;
+    for (int i = 0; i < (int)m_presets.size() && i < MP; i++) {
+        auto& p = m_presets[i];
+        int ch = 56;
+        bool hov = Hit({x + PAD, py, cw, ch}, m_mouseX, m_mouseY);
+
+        RRect(hdc, x + PAD, py, cw, ch, 8, hov ? NL_CARD_HOV : NL_CARD, NL_BORDER);
+
+        // Preset name + item count
+        Txt(hdc, p.displayName.c_str(), x + PAD + 16, py + 8, cw - 200, 18,
+            NL_WHITE, m_fBold, DT_LEFT|DT_SINGLELINE);
+
+        char info[48]; snprintf(info, sizeof(info), "%d items", p.itemCount);
+        Txt(hdc, info, x + PAD + 16, py + 28, cw - 200, 16,
+            NL_TEXT2, m_fSmall, DT_LEFT|DT_SINGLELINE);
+
+        // Load button
+        int lbw = 60, lbh = 26;
+        int lbx = x + PAD + cw - lbw - 80, lby = py + (ch - lbh) / 2;
+        bool lhov = Hit({lbx, lby, lbw, lbh}, m_mouseX, m_mouseY);
+        Btn(hdc, lbx, lby, lbw, lbh, "Load", lhov, NL_ACCENT, NL_ACCENT_L);
+        m_pLoadR[m_pN] = {lbx, lby, lbw, lbh};
+
+        // Delete button
+        int dbw = 55, dbh = 26;
+        int dbx = x + PAD + cw - dbw - 12, dby = py + (ch - dbh) / 2;
+        bool dhov = Hit({dbx, dby, dbw, dbh}, m_mouseX, m_mouseY);
+        RRect(hdc, dbx, dby, dbw, dbh, 6, dhov ? RGB(60,25,25) : RGB(40,18,18), NL_RED);
+        Txt(hdc, "Slet", dbx, dby, dbw, dbh, NL_RED, m_fSmall,
+            DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+        m_pDelR[m_pN] = {dbx, dby, dbw, dbh};
+
+        m_pN++;
+        py += ch + 8;
     }
 }
 
+// ============================================================================
+//  Preset Management  –  simple text files in presets/ folder
+// ============================================================================
+void GameMenu::ScanPresets() {
+    m_presets.clear();
+    _mkdir("presets");  // ensure folder exists
 
-// ============================================================================
-//  OverlayWindow
-// ============================================================================
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA("presets\\*.acpreset", &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return;
+
+    do {
+        PresetInfo pi;
+        pi.filename = std::string("presets\\") + fd.cFileName;
+        // Extract display name (filename without extension)
+        pi.displayName = fd.cFileName;
+        size_t dot = pi.displayName.rfind('.');
+        if (dot != std::string::npos) pi.displayName = pi.displayName.substr(0, dot);
+
+        // Count items in file
+        pi.itemCount = 0;
+        std::ifstream f(pi.filename);
+        std::string line;
+        while (std::getline(f, line))
+            if (!line.empty() && line[0] != '#') pi.itemCount++;
+
+        m_presets.push_back(pi);
+    } while (FindNextFileA(hFind, &fd));
+    FindClose(hFind);
+}
+
+void GameMenu::SavePreset() {
+    _mkdir("presets");
+
+    // Generate filename based on timestamp
+    time_t now = time(nullptr);
+    struct tm t; localtime_s(&t, &now);
+    char fname[128];
+    snprintf(fname, sizeof(fname), "presets\\Preset_%04d%02d%02d_%02d%02d%02d.acpreset",
+             t.tm_year+1900, t.tm_mon+1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+
+    std::ofstream f(fname);
+    if (!f) return;
+
+    f << "# AC Changer Preset\n";
+    for (auto& eq : m_equipped) {
+        f << eq.weapon << "|" << eq.skin << "|"
+          << eq.weaponId << "|" << eq.paintKit << "|"
+          << eq.floatVal << "\n";
+    }
+    f.close();
+
+    DbgLog("Saved preset: %s (%d items)", fname, (int)m_equipped.size());
+}
+
+void GameMenu::LoadPreset(int idx) {
+    if (idx < 0 || idx >= (int)m_presets.size()) return;
+
+    std::ifstream f(m_presets[idx].filename);
+    if (!f) return;
+
+    m_equipped.clear();
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        // Parse: weapon|skin|weaponId|paintKit|float
+        std::istringstream ss(line);
+        std::string weapon, skin, wid, pk, fv;
+        std::getline(ss, weapon, '|');
+        std::getline(ss, skin, '|');
+        std::getline(ss, wid, '|');
+        std::getline(ss, pk, '|');
+        std::getline(ss, fv, '|');
+
+        EquippedItem eq;
+        eq.weapon = weapon;
+        eq.skin = skin;
+        eq.weaponId = wid.empty() ? 0 : std::stoi(wid);
+        eq.paintKit = pk.empty() ? 0 : std::stoi(pk);
+        eq.floatVal = fv.empty() ? 0.01f : std::stof(fv);
+        m_equipped.push_back(eq);
+    }
+
+    DbgLog("Loaded preset: %s (%d items)", m_presets[idx].filename.c_str(), (int)m_equipped.size());
+    m_page = PAGE_INVENTORY;
+    m_view = INV_EQUIPPED;
+    m_scroll = 0;
+}
+
+void GameMenu::DeletePreset(int idx) {
+    if (idx < 0 || idx >= (int)m_presets.size()) return;
+    DeleteFileA(m_presets[idx].filename.c_str());
+    DbgLog("Deleted preset: %s", m_presets[idx].filename.c_str());
+}
+
+
+// ############################################################################
+// ############################################################################
+//  OverlayWindow  –  transparent layered window over CS2
+// ############################################################################
+// ############################################################################
 
 OverlayWindow::OverlayWindow()
-    : m_hwnd(nullptr)
-    , m_gameHwnd(nullptr)
-    , m_cs2Pid(0)
-    , m_hModule(nullptr)
-    , m_running(false)
-    , m_autoShow(true) {
-}
+    : m_hwnd(nullptr), m_gameHwnd(nullptr), m_cs2Pid(0)
+    , m_hModule(nullptr), m_running(false), m_autoShow(true) {}
 
-OverlayWindow::~OverlayWindow() {
-    Destroy();
-}
+OverlayWindow::~OverlayWindow() { Destroy(); }
 
-// Helper struct for EnumWindows callback
-struct FindCS2WndData {
-    DWORD  pid;
-    HWND   bestHwnd;
-    int    bestArea;
-};
+// ── PID-based CS2 window finder ──
+struct EnumCtx { DWORD pid; HWND result; };
 
-static BOOL CALLBACK FindCS2WndCallback(HWND hwnd, LPARAM lp) {
-    auto* data = (FindCS2WndData*)lp;
-    DWORD wndPid = 0;
-    GetWindowThreadProcessId(hwnd, &wndPid);
-    if (wndPid != data->pid) return TRUE;
-    // Skip invisible windows
-    if (!IsWindowVisible(hwnd)) return TRUE;
-    RECT wr;
-    GetWindowRect(hwnd, &wr);
-    int w = wr.right - wr.left;
-    int h = wr.bottom - wr.top;
-    // Skip tiny or off-screen windows
-    if (w < 200 || h < 200) return TRUE;
+static BOOL CALLBACK EnumCB(HWND hwnd, LPARAM lp) {
+    auto* ctx = (EnumCtx*)lp;
+    DWORD wPid = 0;
+    GetWindowThreadProcessId(hwnd, &wPid);
+    if (wPid != ctx->pid) return TRUE;
+    if (!(GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE)) return TRUE;
+
+    char title[128] = {};
+    GetWindowTextA(hwnd, title, sizeof(title));
+    if (strlen(title) == 0) return TRUE;
+
+    RECT wr; GetWindowRect(hwnd, &wr);
+    // Skip off-screen windows (Steam overlay helper, etc.)
     if (wr.left > 10000 || wr.top > 10000) return TRUE;
-    if (wr.left < -10000 || wr.top < -10000) return TRUE;
-    int area = w * h;
-    char cls[128] = {}, ttl[256] = {};
-    GetClassNameA(hwnd, cls, 128);
-    GetWindowTextA(hwnd, ttl, 256);
-    DbgLog("  PID-enum: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d) area=%d",
-           (void*)hwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom, area);
-    if (area > data->bestArea) {
-        data->bestArea = area;
-        data->bestHwnd = hwnd;
-    }
-    return TRUE;
+    if (wr.right - wr.left < 200 || wr.bottom - wr.top < 200) return TRUE;
+
+    ctx->result = hwnd;
+    return FALSE;
+}
+
+static HWND FindCS2Window(DWORD pid) {
+    EnumCtx ctx = {pid, nullptr};
+    EnumWindows(EnumCB, (LPARAM)&ctx);
+    return ctx.result;
 }
 
 bool OverlayWindow::Create(HMODULE hModule) {
@@ -1091,252 +1351,136 @@ bool OverlayWindow::Create(HMODULE hModule) {
 bool OverlayWindow::Create(HMODULE hModule, DWORD cs2Pid) {
     m_hModule = hModule;
     m_cs2Pid = cs2Pid;
-    g_pOverlay = this;
-    DbgLog("=== OverlayWindow::Create START (PID=%d) ===", (int)cs2Pid);
 
-    // Strategy 1: Find by PID (most reliable)
-    if (cs2Pid != 0) {
-        DbgLog("Searching windows by PID %d...", (int)cs2Pid);
-        FindCS2WndData data = { cs2Pid, nullptr, 0 };
-        EnumWindows(FindCS2WndCallback, (LPARAM)&data);
-        m_gameHwnd = data.bestHwnd;
-        DbgLog("PID search result => %p (area=%d)", (void*)m_gameHwnd, data.bestArea);
-    }
+    DbgLog("OverlayWindow::Create  PID=%d", (int)cs2Pid);
 
-    // Strategy 2: FindWindow by title
-    if (!m_gameHwnd) {
-        m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
-        DbgLog("FindWindowA(title='Counter-Strike 2') => %p", (void*)m_gameHwnd);
-    }
-
-    // Strategy 3: FindWindow by class, but validate position
-    if (!m_gameHwnd) {
-        HWND sdlHwnd = FindWindowA("SDL_app", nullptr);
-        if (sdlHwnd) {
-            RECT wr; GetWindowRect(sdlHwnd, &wr);
-            DbgLog("FindWindowA(class='SDL_app') => %p rect=(%d,%d,%d,%d)",
-                   (void*)sdlHwnd, wr.left, wr.top, wr.right, wr.bottom);
-            // Only use if on-screen
-            if (wr.left < 10000 && wr.top < 10000 && wr.left > -10000 && wr.top > -10000) {
-                int w = wr.right - wr.left;
-                int h = wr.bottom - wr.top;
-                if (w >= 200 && h >= 200) {
-                    m_gameHwnd = sdlHwnd;
-                    DbgLog("SDL_app window accepted (on-screen, %dx%d)", w, h);
-                } else {
-                    DbgLog("SDL_app window REJECTED (too small: %dx%d)", w, h);
-                }
-            } else {
-                DbgLog("SDL_app window REJECTED (off-screen)");
-            }
+    // Find CS2 window
+    if (m_cs2Pid != 0) {
+        for (int i = 0; i < 30 && !m_gameHwnd; i++) {
+            m_gameHwnd = FindCS2Window(m_cs2Pid);
+            if (!m_gameHwnd) { DbgLog("  attempt %d: not found, waiting...", i+1); Sleep(1000); }
         }
     }
+    if (!m_gameHwnd) m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
 
-    if (m_gameHwnd) {
-        char cls[128] = {}, ttl[256] = {};
-        GetClassNameA(m_gameHwnd, cls, 128);
-        GetWindowTextA(m_gameHwnd, ttl, 256);
-        RECT wr; GetWindowRect(m_gameHwnd, &wr);
-        DbgLog("Selected CS2 window: hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
-               (void*)m_gameHwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom);
-        LONG style = GetWindowLong(m_gameHwnd, GWL_STYLE);
-        LONG exstyle = GetWindowLong(m_gameHwnd, GWL_EXSTYLE);
-        DbgLog("CS2 style=0x%08X exstyle=0x%08X", style, exstyle);
-    } else {
-        DbgLog("WARNING: No suitable CS2 window found! Using primary monitor.");
+    if (!m_gameHwnd) {
+        DbgLog("ERROR: Could not find CS2 window");
+        return false;
     }
+
+    RECT wr; GetWindowRect(m_gameHwnd, &wr);
+    DbgLog("CS2 window found: %p  rect=(%d,%d,%d,%d)",
+           (void*)m_gameHwnd, wr.left, wr.top, wr.right, wr.bottom);
 
     // Register overlay window class
-    WNDCLASSEXA wc = { sizeof(wc) };
+    WNDCLASSEXA wc = {sizeof(wc)};
     wc.lpfnWndProc   = OverlayWindow::WndProc;
-    wc.hInstance      = hModule;
-    wc.lpszClassName  = "AC_Overlay";
-    wc.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground  = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    ATOM regResult = RegisterClassExA(&wc);
-    DbgLog("RegisterClassExA => %d (LastError=%d)", regResult, (int)GetLastError());
+    wc.hInstance      = (HINSTANCE)hModule;
+    wc.lpszClassName  = "ACOverlay_NL";
+    wc.hCursor        = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground  = NULL;
+    RegisterClassExA(&wc);
 
-    // Get game window position / size (use primary monitor as fallback)
-    RECT gameRect = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
-    if (m_gameHwnd) {
-        RECT wr;
-        GetWindowRect(m_gameHwnd, &wr);
-        // Validate the rect is sane
-        if (wr.left < 10000 && wr.top < 10000 && wr.left > -10000 && wr.top > -10000) {
-            int w = wr.right - wr.left;
-            int h = wr.bottom - wr.top;
-            if (w >= 200 && h >= 200) {
-                gameRect = wr;
-            } else {
-                DbgLog("Game window rect too small (%dx%d), using monitor", w, h);
-                m_gameHwnd = nullptr;
-            }
-        } else {
-            DbgLog("Game window rect off-screen (%d,%d), using monitor", wr.left, wr.top);
-            m_gameHwnd = nullptr;
-        }
-    }
-    int gw = gameRect.right  - gameRect.left;
-    int gh = gameRect.bottom - gameRect.top;
-    DbgLog("Overlay size: %dx%d at (%d,%d)", gw, gh, gameRect.left, gameRect.top);
-
-    // Create transparent layered window
+    int w = wr.right - wr.left, h = wr.bottom - wr.top;
     m_hwnd = CreateWindowExA(
-        WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
-        "AC_Overlay", "AC Overlay",
+        WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TRANSPARENT,
+        "ACOverlay_NL", "AC Overlay",
         WS_POPUP,
-        gameRect.left, gameRect.top, gw, gh,
-        nullptr, nullptr, hModule, nullptr);
+        wr.left, wr.top, w, h,
+        NULL, NULL, (HINSTANCE)hModule, NULL);
 
     if (!m_hwnd) {
-        DbgLog("ERROR: CreateWindowExA FAILED! LastError=%d", (int)GetLastError());
+        DbgLog("ERROR: CreateWindowEx failed (%d)", (int)GetLastError());
         return false;
     }
-    DbgLog("Overlay window created: hwnd=%p", (void*)m_hwnd);
 
-    // Make window transparent (magenta is the transparent colour key)
-    BOOL layerOk = SetLayeredWindowAttributes(m_hwnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
-    DbgLog("SetLayeredWindowAttributes => %d", (int)layerOk);
-
-    // Initialise menu
-    if (!m_menu.Initialize(hModule)) {
-        DbgLog("ERROR: GameMenu::Initialize failed!");
-        return false;
-    }
-    DbgLog("GameMenu initialized OK");
-
-    ShowWindow(m_hwnd, SW_SHOW);
+    // Magenta color key for transparency
+    SetLayeredWindowAttributes(m_hwnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
+    ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(m_hwnd);
-    SetForegroundWindow(m_hwnd);
-    BringWindowToTop(m_hwnd);
-    DbgLog("Overlay window shown and brought to front");
 
+    m_menu.Initialize(hModule);
     m_running = true;
-    DbgLog("=== OverlayWindow::Create SUCCESS ===");
+
+    DbgLog("Overlay created: hwnd=%p  size=%dx%d", (void*)m_hwnd, w, h);
     return true;
 }
 
 void OverlayWindow::Destroy() {
     m_running = false;
-    if (m_hwnd) {
-        DestroyWindow(m_hwnd);
-        m_hwnd = nullptr;
-    }
-    m_menu.Shutdown();
-    g_pOverlay = nullptr;
+    if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
 }
 
 void OverlayWindow::ShowMenu() {
-    DbgLog("ShowMenu() called, m_visible was %d", (int)m_menu.IsVisible());
-    if (!m_menu.IsVisible()) {
-        m_menu.Toggle();
-    }
-    // Make overlay interactive (remove click-through)
+    DbgLog("ShowMenu() called");
+    if (!m_menu.IsVisible()) m_menu.Toggle();
+
     LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
     ex &= ~WS_EX_TRANSPARENT;
     SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
-    DbgLog("ShowMenu() done, m_visible=%d exstyle=0x%08X", (int)m_menu.IsVisible(), (int)GetWindowLong(m_hwnd, GWL_EXSTYLE));
+    SetForegroundWindow(m_hwnd);
+    InvalidateRect(m_hwnd, nullptr, TRUE);
 }
 
 void OverlayWindow::UpdatePosition() {
-    // Try to find the real CS2 window if we don't have one or it's invalid
     if (!m_gameHwnd || !IsWindow(m_gameHwnd)) {
-        m_gameHwnd = nullptr;
-        // Search by PID first
-        if (m_cs2Pid != 0) {
-            FindCS2WndData data = { m_cs2Pid, nullptr, 0 };
-            EnumWindows(FindCS2WndCallback, (LPARAM)&data);
-            m_gameHwnd = data.bestHwnd;
-        }
-        // Fallback: by title
-        if (!m_gameHwnd) {
-            m_gameHwnd = FindWindowA(nullptr, "Counter-Strike 2");
-        }
+        if (m_cs2Pid) m_gameHwnd = FindCS2Window(m_cs2Pid);
         if (!m_gameHwnd) return;
-
-        // Log when we find a new window
-        static bool loggedNewWindow = false;
-        if (!loggedNewWindow) {
-            char cls[128] = {}, ttl[256] = {};
-            GetClassNameA(m_gameHwnd, cls, 128);
-            GetWindowTextA(m_gameHwnd, ttl, 256);
-            RECT wr; GetWindowRect(m_gameHwnd, &wr);
-            DbgLog("UpdatePosition: Found new CS2 window hwnd=%p class='%s' title='%s' rect=(%d,%d,%d,%d)",
-                   (void*)m_gameHwnd, cls, ttl, wr.left, wr.top, wr.right, wr.bottom);
-            loggedNewWindow = true;
-        }
     }
-
-    RECT gr;
-    GetWindowRect(m_gameHwnd, &gr);
-
-    // Validate position is sane
-    if (gr.left > 10000 || gr.top > 10000 || gr.left < -10000 || gr.top < -10000) {
-        // Window is off-screen, use monitor instead
-        gr.left = 0; gr.top = 0;
-        gr.right = GetSystemMetrics(SM_CXSCREEN);
-        gr.bottom = GetSystemMetrics(SM_CYSCREEN);
-    }
-
-    int gw = gr.right  - gr.left;
-    int gh = gr.bottom - gr.top;
-    if (gw < 200 || gh < 200) return;  // skip invalid sizes
-
-    SetWindowPos(m_hwnd, HWND_TOPMOST, gr.left, gr.top, gw, gh,
+    RECT wr; GetWindowRect(m_gameHwnd, &wr);
+    if (wr.left > 10000) return;
+    int w = wr.right - wr.left, h = wr.bottom - wr.top;
+    SetWindowPos(m_hwnd, HWND_TOPMOST, wr.left, wr.top, w, h,
                  SWP_NOACTIVATE);
 }
 
 void OverlayWindow::RunFrame() {
-    if (!m_running) return;
+    if (!m_running || !m_hwnd) return;
 
-    // Follow game window position
     UpdatePosition();
 
-    // Auto-show menu on first frame
+    // Auto-show on first frame
     if (m_autoShow) {
         m_autoShow = false;
-        DbgLog("Auto-show: showing menu on first frame");
         ShowMenu();
-        DbgLog("Auto-show complete. m_hwnd=%p visible=%d", (void*)m_hwnd, (int)IsWindowVisible(m_hwnd));
     }
 
-    // Periodic debug (every ~5 seconds = 300 frames)
-    static int frameCount = 0;
-    frameCount++;
-    if (frameCount % 300 == 1) {
-        DbgLog("Frame %d: m_hwnd=%p gameHwnd=%p menuVisible=%d hwndVisible=%d",
-               frameCount, (void*)m_hwnd, (void*)m_gameHwnd,
-               (int)m_menu.IsVisible(), (int)IsWindowVisible(m_hwnd));
-        RECT wr; GetWindowRect(m_hwnd, &wr);
-        DbgLog("  overlay rect=(%d,%d,%d,%d) size=%dx%d",
-               wr.left, wr.top, wr.right, wr.bottom,
-               wr.right-wr.left, wr.bottom-wr.top);
-    }
-
-    // Check INSERT key to toggle menu
+    // ── INSERT key toggle  (ONLY when CS2 is the foreground window) ──
     static bool keyWasDown = false;
-    bool keyDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
-    if (keyDown && !keyWasDown) {
-        if (m_menu.IsVisible()) {
-            // Hide menu, make window click-through
-            m_menu.Toggle();
-            LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
-            ex |= WS_EX_TRANSPARENT;
-            SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
-        } else {
-            ShowMenu();
-        }
+    bool cs2Focused = false;
+
+    if (m_cs2Pid != 0) {
+        HWND fg = GetForegroundWindow();
+        DWORD fgPid = 0;
+        GetWindowThreadProcessId(fg, &fgPid);
+        cs2Focused = (fgPid == m_cs2Pid);
+    } else {
+        // Fallback: check if CS2 window or our overlay is foreground
+        HWND fg = GetForegroundWindow();
+        cs2Focused = (fg == m_gameHwnd || fg == m_hwnd);
     }
-    keyWasDown = keyDown;
 
-    // Process menu input
+    if (cs2Focused) {
+        bool keyDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
+        if (keyDown && !keyWasDown) {
+            if (m_menu.IsVisible()) {
+                m_menu.Toggle();
+                LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
+                ex |= WS_EX_TRANSPARENT;
+                SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
+            } else {
+                ShowMenu();
+            }
+        }
+        keyWasDown = keyDown;
+    } else {
+        keyWasDown = false;
+    }
+
     m_menu.ProcessInput();
-
-    // Repaint
     InvalidateRect(m_hwnd, nullptr, TRUE);
     UpdateWindow(m_hwnd);
 
-    // Process pending messages
     MSG msg;
     while (PeekMessage(&msg, m_hwnd, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
@@ -1349,104 +1493,94 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc; GetClientRect(hwnd, &rc);
 
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        int w = rc.right, h = rc.bottom;
-
-        // Double buffer
         HDC mem = CreateCompatibleDC(hdc);
-        HBITMAP bmp = CreateCompatibleBitmap(hdc, w, h);
+        HBITMAP bmp = CreateCompatibleBitmap(hdc, rc.right, rc.bottom);
         SelectObject(mem, bmp);
 
-        // Clear to colour key (magenta = transparent)
-        HBRUSH bg = CreateSolidBrush(RGB(255, 0, 255));
-        FillRect(mem, &rc, bg);
-        DeleteObject(bg);
+        // Fill with magenta (transparent via color key)
+        HBRUSH mgBr = CreateSolidBrush(RGB(255, 0, 255));
+        FillRect(mem, &rc, mgBr);
+        DeleteObject(mgBr);
 
-        // Draw menu
         if (g_pOverlay) {
-            g_pOverlay->m_menu.Render(mem, w, h);
+            g_pOverlay->m_menu.Render(mem, rc.right, rc.bottom);
         }
 
-        BitBlt(hdc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
+        BitBlt(hdc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
         DeleteObject(bmp);
         DeleteDC(mem);
-
         EndPaint(hwnd, &ps);
         return 0;
     }
 
     case WM_MOUSEMOVE:
         if (g_pOverlay) {
-            int mx = (short)LOWORD(lp);
-            int my = (short)HIWORD(lp);
-            g_pOverlay->m_menu.OnMouseMove(mx, my);
-            InvalidateRect(hwnd, nullptr, FALSE);  // repaint for hover
+            g_pOverlay->m_menu.OnMouseMove((short)LOWORD(lp), (short)HIWORD(lp));
+            InvalidateRect(hwnd, nullptr, FALSE);
         }
         return 0;
 
     case WM_LBUTTONDOWN:
         if (g_pOverlay) {
-            int mx = (short)LOWORD(lp);
-            int my = (short)HIWORD(lp);
-            g_pOverlay->m_menu.OnMouseClick(mx, my);
+            g_pOverlay->m_menu.OnMouseClick((short)LOWORD(lp), (short)HIWORD(lp));
             InvalidateRect(hwnd, nullptr, FALSE);
         }
         return 0;
 
     case WM_LBUTTONUP:
-        if (g_pOverlay) {
-            g_pOverlay->m_menu.OnMouseUp();
-        }
+        if (g_pOverlay) g_pOverlay->m_menu.OnMouseUp();
         return 0;
 
     case WM_MOUSEWHEEL:
         if (g_pOverlay) {
-            int delta = GET_WHEEL_DELTA_WPARAM(wp);
-            g_pOverlay->m_menu.OnMouseWheel(delta);
+            g_pOverlay->m_menu.OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wp));
             InvalidateRect(hwnd, nullptr, FALSE);
         }
         return 0;
 
-    case WM_ERASEBKGND:
-        return 1;
-
-    case WM_DESTROY:
-        return 0;
+    case WM_ERASEBKGND: return 1;
+    case WM_DESTROY:    return 0;
     }
-
     return DefWindowProc(hwnd, msg, wp, lp);
 }
 
 
-// ============================================================================
+// ############################################################################
 //  GameInjector
-// ============================================================================
+// ############################################################################
+GameInjector::GameInjector() : m_initialized(false) {}
 
-GameInjector::GameInjector()
-    : m_initialized(false)
-    , m_overlay(std::make_unique<OverlayWindow>()) {
-}
-
-GameInjector::~GameInjector() {
-    if (m_initialized) Shutdown();
-}
+GameInjector::~GameInjector() { Shutdown(); }
 
 bool GameInjector::Initialize(HMODULE hModule) {
+    if (m_initialized) return true;
+
+    m_overlay = std::make_unique<OverlayWindow>();
+    g_pOverlay = m_overlay.get();
+
     if (!m_overlay->Create(hModule)) {
+        DbgLog("GameInjector: overlay creation failed");
+        m_overlay.reset();
+        g_pOverlay = nullptr;
         return false;
     }
+
     m_initialized = true;
+    DbgLog("GameInjector initialized");
     return true;
 }
 
 void GameInjector::Shutdown() {
-    if (m_overlay) m_overlay->Destroy();
+    if (m_overlay) {
+        m_overlay->Destroy();
+        m_overlay.reset();
+        g_pOverlay = nullptr;
+    }
     m_initialized = false;
 }
 
 void GameInjector::Update() {
-    if (!m_initialized) return;
-    m_overlay->RunFrame();
+    if (m_overlay) m_overlay->RunFrame();
 }

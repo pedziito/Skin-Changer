@@ -920,9 +920,9 @@ bool LaunchGame(HWND hwnd) {
     }
 
     DbgLog("=== Overlay ready! ===");
-    SetStat("Overlay aktiv! Tryk O for menu.", C_GREEN);
+    SetStat("Overlay aktiv! Tryk INSERT for menu.", C_GREEN);
     MessageBox(hwnd,
-        "Overlay er aktivt!\n\nMenuen vises automatisk.\nTryk O for at \xE5" "bne/lukke.\n\nDebug log: ac_debug.log",
+        "Overlay er aktivt!\n\nMenuen vises automatisk.\nTryk INSERT for at \xE5" "bne/lukke.\n\nDebug log: ac_debug.log",
         "AC Changer", MB_OK | MB_ICONINFORMATION);
     return true;
 }

@@ -7,74 +7,90 @@
 #include <memory>
 
 // ============================================================================
-//  CS2 In-Game Overlay Menu  –  NEVERLOSE-style
-//  INSERT toggles.  Sidebar: Inventory Changer + Configs.
-//  Grid-based skin browser with float slider.
+//  CS2 In-Game Overlay  –  NEVERLOSE Style
+//  INSERT toggles (only when CS2 is foreground)
+//  Sidebar: Inventory Changer + Configs
+//  Grid skin browser → float slider → equip to CS2 inventory
+//  Configs = save / load / delete inventory presets
 // ============================================================================
 
-// Colours – NEVERLOSE dark theme
-#define MENU_BG         RGB(18, 18, 22)
-#define MENU_BG_HEADER  RGB(12, 12, 16)
-#define MENU_SIDEBAR_C  RGB(14, 14, 18)
-#define MENU_SIDEBAR_BR RGB(32, 32, 38)
-#define MENU_CARD       RGB(28, 28, 34)
-#define MENU_CARD_HOV   RGB(36, 36, 44)
-#define MENU_CARD_BR    RGB(48, 48, 58)
-#define MENU_ACCENT     RGB(50, 140, 220)
-#define MENU_ACCENT_L   RGB(80, 170, 250)
-#define MENU_TEXT        RGB(195, 195, 205)
-#define MENU_TEXT_DIM    RGB(100, 100, 115)
-#define MENU_BORDER     RGB(38, 38, 46)
-#define MENU_GREEN       RGB(45, 200, 120)
-#define MENU_RED         RGB(210, 60, 60)
-#define MENU_WHITE       RGB(230, 230, 240)
-#define MENU_ORANGE      RGB(220, 140, 40)
-#define MENU_BTN_BG     RGB(50, 130, 210)
-#define MENU_BTN_HOV    RGB(65, 150, 230)
-#define MENU_TOGGLE_ON  RGB(50, 140, 220)
-#define MENU_TOGGLE_OFF RGB(55, 55, 65)
+// ── NEVERLOSE Exact Color Palette ──
+#define NL_BG           RGB(13, 13, 17)
+#define NL_BG_DARK      RGB(10, 10, 14)
+#define NL_SIDEBAR      RGB(17, 17, 22)
+#define NL_SIDEBAR_BR   RGB(30, 30, 38)
+#define NL_HEADER       RGB(15, 15, 20)
+#define NL_CARD         RGB(22, 22, 29)
+#define NL_CARD_HOV     RGB(28, 28, 37)
+#define NL_CARD_SEL     RGB(25, 35, 55)
+#define NL_CARD_BR      RGB(35, 35, 45)
+#define NL_ACCENT       RGB(59, 130, 246)
+#define NL_ACCENT_L     RGB(96, 165, 250)
+#define NL_ACCENT_D     RGB(37, 99, 235)
+#define NL_TEXT          RGB(210, 210, 225)
+#define NL_TEXT2         RGB(130, 130, 155)
+#define NL_TEXT3         RGB(75, 75, 95)
+#define NL_BORDER       RGB(35, 35, 45)
+#define NL_WHITE        RGB(235, 235, 245)
+#define NL_GREEN        RGB(34, 197, 94)
+#define NL_RED          RGB(239, 68, 68)
+#define NL_ORANGE       RGB(245, 158, 11)
+#define NL_PURPLE       RGB(168, 85, 247)
+#define NL_PINK         RGB(236, 72, 153)
+#define NL_TOGGLE_ON    RGB(59, 130, 246)
+#define NL_TOGGLE_OFF   RGB(55, 55, 65)
 
-// Layout
-#define MENU_WIDTH      1100
-#define MENU_HEIGHT     700
-#define MENU_SIDEBAR_W  170
-#define MENU_HEADER_H   50
-#define MENU_PAD        16
-#define MENU_RAD        8
+// Rarity tiers (for skin card top-bars)
+#define NL_RARITY_COVERT     RGB(235, 75, 75)
+#define NL_RARITY_CLASSIFIED RGB(211, 44, 230)
+#define NL_RARITY_RESTRICTED RGB(136, 71, 255)
+#define NL_RARITY_MILSPEC    RGB(75, 105, 255)
+#define NL_RARITY_INDUSTRIAL RGB(94, 152, 217)
+#define NL_RARITY_CONSUMER   RGB(176, 195, 217)
 
-// Grid
-#define GRID_COLS       4
-#define GRID_CARD_W     190
-#define GRID_CARD_H     140
-#define GRID_GAP        12
+// ── Menu Layout ──
+#define MENU_W          1100
+#define MENU_H          700
+#define SIDE_W          200
+#define HDR_H           52
+#define PAD             16
+#define RAD             10
 
-/**
- * In-Game Overlay Menu – NEVERLOSE style
- * Sidebar: Inventory Changer + Configs
- * Grid skin browser with float slider + equip
- */
+// ── Grid Cards ──
+#define GCOLS           4
+#define GCARDH          120
+#define GGAP            10
+
+// ============================================================================
 class GameMenu {
 public:
-    // Sidebar pages
-    enum Page {
-        PAGE_INVENTORY = 0,
-        PAGE_CONFIGS   = 1,
-        PAGE_COUNT     = 2
+    enum Page    { PAGE_INVENTORY = 0, PAGE_CONFIGS, PAGE_COUNT };
+    enum InvView { INV_EQUIPPED, INV_WEAPONS, INV_SKINS, INV_DETAIL };
+
+    struct SkinEntry {
+        std::string name;
+        int         paintKit;
     };
 
-    // Sub-views within Inventory page
-    enum InvView {
-        INV_EQUIPPED = 0,   // shows equipped items
-        INV_WEAPONS,        // weapon category grid
-        INV_SKINS,          // skins for a weapon (grid)
-        INV_DETAIL          // single skin detail + float slider
+    struct WeaponDef {
+        std::string              name;
+        int                      weaponId;
+        std::string              category;
+        std::vector<SkinEntry>   skins;
     };
 
-    // An inventory item the user has equipped
     struct EquippedItem {
         std::string weapon;
         std::string skin;
+        int         weaponId;
+        int         paintKit;
         float       floatVal;
+    };
+
+    struct PresetInfo {
+        std::string filename;
+        std::string displayName;
+        int         itemCount;
     };
 
     GameMenu();
@@ -83,108 +99,79 @@ public:
     bool Initialize(HMODULE hModule);
     void Shutdown();
 
-    // Mouse
     void OnMouseMove(int x, int y);
     void OnMouseClick(int x, int y);
     void OnMouseUp();
     void OnMouseWheel(int delta);
 
-    // Render
     void Render(HDC hdc, int winW, int winH);
-
     void Toggle();
     bool IsVisible() const { return m_visible; }
 
-    // Legacy compat
+    const std::vector<EquippedItem>& GetEquipped() const { return m_equipped; }
+
+    // Legacy stubs
     void ProcessInput() {}
     void AddWeapon(const std::string&) {}
     void AddSkin(const std::string&, const std::string&) {}
 
 private:
-    // Hit-test
-    struct HitRect { int x, y, w, h; };
-    bool HitTest(const HitRect& r, int mx, int my) const {
+    struct Rect { int x, y, w, h; };
+    bool Hit(const Rect& r, int mx, int my) const {
         return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
     }
 
-    // Skin database types
-    struct WeaponDef {
-        std::string name;
-        std::vector<std::string> skins;
-    };
+    void RRect(HDC,int,int,int,int,int,COLORREF,COLORREF);
+    void Txt(HDC,const char*,int,int,int,int,COLORREF,HFONT,
+             UINT fmt=DT_LEFT|DT_VCENTER|DT_SINGLELINE);
+    void Btn(HDC,int,int,int,int,const char*,bool,COLORREF,COLORREF);
 
-    // Drawing helpers
-    void DrawRoundRect(HDC hdc, int x, int y, int w, int h, int r, COLORREF fill, COLORREF border);
-    void DrawText_(HDC hdc, const char* text, int x, int y, int w, int h, COLORREF col, HFONT font, UINT fmt = DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    void DrawButton(HDC hdc, int x, int y, int w, int h, const char* text, bool hov, COLORREF bg, COLORREF bgHov);
+    void DrawSidebar (HDC,int,int,int);
+    void DrawHeader  (HDC,int,int,int);
+    void DrawEquipped(HDC,int,int,int,int);
+    void DrawWeapons (HDC,int,int,int,int);
+    void DrawSkins   (HDC,int,int,int,int);
+    void DrawDetail  (HDC,int,int,int,int);
+    void DrawConfigs (HDC,int,int,int,int);
 
-    // Page renderers
-    void DrawSidebar(HDC hdc, int x, int y, int h);
-    void DrawHeader(HDC hdc, int x, int y, int w);
-    void DrawEquipped(HDC hdc, int x, int y, int w, int h);
-    void DrawWeaponGrid(HDC hdc, int x, int y, int w, int h);
-    void DrawSkinGrid(HDC hdc, int x, int y, int w, int h);
-    void DrawSkinDetail(HDC hdc, int x, int y, int w, int h);
-    void DrawConfigs(HDC hdc, int x, int y, int w, int h);
-
-    // State
-    bool    m_visible;
-    Page    m_activePage;
-    InvView m_invView;
-    int     m_scrollOffset;
-    int     m_mouseX, m_mouseY;
-    int     m_menuX, m_menuY;
-
-    // Weapon/skin database
-    std::vector<WeaponDef> m_weaponDB;
     void BuildDatabase();
+    void ScanPresets();
+    void SavePreset();
+    void LoadPreset(int);
+    void DeletePreset(int);
 
-    // Current selection
-    int   m_selWeapon;          // index into m_weaponDB
-    int   m_selSkin;            // index into weapon's skins
-    float m_detailFloat;        // float slider value 0.0–1.0
+    bool    m_visible;
+    Page    m_page;
+    InvView m_view;
+    int     m_scroll;
+    int     m_mouseX, m_mouseY;
+    int     m_menuX,  m_menuY;
 
-    // Equipped items (user's inventory)
+    std::vector<WeaponDef>   m_weapons;
+    int   m_selWeapon, m_selSkin;
+    float m_detailFloat;
+
     std::vector<EquippedItem> m_equipped;
+    std::vector<PresetInfo>   m_presets;
 
-    // Configs
-    bool m_skinChangerEnabled;
-    bool m_knifeChangerEnabled;
-    bool m_gloveChangerEnabled;
+    static const int MG = 128;
+    Rect m_gR[MG]; int m_gId[MG]; int m_gN;
 
-    // Hit rects (rebuilt each frame)
-    static const int MAX_GRID = 64;
-    HitRect m_gridRects[MAX_GRID];
-    int     m_gridIds[MAX_GRID];
-    int     m_gridCount;
+    Rect m_sideR[PAGE_COUNT];
+    Rect m_addBtn, m_backBtn, m_applyBtn;
+    Rect m_sliderR; bool m_sliderDrag;
 
-    HitRect m_sidebarRects[PAGE_COUNT];
-    HitRect m_addBtnRect;
-    HitRect m_backBtnRect;
-    HitRect m_applyBtnRect;
-    HitRect m_sliderRect;
-    bool    m_sliderDrag;
+    static const int MI = 64;
+    Rect m_remR[MI]; int m_remN;
 
-    static const int MAX_INV = 32;
-    HitRect m_invRemoveRects[MAX_INV];
-    int     m_invRemoveCount;
+    static const int MP = 32;
+    Rect m_pLoadR[MP]; Rect m_pDelR[MP]; int m_pN;
+    Rect m_saveBtn, m_applyGameBtn;
 
-    HitRect m_toggleRects[8];
-    int     m_toggleCount;
-
-    // Fonts
-    HFONT m_fontTitle;
-    HFONT m_fontBody;
-    HFONT m_fontSmall;
-    HFONT m_fontBold;
-    HFONT m_fontLogo;
-    HFONT m_fontGrid;
+    HFONT m_fTitle, m_fBody, m_fSmall, m_fBold, m_fLogo, m_fGrid, m_fIcon;
 };
 
-/**
- * Overlay Window Manager – creates a transparent always-on-top window
- * that sits over CS2 and renders the GameMenu
- */
+// ============================================================================
 class OverlayWindow {
 public:
     OverlayWindow();
@@ -194,27 +181,24 @@ public:
     bool Create(HMODULE hModule, DWORD cs2Pid);
     void Destroy();
     void RunFrame();
-    void ShowMenu();   // Show menu and make window interactive
+    void ShowMenu();
 
     GameMenu& GetMenu() { return m_menu; }
-
-    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+    static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 private:
-    void UpdatePosition();   // follow CS2 window
+    void UpdatePosition();
 
-    HWND      m_hwnd;
-    HWND      m_gameHwnd;    // CS2 window handle
-    DWORD     m_cs2Pid;      // CS2 process ID for window search
-    GameMenu  m_menu;
-    HMODULE   m_hModule;
-    bool      m_running;
-    bool      m_autoShow;    // auto-show menu on first frame
+    HWND     m_hwnd;
+    HWND     m_gameHwnd;
+    DWORD    m_cs2Pid;
+    GameMenu m_menu;
+    HMODULE  m_hModule;
+    bool     m_running;
+    bool     m_autoShow;
 };
 
-/**
- * DLL Injection Handler
- */
+// ============================================================================
 class GameInjector {
 public:
     GameInjector();
