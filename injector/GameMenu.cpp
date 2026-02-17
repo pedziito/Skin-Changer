@@ -1311,7 +1311,9 @@ void GameMenu::DeletePreset(int idx) {
 
 OverlayWindow::OverlayWindow()
     : m_hwnd(nullptr), m_gameHwnd(nullptr), m_cs2Pid(0)
-    , m_hModule(nullptr), m_running(false), m_autoShow(true) {}
+    , m_hModule(nullptr), m_running(false), m_autoShow(true)
+    , m_initDone(false), m_initPhase(0), m_initStart(0)
+    , m_splashFont(nullptr), m_splashSmall(nullptr) {}
 
 OverlayWindow::~OverlayWindow() { Destroy(); }
 
@@ -1399,8 +1401,15 @@ bool OverlayWindow::Create(HMODULE hModule, DWORD cs2Pid) {
     ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(m_hwnd);
 
+    // Create splash fonts
+    m_splashFont  = CreateFontA(22,0,0,0,FW_BOLD,  0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+    m_splashSmall = CreateFontA(13,0,0,0,FW_NORMAL,0,0,0,DEFAULT_CHARSET,OUT_TT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,"Segoe UI");
+
     m_menu.Initialize(hModule);
     m_running = true;
+    m_initStart = GetTickCount();
+    m_initPhase = 0;
+    m_initDone  = false;
 
     DbgLog("Overlay created: hwnd=%p  size=%dx%d", (void*)m_hwnd, w, h);
     return true;
@@ -1408,6 +1417,8 @@ bool OverlayWindow::Create(HMODULE hModule, DWORD cs2Pid) {
 
 void OverlayWindow::Destroy() {
     m_running = false;
+    if (m_splashFont)  { DeleteObject(m_splashFont);  m_splashFont  = nullptr; }
+    if (m_splashSmall) { DeleteObject(m_splashSmall); m_splashSmall = nullptr; }
     if (m_hwnd) { DestroyWindow(m_hwnd); m_hwnd = nullptr; }
 }
 
@@ -1439,10 +1450,36 @@ void OverlayWindow::RunFrame() {
 
     UpdatePosition();
 
-    // Auto-show on first frame
+    // ── Init / splash phase (runs for ~3 seconds before showing menu) ──
+    if (!m_initDone) {
+        DWORD elapsed = GetTickCount() - m_initStart;
+        if (elapsed < 1000)       m_initPhase = 0;  // "Connecting to CS2..."
+        else if (elapsed < 2000)  m_initPhase = 1;  // "Loading skin database..."
+        else if (elapsed < 3000)  m_initPhase = 2;  // "Ready!"
+        else {
+            m_initPhase = 3;
+            m_initDone = true;
+            DbgLog("Init splash done, showing menu");
+            ShowMenu();
+        }
+        // Keep overlay visible but click-through during splash
+        LONG ex = GetWindowLong(m_hwnd, GWL_EXSTYLE);
+        ex |= WS_EX_TRANSPARENT;
+        SetWindowLong(m_hwnd, GWL_EXSTYLE, ex);
+
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+        UpdateWindow(m_hwnd);
+        MSG msg;
+        while (PeekMessage(&msg, m_hwnd, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg); DispatchMessage(&msg);
+        }
+        return; // Skip normal input processing during init
+    }
+
+    // Auto-show on first frame (after init)
     if (m_autoShow) {
         m_autoShow = false;
-        ShowMenu();
+        // Already shown by init phase
     }
 
     // ── INSERT key toggle  (ONLY when CS2 is the foreground window) ──
@@ -1505,7 +1542,10 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         DeleteObject(mgBr);
 
         if (g_pOverlay) {
-            g_pOverlay->m_menu.Render(mem, rc.right, rc.bottom);
+            if (!g_pOverlay->IsReady())
+                g_pOverlay->DrawSplash(mem, rc.right, rc.bottom);
+            else
+                g_pOverlay->m_menu.Render(mem, rc.right, rc.bottom);
         }
 
         BitBlt(hdc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
@@ -1550,6 +1590,106 @@ LRESULT CALLBACK OverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 // ############################################################################
 //  GameInjector
 // ############################################################################
+
+// ── Splash / Init screen (NEVERLOSE-style) ──
+void OverlayWindow::DrawSplash(HDC hdc, int w, int h) {
+    // Center splash card
+    int cw = 320, ch = 180;
+    int cx = (w - cw) / 2, cy = (h - ch) / 2;
+
+    // Drop shadow
+    HBRUSH sh = CreateSolidBrush(RGB(3, 3, 5));
+    RECT sr = {cx+5, cy+5, cx+cw+5, cy+ch+5};
+    FillRect(hdc, &sr, sh); DeleteObject(sh);
+
+    // Card bg
+    HBRUSH bg = CreateSolidBrush(NL_BG);
+    HPEN   bp = CreatePen(PS_SOLID, 1, NL_BORDER);
+    HBRUSH ob = (HBRUSH)SelectObject(hdc, bg);
+    HPEN   op = (HPEN)SelectObject(hdc, bp);
+    RoundRect(hdc, cx, cy, cx+cw, cy+ch, 16, 16);
+    SelectObject(hdc, ob); SelectObject(hdc, op);
+    DeleteObject(bg); DeleteObject(bp);
+
+    // Top accent bar (blue gradient-like)
+    RECT tb = {cx+2, cy+2, cx+cw-2, cy+6};
+    HBRUSH ab = CreateSolidBrush(NL_ACCENT);
+    FillRect(hdc, &tb, ab); DeleteObject(ab);
+
+    // Logo icon (blue square with AC)
+    int ix = cx + (cw - 48) / 2, iy = cy + 22;
+    HBRUSH ib = CreateSolidBrush(NL_ACCENT);
+    HPEN ip = CreatePen(PS_SOLID, 1, NL_ACCENT_D);
+    SelectObject(hdc, ib); SelectObject(hdc, ip);
+    RoundRect(hdc, ix, iy, ix+48, iy+48, 12, 12);
+    DeleteObject(ib); DeleteObject(ip);
+
+    // "AC" text in icon
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, NL_WHITE);
+    HFONT of = (HFONT)SelectObject(hdc, m_splashFont);
+    RECT ir = {ix, iy, ix+48, iy+48};
+    DrawTextA(hdc, "AC", -1, &ir, DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    SelectObject(hdc, of);
+
+    // Animated dots
+    DWORD elapsed = GetTickCount() - m_initStart;
+    int dots = ((elapsed / 400) % 4);
+    char dotStr[8] = "";
+    for (int i = 0; i < dots; i++) strcat_s(dotStr, ".");
+
+    // Status text
+    const char* statusBase = "";
+    COLORREF statusColor = NL_TEXT;
+    switch (m_initPhase) {
+    case 0: statusBase = "Connecting to CS2"; statusColor = NL_TEXT; break;
+    case 1: statusBase = "Loading skin database"; statusColor = NL_TEXT; break;
+    case 2: statusBase = "Ready!"; statusColor = NL_GREEN; break;
+    default: statusBase = "Ready!"; statusColor = NL_GREEN; break;
+    }
+
+    char statusFull[128];
+    if (m_initPhase < 2)
+        snprintf(statusFull, sizeof(statusFull), "%s%s", statusBase, dotStr);
+    else
+        snprintf(statusFull, sizeof(statusFull), "%s", statusBase);
+
+    // "Initializing..." header
+    SetTextColor(hdc, NL_WHITE);
+    of = (HFONT)SelectObject(hdc, m_splashFont);
+    RECT hr = {cx, cy + 78, cx+cw, cy+102};
+    DrawTextA(hdc, "Initializing", -1, &hr, DT_CENTER|DT_SINGLELINE);
+    SelectObject(hdc, of);
+
+    // Status line
+    SetTextColor(hdc, statusColor);
+    of = (HFONT)SelectObject(hdc, m_splashSmall);
+    RECT stR = {cx, cy + 108, cx+cw, cy+126};
+    DrawTextA(hdc, statusFull, -1, &stR, DT_CENTER|DT_SINGLELINE);
+    SelectObject(hdc, of);
+
+    // Progress bar
+    int barX = cx + 40, barY = cy + 140, barW = cw - 80, barH = 6;
+    HBRUSH bbg = CreateSolidBrush(RGB(30,30,40));
+    RECT   br2 = {barX, barY, barX+barW, barY+barH};
+    FillRect(hdc, &br2, bbg); DeleteObject(bbg);
+
+    float progress = (float)elapsed / 3000.0f;
+    if (progress > 1.0f) progress = 1.0f;
+    int fillW = (int)(barW * progress);
+    if (fillW > 0) {
+        HBRUSH fb = CreateSolidBrush(NL_ACCENT);
+        RECT fr = {barX, barY, barX+fillW, barY+barH};
+        FillRect(hdc, &fr, fb); DeleteObject(fb);
+    }
+
+    // Version text at bottom
+    SetTextColor(hdc, NL_TEXT3);
+    of = (HFONT)SelectObject(hdc, m_splashSmall);
+    RECT vr = {cx, cy + 155, cx+cw, cy + 170};
+    DrawTextA(hdc, "AC Changer v2.0", -1, &vr, DT_CENTER|DT_SINGLELINE);
+    SelectObject(hdc, of);
+}
 GameInjector::GameInjector() : m_initialized(false) {}
 
 GameInjector::~GameInjector() { Shutdown(); }

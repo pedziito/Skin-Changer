@@ -184,7 +184,11 @@ public:
     void ShowMenu();
 
     GameMenu& GetMenu() { return m_menu; }
+    bool IsReady() const { return m_initDone; }
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
+    // Splash screen rendering (called from WndProc during init)
+    void DrawSplash(HDC hdc, int w, int h);
 
 private:
     void UpdatePosition();
@@ -196,6 +200,13 @@ private:
     HMODULE  m_hModule;
     bool     m_running;
     bool     m_autoShow;
+
+    // Init / splash state
+    bool     m_initDone;
+    int      m_initPhase;   // 0=connecting, 1=loading db, 2=ready, 3=done
+    DWORD    m_initStart;   // GetTickCount at create
+    HFONT    m_splashFont;
+    HFONT    m_splashSmall;
 };
 
 // ============================================================================

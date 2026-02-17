@@ -907,13 +907,18 @@ bool LaunchGame(HWND hwnd) {
         SetStat("Fejl: Kunne ikke starte overlay!", C_RED);
         return false;
     }
-    DbgLog("Overlay thread created, waiting 2s...");
+    DbgLog("Overlay thread created, polling for ready...");
     CloseHandle(hThread);
 
-    Sleep(2000);
+    // Poll for up to 15 seconds (the overlay may need time to find CS2 window)
+    bool overlayOk = false;
+    for (int i = 0; i < 30; i++) {
+        Sleep(500);
+        if (g_overlayRunning) { overlayOk = true; break; }
+    }
 
     DbgLog("After wait: g_overlayRunning=%d g_pOverlayWnd=%p", (int)g_overlayRunning, (void*)g_pOverlayWnd);
-    if (!g_overlayRunning) {
+    if (!overlayOk) {
         DbgLog("ERROR: Overlay did not start successfully!");
         SetStat("Fejl: Overlay kunne ikke starte! Se ac_debug.log", C_RED);
         return false;
