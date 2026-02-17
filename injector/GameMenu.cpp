@@ -145,7 +145,6 @@ void GameMenu::Shutdown() {
 void GameMenu::Toggle() {
     m_visible = !m_visible;
     if (m_visible) {
-        m_selectedRow = 0;
         m_scrollOffset = 0;
     }
 }
