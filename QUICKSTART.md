@@ -4,50 +4,143 @@
 
 ## Prerequisites
 
-- Windows 10 or 11
+- Windows 10 or 11 (x64)
 - Counter-Strike 2 installed
 - Test Steam account (expect it to be banned)
-- Understanding of risks and consequences
+- Administrator privileges
+- Valid CS2 license key (for initial sign-up, format: CS2-*)
 
-## Quick Setup (5 Minutes)
+## Quick Setup (2 Minutes)
 
-### Step 1: Download/Build
+### Step 1: Download
 
-**Option A: Pre-built (if available)**
+Download `cs2inventory.exe` from [releases](https://github.com/pedziito/Skin-Changer/releases) and save it to a folder.
+
+The executable is completely standalone - no additional files or configuration needed!
+
+### Step 2: First Run - Sign Up
+
+Run the executable with administrator privileges:
+
 ```
-1. Download CS2SkinChanger.exe from releases
-2. Extract to a folder
-3. Ensure config/ directory exists with JSON files
+1. Double-click cs2inventory.exe
+2. Console window opens showing:
+   ┌─────────────────────────────────┐
+   │  CS2 INVENTORY CHANGER v1.0    │
+   └─────────────────────────────────┘
+   
+3. Enter your CS2 license key (example: CS2-1234-5678-9012)
+4. Choose a username
+5. Set a password (input hidden with *)
+6. Confirm password
+7. System captures your Hardware ID (HWID) for device locking
+8. Success message displays
 ```
 
-**Option B: Build from source**
+### Step 3: Subsequent Runs - Login
+
+On future runs, the application will:
+
+```
+1. Detect existing account configuration
+2. Prompt for login:
+   - Username
+   - Password
+3. Verify Hardware ID matches
+4. If HWID differs (different PC), login will fail
+   → Contact support to reset HWID to new device
+```
+
+### Step 4: Auto-Launch & Injection
+
+After successful authentication:
+
+```
+1. Application automatically launches Steam
+2. Waits for Steam initialization
+3. Launches Counter-Strike 2
+4. Monitors for CS2 process
+5. Injects inventory changer DLL
+6. Displays success message
+7. Console window closes
+```
+
+### Step 5: In-Game Menu
+
+While in Counter-Strike 2:
+
+```
+1. Press INS (Insert key)
+2. Overlay menu appears
+3. Navigate with arrow keys / WASD
+4. Modify inventory items
+5. Press ESC to close menu
+```
+
+## Build from Source (Windows)
+
+### Step 1: Clone Repository
+
 ```bash
-# Clone repository
 git clone https://github.com/pedziito/Skin-Changer.git
 cd Skin-Changer
+```
 
-# Build
+### Step 2: Build with Visual Studio
+
+```bash
 mkdir build
 cd build
-cmake .. -G "Visual Studio 16 2019" -A x64
+cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
-
-# Executable is in build/bin/Release/
 ```
 
-### Step 2: Verify Files
+**Note**: Requires cmake 3.15+ and Visual Studio 2022 installed
 
-Ensure these files exist:
+### Step 3: Find Executable
+
+Built executable will be at:
 ```
-CS2SkinChanger.exe
-config/
-  ├── offsets.json
-  └── skins.json
+build\bin\Release\cs2inventory.exe
 ```
 
-### Step 3: Launch CS2
+### Step 4: Test
 
-1. Open Counter-Strike 2
+Run with administrator privileges and follow the sign-up/login flow above.
+
+## Troubleshooting
+
+### "License must start with 'CS2-'"
+- Your license key format is invalid
+- Use valid CS2 license key starting with CS2-
+- Example: CS2-ABC123-DEF456-GHI789
+
+### "HWID mismatch!"
+- You're trying to login on a different computer
+- Original device: Contact support for HWID reset
+- This is intentional for preventing account sharing
+
+### "CS2 process not found"
+- CS2 failed to launch properly
+- Ensure you have administrator privileges
+- Check that Counter-Strike 2 is installed
+- Start the game manually and run injector again
+
+### "Injection failed"
+- Missing administrator privileges
+- Run executable as Administrator (right-click → Run as Administrator)
+- Anti-virus may be blocking injection
+
+## Configuration
+
+The application stores your credentials in:
+```
+user_config.txt
+```
+
+Located in the same directory as `cs2inventory.exe`. 
+
+**Never share this file** - it contains your login credentials and HWID.
 2. Go to Practice → Practice Mode with bots
 3. Start a game
 4. Wait until fully loaded in-game

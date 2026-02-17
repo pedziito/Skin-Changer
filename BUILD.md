@@ -1,4 +1,4 @@
-# Building CS2 Skin Changer
+# Building CS2 Inventory Changer
 
 ## Prerequisites
 
@@ -24,9 +24,10 @@
 1. **Open Developer Command Prompt for VS**
    - Start Menu → Visual Studio → Developer Command Prompt
 
-2. **Navigate to project directory**
+2. **Clone and navigate to project**
    ```bash
-   cd C:\path\to\Skin-Changer
+   git clone https://github.com/pedziito/Skin-Changer.git
+   cd Skin-Changer
    ```
 
 3. **Create and enter build directory**
@@ -46,8 +47,66 @@
 
 5. **Build the project**
    ```bash
-   # Debug build
+   # Release build (recommended)
+   cmake --build . --config Release
+   
+   # Debug build (for development)
    cmake --build . --config Debug
+```
+
+### Method 2: Visual Studio GUI
+
+1. **Open Visual Studio**
+
+2. **File → Open → CMake...**
+   - Select the project's `CMakeLists.txt`
+
+3. **Wait for CMake generation**
+   - VS will automatically generate project files
+
+4. **Select Configuration**
+   - Top toolbar: Choose `x64-Release` or `x64-Debug`
+
+5. **Build**
+   - Build → Build Solution (Ctrl+Shift+B)
+
+## Build Output
+
+### Location
+
+After building, the executable will be at:
+
+```
+build\bin\Release\cs2inventory.exe     # Release build
+build\bin\Debug\cs2inventory.exe       # Debug build
+```
+
+### Single File
+
+The resulting executable is **completely self-contained**:
+- All authentication logic included
+- Config stored locally in `user_config.txt`
+- No external DLL dependencies (injection DLL embedded)
+- Ready to distribute and run
+
+## Build Configuration
+
+### CMakeLists.txt Overview
+
+The build system:
+- Compiles loader executable with authentication
+- Optional CS2 injector module (gracefully fails if missing)
+- Configures Windows-specific libraries (ws2_32, comctl32)
+- Sets C++ 17 standard
+- Optimizes for Release build
+
+### Key Libraries
+
+- **Windows API**: Core OS functionality (process management, console I/O)
+- **tlhelp32**: Process enumeration and finding
+- **wincrypt**: Windows crypto functions
+- **ws2_32**: Winsock2 (network support)
+- **comctl32**: Common controls
    
    # Release build (recommended)
    cmake --build . --config Release

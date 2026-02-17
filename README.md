@@ -1,20 +1,20 @@
-# CS2 Skin Changer
+# CS2 Inventory Changer
 
 [![GitHub release](https://img.shields.io/github/v/release/pedziito/Skin-Changer?style=flat-square)](https://github.com/pedziito/Skin-Changer/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/pedziito/Skin-Changer/blob/main/LICENSE)
 [![Windows](https://img.shields.io/badge/platform-Windows%2064bit-brightgreen?style=flat-square)](https://github.com/pedziito/Skin-Changer)
 
-A window-based skin changer for Counter-Strike 2 featuring a .exe loader with .dll injection and in-game menu overlay.
+A modern, single-file executable for modifying Counter-Strike 2 inventory items. Features credential-based authentication with hardware locking and automatic game launching.
 
 ## ⚠️ **CRITICAL: VAC BAN WARNING** ⚠️
 
 **THIS TOOL WILL RESULT IN A PERMANENT BAN**
 
-- **VAC DETECTION**: This tool is almost certainly detectable by VAC (Valve Anti-Cheat)
+- **VAC DETECTION**: This tool is detectable by VAC (Valve Anti-Cheat)
 - **PERMANENT BAN**: VAC bans cannot be appealed and are permanent
 - **ACCOUNT LOSS**: All games and items on your Steam account will be lost
 - **IP BLOCKING**: Your IP may be blocked from playing VAC-secured games
-- **FOR EDUCATIONAL USE ONLY**: This is a proof-of-concept, not for actual gameplay
+- **FOR EDUCATIONAL USE ONLY**: This is a proof-of-concept for learning purposes
 
 **DO NOT USE ON YOUR MAIN ACCOUNT**
 
@@ -24,30 +24,32 @@ The developers assume NO responsibility for bans or account loss. Use entirely a
 
 ## Features
 
-### Loader Application (cs2loader.exe)
-- 🎮 Automatic CS2 process detection
-- 📦 Handles DLL injection reliably
-- 🔐 License verification
-- ⚠️ VAC warning display
-- 🔄 Automatic dependency management
+### All-in-One Executable (cs2inventory.exe)
+- 🔐 License-based sign-up on first run
+- 🔑 Credential login on subsequent runs
+- 🛡️ Hardware ID (HWID) device locking
+- 🎮 Automatic Steam & CS2 launching
+- 💉 Automatic DLL injection into game process
+- ⌨️ In-game menu accessible via INS key
+- 📁 Portable - all data stored locally in config file
 
-### In-Game Overlay Menu
-- 🎨 Clean, intuitive menu interface (INS key to toggle)
-- 🎯 Real-time skin selection
-- 🔧 Multiple configuration options
-- 📊 Game memory integration
-- ⌨️ Keyboard-based navigation
+### In-Game Inventory Menu
+- 🎨 Overlay menu interface (Press INS to toggle)
+- 🎯 Real-time inventory item modification
+- 🔧 Configuration options
+- ⌨️ Keyboard navigation
 
-### License System
-- 🔐 User licensing requirements
-- ⏰ Time-based license expiry
-- 🛡️ License revocation support
-- 👨‍💼 Admin tool for license management
+### Authentication System
+- 📝 Sign-up with valid CS2 license key (format: CS2-*)
+- 🔒 Credential-based login on subsequent runs
+- 🔐 HWID-locked to prevent account sharing across devices
+- 💾 Local config storage (user_config.txt)
 
 ## Installation
 
 ### Requirements
-- Windows 7 or later (x64)
+- Windows 10 or later (x64)
+- Administrator privileges required
 - GPU that supports DirectX 11
 - Decent CPU for injection and overlay
 
