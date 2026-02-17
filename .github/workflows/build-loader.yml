@@ -66,23 +66,23 @@ jobs:
           Write-Host "✗ cs2admin.exe not found (optional)"
         }
         
-        $readmeContent = @"
-CS2 SKIN CHANGER - Release Package
-
-Files:
-- cs2loader.exe: Main loader application
-- CS2Changer.dll: Game hook DLL  
-- cs2admin.exe: License management tool (optional)
-
-Installation:
-1. Place cs2loader.exe and CS2Changer.dll in same folder
-2. Obtain license.key from admin
-3. Run cs2loader.exe
-4. Accept VAC warning
-5. Start CS2 game
-6. Press INS to open menu
-"@
-        Set-Content -Path "release_package\README.txt" -Value $readmeContent -Force
+        $readmeLines = @(
+          "CS2 SKIN CHANGER - Release Package",
+          "",
+          "Files:",
+          "- cs2loader.exe: Main loader application",
+          "- CS2Changer.dll: Game hook DLL",
+          "- cs2admin.exe: License management tool (optional)",
+          "",
+          "Installation:",
+          "1. Place cs2loader.exe and CS2Changer.dll in same folder",
+          "2. Obtain license.key from admin",
+          "3. Run cs2loader.exe",
+          "4. Accept VAC warning",
+          "5. Start CS2 game",
+          "6. Press INS to open menu"
+        )
+        Set-Content -Path "release_package\README.txt" -Value $readmeLines -Force
         Write-Host "✓ README.txt created"
         
     - name: Upload cs2loader.exe
