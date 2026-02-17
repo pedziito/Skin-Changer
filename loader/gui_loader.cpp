@@ -552,7 +552,7 @@ void PaintDash(HDC hdc, RECT& rc) {
     SelectObject(hdc, fBody);
     SetTextColor(hdc, C_TEXT2);
     RECT exL = { MARGIN + 28, y, MARGIN + 150, y + 34 };
-    DrawText(hdc, "Udl\xF8bsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawText(hdc, "Udl\xF8" "bsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SetTextColor(hdc, C_GREEN);
     RECT exV = { MARGIN + 10, y, WIN_W - MARGIN - 10, y + 34 };
     DrawText(hdc, "2026-12-31", -1, &exV, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
@@ -861,7 +861,7 @@ bool DoSignup() {
     }
 
     g_loggedIn = true;
-    SetStat("Konto oprettet! HWID l\xE5st.", C_GREEN);
+    SetStat("Konto oprettet! HWID l\xE5" "st.", C_GREEN);
     return true;
 }
 
@@ -963,18 +963,18 @@ bool LaunchGame(HWND hwnd) {
 
     if (!ok) { SetStat("Fejl: Steam ikke fundet!", C_RED); return false; }
 
-    SetStat("Venter p\xE5 Steam...", C_TEXT2);
+    SetStat("Venter p\xE5" " Steam...", C_TEXT2);
     Sleep(8000);
 
     SetStat("Starter CS2...", C_TEXT2);
     ShellExecuteA(NULL, "open", "steam://rungameid/730", NULL, NULL, SW_SHOWNORMAL);
 
-    SetStat("Venter p\xE5 CS2...", C_TEXT2);
+    SetStat("Venter p\xE5" " CS2...", C_TEXT2);
     DWORD cs2 = 0;
     for (int i = 0; i < 120 && !cs2; i++) {
         cs2 = FindProc("cs2.exe");
         if (!cs2) {
-            char m[64]; sprintf_s(m, "Venter p\xE5 CS2... %d sek", i + 1);
+            char m[64]; sprintf_s(m, "Venter p\xE5" " CS2... %d sek", i + 1);
             SetStat(m, C_TEXT2); Sleep(1000);
         }
     }
@@ -985,11 +985,11 @@ bool LaunchGame(HWND hwnd) {
 
     SetStat("Injicerer...", C_ACCENT);
     HANDLE h = OpenProcess(PROCESS_ALL_ACCESS, FALSE, cs2);
-    if (!h) { SetStat("Fejl: K\xF8r som administrator!", C_RED); return false; }
+    if (!h) { SetStat("Fejl: K\xF8" "r som administrator!", C_RED); return false; }
     Sleep(2000); CloseHandle(h);
 
-    SetStat("Injection udf\xF8rt! Tryk INSERT.", C_GREEN);
-    MessageBox(hwnd, "Injection udf\xF8rt!\n\nTryk INSERT i CS2 for at \xE5bne menuen.",
+    SetStat("Injection udf\xF8" "rt! Tryk INSERT.", C_GREEN);
+    MessageBox(hwnd, "Injection udf\xF8" "rt!\n\nTryk INSERT i CS2 for at \xE5" "bne menuen.",
         "AC Changer", MB_OK | MB_ICONINFORMATION);
     return true;
 }
