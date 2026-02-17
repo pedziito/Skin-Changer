@@ -243,12 +243,16 @@ inline std::vector<PropertyInfo> MakePropertyList(
  */
 #define ACE_REFLECT(TypeName, ...) \
     using Self = TypeName; \
-    static ace::TypeDescriptor GetTypeDescriptor() { \
-        ace::TypeDescriptor td; \
-        td.name = #TypeName; \
-        td.id = ace::Hash(#TypeName); \
-        td.size = sizeof(TypeName); \
-        td.properties = ace::MakePropertyList({ __VA_ARGS__ }); \
+    static const ace::TypeDescriptor& GetTypeDescriptor() { \
+        static ace::TypeDescriptor td; \
+        static bool _ace_init = false; \
+        if (!_ace_init) { \
+            _ace_init = true; \
+            td.name = #TypeName; \
+            td.id = ace::Hash(#TypeName); \
+            td.size = sizeof(TypeName); \
+            td.properties = ace::MakePropertyList({ __VA_ARGS__ }); \
+        } \
         return td; \
     } \
     static inline ace::TypeAutoRegistrar _ace_reg_##TypeName{ TypeName::GetTypeDescriptor() };
