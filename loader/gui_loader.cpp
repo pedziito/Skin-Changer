@@ -1,6 +1,6 @@
 // ============================================================================
-//  AC Changer - Premium Loader
-//  Full custom-painted dark/purple UI - zero standard Windows controls visible
+//  AC Changer – Premium Loader
+//  Compact, rounded, dark/purple gradient UI
 // ============================================================================
 #include <windows.h>
 #include <wingdi.h>
@@ -15,20 +15,21 @@
 #pragma comment(lib, "shell32.lib")
 
 // ============================================================================
-// DESIGN
+// DESIGN – compact window, generous rounding
 // ============================================================================
-#define WIN_W   360
-#define WIN_H   540
-#define MARGIN  30
-#define FIELD_W (WIN_W - MARGIN * 2)
-#define FIELD_H 42
-#define GAP     14
-#define BTN_H   44
-#define RAD     12   // global corner radius
+#define WIN_W    270
+#define WIN_H    380
+#define MARGIN   18
+#define FIELD_W  (WIN_W - MARGIN * 2)
+#define FIELD_H  32
+#define GAP      8
+#define BTN_H    34
+#define RAD      14
+#define TITLE_H  30
 
-// Dark / Purple palette
+// Dark / purple palette
 #define C_BG_TOP    RGB(14, 10, 22)
-#define C_BG_BOT    RGB(22, 14, 38)
+#define C_BG_BOT    RGB(28, 16, 52)
 #define C_PANEL     RGB(24, 18, 36)
 #define C_FIELD_BG  RGB(30, 22, 44)
 #define C_FIELD_BR  RGB(52, 38, 72)
@@ -47,35 +48,36 @@
 #define C_WHITE     RGB(240, 236, 250)
 
 // ============================================================================
-// HIT AREAS - computed at paint time, used for click detection
+// HIT AREAS – computed at paint time, consumed by click handling
 // ============================================================================
 struct HitRect { int x, y, w, h; };
-static HitRect g_fieldRects[3] = {};  // 0=license, 1=user, 2=pass
-static int g_fieldCount = 0;
-static HitRect g_btnRect = {};
-static HitRect g_linkRect = {};
+static HitRect g_fieldRects[3]   = {};
+static int     g_fieldEditIdx[3] = {};   // maps fieldRect slot -> edit index
+static int     g_fieldCount      = 0;
+static HitRect g_btnRect   = {};
+static HitRect g_linkRect  = {};
 static HitRect g_closeRect = {};
 
 // ============================================================================
 // STATE
 // ============================================================================
 static HINSTANCE g_hInst;
-static HWND g_hWnd;
-static bool g_loggedIn   = false;
-static bool g_signupMode = false;
-static bool g_dragging   = false;
+static HWND      g_hWnd;
+static bool  g_loggedIn   = false;
+static bool  g_signupMode = false;
+static bool  g_dragging   = false;
 static POINT g_dragPt;
-static int  g_focus      = -1;   // -1=none, 0=license, 1=user, 2=pass
-static bool g_btnHover   = false;
-static bool g_linkHover  = false;
-static bool g_closeHover = false;
+static int   g_focus      = -1;   // edit index: -1=none 0=license 1=user 2=pass
+static bool  g_btnHover   = false;
+static bool  g_linkHover  = false;
+static bool  g_closeHover = false;
 
 static std::string g_user, g_pass, g_license, g_hwid;
 static std::string g_status;
-static COLORREF g_statusClr = C_TEXT2;
+static COLORREF    g_statusClr = C_TEXT2;
 
-// Hidden edits for keyboard input
-static HWND g_edits[3]; // 0=license, 1=user, 2=pass
+// Hidden edit controls (off-screen, provide keyboard input buffer)
+static HWND g_edits[3];
 static char g_bufs[3][256] = {};
 
 // Fonts
@@ -88,16 +90,16 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void Paint(HWND, HDC);
 void PaintLogin(HDC, RECT&);
 void PaintDash(HDC, RECT&);
-void RRect(HDC, int x, int y, int w, int h, int r, COLORREF fill, COLORREF brd);
-void RRectFill(HDC, int x, int y, int w, int h, int r, COLORREF fill);
-int  DrawFieldRow(HDC, int x, int y, int w, int idx, wchar_t icon, const char* placeholder, bool isPwd);
-void DrawBtn(HDC, int x, int y, int w, int h, const char* text, wchar_t icon, bool hover, COLORREF bg, COLORREF bgH);
-void DrawGlyph(HDC hdc, int x, int y, int w, int h, wchar_t glyph, COLORREF color, int size = 16);
-void DrawCardIcon(HDC hdc, int x, int y, int w, int h, int type, COLORREF color);
+void RRect(HDC, int, int, int, int, int, COLORREF, COLORREF);
+void RRectFill(HDC, int, int, int, int, int, COLORREF);
+int  DrawFieldRow(HDC, int, int, int, int, wchar_t, const char*, bool);
+void DrawBtn(HDC, int, int, int, int, const char*, wchar_t, bool, COLORREF, COLORREF);
+void DrawGlyph(HDC, int, int, int, int, wchar_t, COLORREF, int = 14);
+void DrawCardIcon(HDC, int, int, int, int, int, COLORREF);
 void DrawGradient(HDC, RECT&);
-void DrawLogo(HDC, int cx, int cy);
-void SetStat(const char* msg, COLORREF c);
-bool HitTest(HitRect& r, int mx, int my);
+void DrawLogo(HDC, int, int);
+void SetStat(const char*, COLORREF);
+bool HitTest(HitRect&, int, int);
 
 bool DoLogin();
 bool DoSignup();
@@ -114,19 +116,19 @@ bool LaunchGame(HWND);
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
     g_hInst = hInst;
 
-    fTitle  = CreateFont(24, 0,0,0, FW_BOLD,     0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fSub    = CreateFont(13, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fBody   = CreateFont(14, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fSmall  = CreateFont(12, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fBtn    = CreateFont(14, 0,0,0, FW_SEMIBOLD, 0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fIcon   = CreateFont(16, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe MDL2 Assets");
+    fTitle = CreateFont(18, 0,0,0, FW_BOLD,     0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
+    fSub   = CreateFont(11, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
+    fBody  = CreateFont(12, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
+    fSmall = CreateFont(10, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
+    fBtn   = CreateFont(12, 0,0,0, FW_SEMIBOLD, 0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
+    fIcon  = CreateFont(14, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe MDL2 Assets");
 
     WNDCLASSEX wc = { sizeof(wc) };
-    wc.lpfnWndProc  = WndProc;
-    wc.hInstance     = hInst;
-    wc.lpszClassName = "ACLDR";
-    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = CreateSolidBrush(C_BG_TOP);
+    wc.lpfnWndProc   = WndProc;
+    wc.hInstance      = hInst;
+    wc.lpszClassName  = "ACLDR";
+    wc.hCursor        = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground  = CreateSolidBrush(C_BG_TOP);
     RegisterClassEx(&wc);
 
     int sx = (GetSystemMetrics(SM_CXSCREEN) - WIN_W) / 2;
@@ -136,19 +138,22 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
         WS_POPUP, sx, sy, WIN_W, WIN_H, NULL, NULL, hInst, NULL);
     SetLayeredWindowAttributes(g_hWnd, 0, 250, LWA_ALPHA);
 
+    // Rounded window clipping – makes the OS clip to a rounded shape
+    HRGN rgn = CreateRoundRectRgn(0, 0, WIN_W + 1, WIN_H + 1, RAD * 2, RAD * 2);
+    SetWindowRgn(g_hWnd, rgn, TRUE);
+
     ShowWindow(g_hWnd, nShow);
     UpdateWindow(g_hWnd);
 
+    // ---- Message loop ----
+    // Let TranslateMessage / DispatchMessage handle keyboard naturally.
+    // Only intercept Tab / Enter so our own WndProc processes them.
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
-        // Forward keyboard messages to focused hidden edit
-        if (msg.message == WM_KEYDOWN || msg.message == WM_CHAR) {
-            if (g_focus >= 0 && g_focus < 3) {
-                SendMessage(g_edits[g_focus], msg.message, msg.wParam, msg.lParam);
-                GetWindowText(g_edits[g_focus], g_bufs[g_focus], 256);
-                InvalidateRect(g_hWnd, NULL, FALSE);
-                continue;
-            }
+        if (msg.message == WM_KEYDOWN &&
+            (msg.wParam == VK_TAB || msg.wParam == VK_RETURN)) {
+            SendMessage(g_hWnd, msg.message, msg.wParam, msg.lParam);
+            continue;
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -174,7 +179,7 @@ void SetStat(const char* msg, COLORREF c) {
 
 void DrawGradient(HDC hdc, RECT& rc) {
     TRIVERTEX v[2];
-    v[0] = { rc.left, rc.top,     (COLOR16)(14<<8), (COLOR16)(10<<8), (COLOR16)(26<<8), 0 };
+    v[0] = { rc.left,  rc.top,    (COLOR16)(14<<8), (COLOR16)(10<<8), (COLOR16)(26<<8), 0 };
     v[1] = { rc.right, rc.bottom, (COLOR16)(28<<8), (COLOR16)(16<<8), (COLOR16)(52<<8), 0 };
     GRADIENT_RECT gr = { 0, 1 };
     GradientFill(hdc, v, 2, &gr, 1, GRADIENT_FILL_RECT_V);
@@ -182,9 +187,9 @@ void DrawGradient(HDC hdc, RECT& rc) {
 
 void RRect(HDC hdc, int x, int y, int w, int h, int r, COLORREF fill, COLORREF brd) {
     HBRUSH br = CreateSolidBrush(fill);
-    HPEN pn = CreatePen(PS_SOLID, 1, brd);
+    HPEN   pn = CreatePen(PS_SOLID, 1, brd);
     HBRUSH ob = (HBRUSH)SelectObject(hdc, br);
-    HPEN op = (HPEN)SelectObject(hdc, pn);
+    HPEN   op = (HPEN)SelectObject(hdc, pn);
     RoundRect(hdc, x, y, x + w, y + h, r * 2, r * 2);
     SelectObject(hdc, ob); SelectObject(hdc, op);
     DeleteObject(br); DeleteObject(pn);
@@ -199,24 +204,21 @@ void RRectFill(HDC hdc, int x, int y, int w, int h, int r, COLORREF fill) {
 // ============================================================================
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+
     case WM_CREATE: {
-        // Hidden edit controls (offscreen, only used for text buffer)
         for (int i = 0; i < 3; i++) {
             DWORD style = WS_CHILD | ES_AUTOHSCROLL;
             if (i == 2) style |= ES_PASSWORD;
             g_edits[i] = CreateWindowEx(0, "EDIT", "", style,
-                -1000, 0, 10, 10, hwnd, (HMENU)(UINT_PTR)(200 + i), g_hInst, NULL);
+                -500, 0, 10, 10, hwnd, (HMENU)(UINT_PTR)(200 + i), g_hInst, NULL);
             SendMessage(g_edits[i], WM_SETFONT, (WPARAM)fBody, TRUE);
         }
-
-        // Try auto-login
         if (LoadCfg()) {
-            g_loggedIn = true;
-            g_status = "Velkommen tilbage, " + g_user + "!";
+            g_loggedIn  = true;
+            g_status    = "Velkommen tilbage, " + g_user + "!";
             g_statusClr = C_GREEN;
         }
-
-        g_closeRect = { WIN_W - 42, 4, 38, 34 };
+        g_closeRect = { WIN_W - 32, 4, 26, 22 };
         break;
     }
 
@@ -224,7 +226,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         RECT rc; GetClientRect(hwnd, &rc);
-        HDC mem = CreateCompatibleDC(hdc);
+        HDC  mem = CreateCompatibleDC(hdc);
         HBITMAP bmp = CreateCompatibleBitmap(hdc, rc.right, rc.bottom);
         SelectObject(mem, bmp);
         Paint(hwnd, mem);
@@ -239,40 +241,35 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_LBUTTONDOWN: {
         int mx = (short)LOWORD(lp), my = (short)HIWORD(lp);
 
-        // Close
         if (HitTest(g_closeRect, mx, my)) { PostQuitMessage(0); return 0; }
 
-        // Title bar drag
-        if (my < 38 && mx < WIN_W - 42) {
+        // Title-bar drag
+        if (my < TITLE_H && mx < WIN_W - 32) {
             g_dragging = true; g_dragPt = { mx, my };
             SetCapture(hwnd); return 0;
         }
 
         if (!g_loggedIn) {
-            // Check each field
             bool hitField = false;
             for (int i = 0; i < g_fieldCount; i++) {
                 if (HitTest(g_fieldRects[i], mx, my)) {
-                    g_focus = i;
-                    SetFocus(g_edits[i]);
+                    int eidx = g_fieldEditIdx[i];
+                    g_focus = eidx;
+                    SetFocus(g_edits[eidx]);
                     hitField = true;
                     break;
                 }
             }
 
-            // Button
             if (!hitField && HitTest(g_btnRect, mx, my)) {
-                if (g_signupMode) DoSignup();
-                else DoLogin();
+                if (g_signupMode) DoSignup(); else DoLogin();
                 InvalidateRect(hwnd, NULL, FALSE);
                 return 0;
             }
 
-            // Toggle link
             if (!hitField && HitTest(g_linkRect, mx, my)) {
                 g_signupMode = !g_signupMode;
                 g_status.clear(); g_focus = -1;
-                // Clear buffers on mode switch
                 for (int i = 0; i < 3; i++) { SetWindowText(g_edits[i], ""); g_bufs[i][0] = 0; }
                 InvalidateRect(hwnd, NULL, FALSE);
                 return 0;
@@ -280,7 +277,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
             if (!hitField) { g_focus = -1; SetFocus(hwnd); }
         } else {
-            // Dashboard - load button
             if (HitTest(g_btnRect, mx, my)) {
                 EnableWindow(hwnd, FALSE);
                 LaunchGame(hwnd);
@@ -296,7 +292,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int mx = (short)LOWORD(lp), my = (short)HIWORD(lp);
         if (g_dragging) {
             POINT pt; GetCursorPos(&pt);
-            SetWindowPos(hwnd, NULL, pt.x - g_dragPt.x, pt.y - g_dragPt.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+            SetWindowPos(hwnd, NULL, pt.x - g_dragPt.x, pt.y - g_dragPt.y,
+                         0, 0, SWP_NOSIZE | SWP_NOZORDER);
             return 0;
         }
         bool bh = HitTest(g_btnRect, mx, my);
@@ -333,7 +330,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_TAB) {
             if (!g_loggedIn) {
                 int start = g_signupMode ? 0 : 1;
-                g_focus = (g_focus < start) ? start : (g_focus >= 2 ? start : g_focus + 1);
+                if (g_focus < start) g_focus = start;
+                else g_focus = (g_focus >= 2) ? start : g_focus + 1;
                 SetFocus(g_edits[g_focus]);
                 InvalidateRect(hwnd, NULL, FALSE);
             }
@@ -348,18 +346,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_SETCURSOR: {
         POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
+        bool overField = false;
+        for (int i = 0; i < g_fieldCount; i++)
+            if (HitTest(g_fieldRects[i], pt.x, pt.y)) { overField = true; break; }
         bool hand = HitTest(g_btnRect, pt.x, pt.y) ||
                     HitTest(g_closeRect, pt.x, pt.y) ||
                     HitTest(g_linkRect, pt.x, pt.y);
-        SetCursor(LoadCursor(NULL, hand ? IDC_HAND : IDC_ARROW));
+        SetCursor(LoadCursor(NULL, overField ? IDC_IBEAM : (hand ? IDC_HAND : IDC_ARROW)));
         return TRUE;
     }
 
-    case WM_DESTROY:
-        PostQuitMessage(0); break;
-
-    default:
-        return DefWindowProc(hwnd, msg, wp, lp);
+    case WM_DESTROY: PostQuitMessage(0); break;
+    default: return DefWindowProc(hwnd, msg, wp, lp);
     }
     return 0;
 }
@@ -371,44 +369,31 @@ void Paint(HWND hwnd, HDC hdc) {
     RECT rc; GetClientRect(hwnd, &rc);
     DrawGradient(hdc, rc);
 
-    // Window border
-    HPEN bp = CreatePen(PS_SOLID, 1, C_BORDER);
-    SelectObject(hdc, bp);
-    SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
-    RoundRect(hdc, 0, 0, rc.right, rc.bottom, 16, 16);
-    DeleteObject(bp);
-
     SetBkMode(hdc, TRANSPARENT);
 
     // Title bar
-    RRectFill(hdc, 0, 0, rc.right, 38, 0, RGB(10, 8, 18));
+    RRectFill(hdc, 0, 0, rc.right, TITLE_H, 0, RGB(10, 8, 18));
 
-    // Top rounded corners over the title bar fill
-    HPEN tp = CreatePen(PS_SOLID, 1, RGB(10, 8, 18));
-    SelectObject(hdc, tp);
-    SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
-    RoundRect(hdc, 0, 0, rc.right, 50, 16, 16);
-    DeleteObject(tp);
-    RRectFill(hdc, 1, 16, rc.right - 2, 23, 0, RGB(10, 8, 18));
-
-    // Title bar separator
+    // Separator
     HPEN sp = CreatePen(PS_SOLID, 1, C_BORDER);
     SelectObject(hdc, sp);
-    MoveToEx(hdc, 0, 38, NULL); LineTo(hdc, rc.right, 38);
+    MoveToEx(hdc, 0, TITLE_H, NULL); LineTo(hdc, rc.right, TITLE_H);
     DeleteObject(sp);
 
     // Title text
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_TEXT3);
-    RECT tbR = { 14, 10, 200, 32 };
+    RECT tbR = { 12, 0, 180, TITLE_H };
     DrawText(hdc, "AC Changer", -1, &tbR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     // Close button
-    if (g_closeHover) RRectFill(hdc, WIN_W - 38, 6, 30, 26, 13, RGB(60, 20, 20));
-    DrawGlyph(hdc, WIN_W - 38, 6, 30, 26, 0xE711, g_closeHover ? C_RED : C_TEXT3, 12);
+    if (g_closeHover)
+        RRectFill(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h, 6, RGB(60, 20, 20));
+    DrawGlyph(hdc, g_closeRect.x, g_closeRect.y, g_closeRect.w, g_closeRect.h,
+              0xE711, g_closeHover ? C_RED : C_TEXT3, 10);
 
     if (g_loggedIn) PaintDash(hdc, rc);
-    else PaintLogin(hdc, rc);
+    else            PaintLogin(hdc, rc);
 }
 
 // ============================================================================
@@ -416,92 +401,89 @@ void Paint(HWND hwnd, HDC hdc) {
 // ============================================================================
 void PaintLogin(HDC hdc, RECT& rc) {
     int cx = rc.right / 2;
-    int y = 50;
+    int y = TITLE_H + 14;
 
     // Logo
-    y += 18;
-    DrawLogo(hdc, cx, y + 22);
-    y += 50;
+    DrawLogo(hdc, cx, y + 16);
+    y += 38;
 
     // Title
     SelectObject(hdc, fTitle);
     SetTextColor(hdc, C_WHITE);
-    RECT tr = { 0, y, rc.right, y + 28 };
+    RECT tr = { 0, y, rc.right, y + 22 };
     DrawText(hdc, "AC CHANGER", -1, &tr, DT_CENTER | DT_SINGLELINE);
-    y += 28;
+    y += 22;
 
     // Subtitle
     SelectObject(hdc, fSub);
     SetTextColor(hdc, C_TEXT2);
-    RECT sr = { 0, y, rc.right, y + 18 };
+    RECT sr = { 0, y, rc.right, y + 14 };
     DrawText(hdc, "Premium Software", -1, &sr, DT_CENTER | DT_SINGLELINE);
-    y += 24;
+    y += 18;
 
     // Separator
     HPEN sep = CreatePen(PS_SOLID, 1, C_BORDER);
     SelectObject(hdc, sep);
-    MoveToEx(hdc, MARGIN + 50, y, NULL);
-    LineTo(hdc, WIN_W - MARGIN - 50, y);
+    MoveToEx(hdc, MARGIN + 40, y, NULL);
+    LineTo(hdc, WIN_W - MARGIN - 40, y);
     DeleteObject(sep);
-    y += 16;
+    y += 12;
 
-    // Fields
+    // Reset field tracking
     g_fieldCount = 0;
 
     if (g_signupMode) {
-        // License key field
         y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 0,
-            0xE192, "License Key  (AC-XXXX-XXXX)", false);
+                         0xE192, "License (AC-XXXX)", false);
         y += GAP;
     }
 
-    // Username
     y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 1,
-        0xE77B, "Brugernavn", false);
+                     0xE77B, "Brugernavn", false);
     y += GAP;
 
-    // Password
     y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 2,
-        0xE72E, "Adgangskode", true);
-    y += 8;
+                     0xE72E, "Adgangskode", true);
+    y += 6;
 
     // Forgot password
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_TEXT3);
-    RECT fpR = { MARGIN, y, WIN_W - MARGIN, y + 14 };
-    DrawText(hdc, "Glemt adgangskode? Kontakt support.", -1, &fpR, DT_LEFT | DT_SINGLELINE);
-    y += 26;
+    RECT fpR = { MARGIN, y, WIN_W - MARGIN, y + 12 };
+    DrawText(hdc, "Glemt kode? Kontakt support.", -1, &fpR, DT_LEFT | DT_SINGLELINE);
+    y += 20;
 
     // Button
     const char* btnTxt = g_signupMode ? "Opret Konto" : "Log Ind";
-    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H, btnTxt, 0xE76C, g_btnHover, C_BTN_BG, C_BTN_HOV);
+    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H, btnTxt, 0xE76C,
+            g_btnHover, C_BTN_BG, C_BTN_HOV);
     g_btnRect = { MARGIN, y, FIELD_W, BTN_H };
-    y += BTN_H + 12;
+    y += BTN_H + 10;
 
     // Toggle link
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, g_linkHover ? C_ACCENT_L : C_TEXT2);
-    RECT lkR = { 0, y, rc.right, y + 16 };
+    RECT lkR = { 0, y, rc.right, y + 14 };
     if (g_signupMode)
-        DrawText(hdc, "Har allerede en konto? Log ind her", -1, &lkR, DT_CENTER | DT_SINGLELINE);
+        DrawText(hdc, "Har konto? Log ind", -1, &lkR, DT_CENTER | DT_SINGLELINE);
     else
-        DrawText(hdc, "Har ikke en konto? Opret her", -1, &lkR, DT_CENTER | DT_SINGLELINE);
-    g_linkRect = { 0, y, rc.right, 16 };
-    y += 20;
+        DrawText(hdc, "Ingen konto? Opret her", -1, &lkR, DT_CENTER | DT_SINGLELINE);
+    g_linkRect = { 0, y, rc.right, 14 };
+    y += 18;
 
     // Status
     if (!g_status.empty()) {
         SelectObject(hdc, fSmall);
         SetTextColor(hdc, g_statusClr);
-        RECT stR = { MARGIN, y, WIN_W - MARGIN, y + 36 };
+        RECT stR = { MARGIN, y, WIN_W - MARGIN, y + 30 };
         DrawText(hdc, g_status.c_str(), -1, &stR, DT_CENTER | DT_WORDBREAK);
     }
 
     // Footer
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, RGB(40, 32, 55));
-    RECT ft = { 0, rc.bottom - 22, rc.right, rc.bottom - 4 };
-    DrawText(hdc, "AC Changer 2024 - 2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
+    RECT ft = { 0, rc.bottom - 16, rc.right, rc.bottom - 2 };
+    DrawText(hdc, "AC Changer 2024-2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
 }
 
 // ============================================================================
@@ -509,183 +491,162 @@ void PaintLogin(HDC hdc, RECT& rc) {
 // ============================================================================
 void PaintDash(HDC hdc, RECT& rc) {
     int cx = rc.right / 2;
-    int y = 50;
+    int y = TITLE_H + 14;
 
-    // Logo
-    y += 18;
-    DrawLogo(hdc, cx, y + 22);
-    y += 50;
+    DrawLogo(hdc, cx, y + 16);
+    y += 38;
 
-    // Title
     SelectObject(hdc, fTitle);
     SetTextColor(hdc, C_WHITE);
-    RECT tr = { 0, y, rc.right, y + 28 };
+    RECT tr = { 0, y, rc.right, y + 22 };
     DrawText(hdc, "AC CHANGER", -1, &tr, DT_CENTER | DT_SINGLELINE);
-    y += 28;
+    y += 22;
 
-    // Subtitle
     SelectObject(hdc, fSub);
     SetTextColor(hdc, C_TEXT2);
-    RECT sr = { 0, y, rc.right, y + 18 };
+    RECT sr = { 0, y, rc.right, y + 14 };
     DrawText(hdc, "Premium Software", -1, &sr, DT_CENTER | DT_SINGLELINE);
-    y += 26;
+    y += 18;
 
-    // Separator
     HPEN sep = CreatePen(PS_SOLID, 1, C_BORDER);
     SelectObject(hdc, sep);
-    MoveToEx(hdc, MARGIN + 50, y, NULL);
-    LineTo(hdc, WIN_W - MARGIN - 50, y);
+    MoveToEx(hdc, MARGIN + 40, y, NULL);
+    LineTo(hdc, WIN_W - MARGIN - 40, y);
     DeleteObject(sep);
-    y += 20;
+    y += 14;
 
-    // Game cards (3) with GDI-drawn icons
-    int cardW = 76, cardH = 76, gap = 14;
-    int totalW = cardW * 3 + gap * 2;
+    // Game cards
+    int cardW = 56, cardH = 56, cgap = 10;
+    int totalW = cardW * 3 + cgap * 2;
     int startX = (WIN_W - totalW) / 2;
 
     for (int i = 0; i < 3; i++) {
-        int x = startX + i * (cardW + gap);
+        int x = startX + i * (cardW + cgap);
         COLORREF cardBrd = (i == 1) ? C_ACCENT : C_BORDER;
         RRect(hdc, x, y, cardW, cardH, 10, C_PANEL, cardBrd);
-        COLORREF iconClr = (i == 1) ? C_ACCENT_L : C_TEXT3;
-        DrawCardIcon(hdc, x, y, cardW, cardH, i, iconClr);
+        DrawCardIcon(hdc, x, y, cardW, cardH, i, (i == 1) ? C_ACCENT_L : C_TEXT3);
     }
-    y += cardH + 18;
+    y += cardH + 12;
 
     // Game name
-    SelectObject(hdc, fTitle);
+    SelectObject(hdc, fBtn);
     SetTextColor(hdc, C_WHITE);
-    RECT gn = { 0, y, rc.right, y + 26 };
+    RECT gn = { 0, y, rc.right, y + 18 };
     DrawText(hdc, "Counter-Strike 2", -1, &gn, DT_CENTER | DT_SINGLELINE);
-    y += 30;
+    y += 22;
 
     // UNDETECTED badge
-    int bw = 120, bh = 24;
+    int bw = 100, bh = 20;
     int bx = cx - bw / 2;
     RRect(hdc, bx, y, bw, bh, bh / 2, C_GREEN_DIM, C_GREEN);
-    // Checkmark glyph + text
-    DrawGlyph(hdc, bx + 8, y, 20, bh, 0xE73E, C_GREEN, 11);
+    DrawGlyph(hdc, bx + 6, y, 16, bh, 0xE73E, C_GREEN, 9);
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_GREEN);
-    RECT bd = { bx + 24, y, bx + bw, y + bh };
+    RECT bd = { bx + 20, y, bx + bw, y + bh };
     DrawText(hdc, "UNDETECTED", -1, &bd, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    y += bh + 16;
+    y += bh + 12;
 
     // Expiry panel
-    RRect(hdc, MARGIN, y, FIELD_W, 44, RAD, C_FIELD_BG, C_FIELD_BR);
+    RRect(hdc, MARGIN, y, FIELD_W, 34, RAD, C_FIELD_BG, C_FIELD_BR);
+    DrawGlyph(hdc, MARGIN + 8, y, 18, 34, 0xE823, C_TEXT2, 12);
     SelectObject(hdc, fBody);
-
-    // Clock icon + label
-    DrawGlyph(hdc, MARGIN + 12, y, 20, 44, 0xE823, C_TEXT2, 14);
     SetTextColor(hdc, C_TEXT2);
-    SelectObject(hdc, fBody);
-    RECT exL = { MARGIN + 36, y, MARGIN + 200, y + 44 };
+    RECT exL = { MARGIN + 28, y, MARGIN + 150, y + 34 };
     DrawText(hdc, "Udloebsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
     SetTextColor(hdc, C_GREEN);
-    RECT exV = { MARGIN + 14, y, WIN_W - MARGIN - 14, y + 44 };
+    RECT exV = { MARGIN + 10, y, WIN_W - MARGIN - 10, y + 34 };
     DrawText(hdc, "2026-12-31", -1, &exV, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
-    y += 44 + 16;
+    y += 34 + 12;
 
     // Load button
-    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H + 4, "Load Cheat", 0xE768, g_btnHover, C_BTN_BG, C_BTN_HOV);
-    g_btnRect = { MARGIN, y, FIELD_W, BTN_H + 4 };
-    y += BTN_H + 4 + 12;
+    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H, "Load Cheat", 0xE768,
+            g_btnHover, C_BTN_BG, C_BTN_HOV);
+    g_btnRect = { MARGIN, y, FIELD_W, BTN_H };
+    y += BTN_H + 10;
 
     // Status
     if (!g_status.empty()) {
         SelectObject(hdc, fSmall);
         SetTextColor(hdc, g_statusClr);
-        RECT st = { MARGIN, y, WIN_W - MARGIN, y + 40 };
+        RECT st = { MARGIN, y, WIN_W - MARGIN, y + 30 };
         DrawText(hdc, g_status.c_str(), -1, &st, DT_CENTER | DT_WORDBREAK);
     }
 
     // Footer
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, RGB(40, 32, 55));
-    RECT ft = { 0, rc.bottom - 22, rc.right, rc.bottom - 4 };
-    DrawText(hdc, "AC Changer 2024 - 2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
+    RECT ft = { 0, rc.bottom - 16, rc.right, rc.bottom - 2 };
+    DrawText(hdc, "AC Changer 2024-2026", -1, &ft, DT_CENTER | DT_SINGLELINE);
 }
 
 // ============================================================================
-// DRAW GLYPH - Renders a single Segoe MDL2 Assets icon
+// DRAW GLYPH – Segoe MDL2 Assets icon
 // ============================================================================
 void DrawGlyph(HDC hdc, int x, int y, int w, int h, wchar_t glyph, COLORREF color, int size) {
-    HFONT iconFont = CreateFontW(size, 0,0,0, FW_NORMAL, 0,0,0,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, 0, L"Segoe MDL2 Assets");
-    HFONT oldFont = (HFONT)SelectObject(hdc, iconFont);
+    HFONT f = CreateFontW(size, 0,0,0, FW_NORMAL, 0,0,0,
+                          DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                          CLEARTYPE_QUALITY, 0, L"Segoe MDL2 Assets");
+    HFONT of = (HFONT)SelectObject(hdc, f);
     SetTextColor(hdc, color);
     SetBkMode(hdc, TRANSPARENT);
     RECT r = { x, y, x + w, y + h };
     wchar_t buf[2] = { glyph, 0 };
     DrawTextW(hdc, buf, 1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(hdc, oldFont);
-    DeleteObject(iconFont);
+    SelectObject(hdc, of);
+    DeleteObject(f);
 }
 
 // ============================================================================
-// DRAW CARD ICON - GDI vector-drawn icons for game cards
+// DRAW CARD ICON – GDI vector shapes
 // ============================================================================
 void DrawCardIcon(HDC hdc, int x, int y, int w, int h, int type, COLORREF color) {
-    int cx = x + w / 2;
-    int cy = y + h / 2;
+    int cx = x + w / 2, cy = y + h / 2;
     HPEN pen = CreatePen(PS_SOLID, 2, color);
     HPEN oldPen = (HPEN)SelectObject(hdc, pen);
     SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
 
     switch (type) {
     case 0: {
-        // Crosshair icon
-        int r = 14;
+        // Crosshair
+        int r = 10;
         Ellipse(hdc, cx - r, cy - r, cx + r, cy + r);
         Ellipse(hdc, cx - r/2, cy - r/2, cx + r/2, cy + r/2);
-        MoveToEx(hdc, cx - r - 4, cy, NULL); LineTo(hdc, cx - r/2, cy);
-        MoveToEx(hdc, cx + r/2, cy, NULL); LineTo(hdc, cx + r + 4, cy);
-        MoveToEx(hdc, cx, cy - r - 4, NULL); LineTo(hdc, cx, cy - r/2);
-        MoveToEx(hdc, cx, cy + r/2, NULL); LineTo(hdc, cx, cy + r + 4);
+        MoveToEx(hdc, cx - r - 3, cy, NULL); LineTo(hdc, cx - r/2, cy);
+        MoveToEx(hdc, cx + r/2, cy, NULL);   LineTo(hdc, cx + r + 3, cy);
+        MoveToEx(hdc, cx, cy - r - 3, NULL); LineTo(hdc, cx, cy - r/2);
+        MoveToEx(hdc, cx, cy + r/2, NULL);   LineTo(hdc, cx, cy + r + 3);
         break;
     }
     case 1: {
-        // Sword / blade icon (center card, highlighted)
+        // Sword
         POINT blade[] = {
-            { cx, cy - 18 }, { cx + 4, cy - 14 },
-            { cx + 3, cy + 4 }, { cx + 8, cy + 8 },
-            { cx + 6, cy + 10 }, { cx + 2, cy + 7 },
-            { cx, cy + 14 },
-            { cx - 2, cy + 7 }, { cx - 6, cy + 10 },
-            { cx - 8, cy + 8 }, { cx - 3, cy + 4 },
-            { cx - 4, cy - 14 }
+            { cx, cy-14 }, { cx+3, cy-10 }, { cx+2, cy+3 }, { cx+6, cy+6 },
+            { cx+4, cy+8 }, { cx+1, cy+5 }, { cx, cy+11 },
+            { cx-1, cy+5 }, { cx-4, cy+8 }, { cx-6, cy+6 },
+            { cx-2, cy+3 }, { cx-3, cy-10 }
         };
-        HBRUSH fillBr = CreateSolidBrush(color);
-        SelectObject(hdc, fillBr);
+        HBRUSH fb = CreateSolidBrush(color);
+        SelectObject(hdc, fb);
         Polygon(hdc, blade, 12);
-        DeleteObject(fillBr);
-        // Guard (horizontal line)
-        HPEN thickPen = CreatePen(PS_SOLID, 3, color);
-        SelectObject(hdc, thickPen);
-        MoveToEx(hdc, cx - 10, cy + 4, NULL); LineTo(hdc, cx + 10, cy + 4);
+        DeleteObject(fb);
+        HPEN tp = CreatePen(PS_SOLID, 2, color);
+        SelectObject(hdc, tp);
+        MoveToEx(hdc, cx - 8, cy + 3, NULL); LineTo(hdc, cx + 8, cy + 3);
         SelectObject(hdc, pen);
-        DeleteObject(thickPen);
+        DeleteObject(tp);
         break;
     }
     case 2: {
-        // Shield icon
+        // Shield
         POINT shield[] = {
-            { cx, cy - 16 },
-            { cx + 14, cy - 10 },
-            { cx + 14, cy + 2 },
-            { cx + 8, cy + 12 },
-            { cx, cy + 18 },
-            { cx - 8, cy + 12 },
-            { cx - 14, cy + 2 },
-            { cx - 14, cy - 10 }
+            { cx, cy-12 }, { cx+10, cy-7 }, { cx+10, cy+1 },
+            { cx+6, cy+9 }, { cx, cy+14 },
+            { cx-6, cy+9 }, { cx-10, cy+1 }, { cx-10, cy-7 }
         };
         Polygon(hdc, shield, 8);
-        // Inner checkmark
-        MoveToEx(hdc, cx - 5, cy, NULL);
-        LineTo(hdc, cx - 1, cy + 5);
-        LineTo(hdc, cx + 7, cy - 5);
+        MoveToEx(hdc, cx - 4, cy, NULL);
+        LineTo(hdc, cx - 1, cy + 4);
+        LineTo(hdc, cx + 5, cy - 4);
         break;
     }
     }
@@ -695,16 +656,16 @@ void DrawCardIcon(HDC hdc, int x, int y, int w, int h, int type, COLORREF color)
 }
 
 // ============================================================================
-// DRAW FIELD ROW - returns bottom Y of the row, stores hit rect
+// DRAW FIELD ROW – returns bottom Y, stores hit rect + edit index
 // ============================================================================
-int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, wchar_t icon, const char* placeholder, bool isPwd) {
+int DrawFieldRow(HDC hdc, int x, int y, int w, int idx,
+                 wchar_t icon, const char* placeholder, bool isPwd) {
     bool focused = (g_focus == idx);
     COLORREF brd = focused ? C_FIELD_FOC : C_FIELD_BR;
 
-    // Background
     RRect(hdc, x, y, w, FIELD_H, RAD, C_FIELD_BG, brd);
 
-    // Focus glow (subtle)
+    // Focus glow
     if (focused) {
         HPEN gp = CreatePen(PS_SOLID, 1, RGB(100, 55, 160));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
@@ -713,19 +674,19 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, wchar_t icon, const char
         DeleteObject(gp);
     }
 
-    // Icon (MDL2)
-    DrawGlyph(hdc, x + 8, y, 32, FIELD_H, icon, focused ? C_ACCENT_L : C_TEXT3, 15);
+    // Icon
+    DrawGlyph(hdc, x + 6, y, 26, FIELD_H, icon, focused ? C_ACCENT_L : C_TEXT3, 13);
 
     // Divider
     HPEN dp = CreatePen(PS_SOLID, 1, C_BORDER);
     SelectObject(hdc, dp);
-    MoveToEx(hdc, x + 44, y + 10, NULL);
-    LineTo(hdc, x + 44, y + FIELD_H - 10);
+    MoveToEx(hdc, x + 36, y + 8, NULL);
+    LineTo(hdc, x + 36, y + FIELD_H - 8);
     DeleteObject(dp);
 
-    // Text content
+    // Text
     SelectObject(hdc, fBody);
-    RECT tR = { x + 54, y, x + w - 12, y + FIELD_H };
+    RECT tR = { x + 44, y, x + w - 8, y + FIELD_H };
 
     const char* text = g_bufs[idx];
     if (strlen(text) == 0) {
@@ -733,48 +694,46 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, wchar_t icon, const char
         DrawText(hdc, placeholder, -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     } else if (isPwd) {
         SetTextColor(hdc, C_TEXT);
-        // Draw password bullets using MDL2 bullet glyph
-        std::string masked(strlen(text), '\xE2');
-        // Simple approach: use bullet dots
-        wchar_t bullet = 0x25CF; // filled circle
-        std::wstring wbullets(strlen(text), bullet);
+        wchar_t bullet = 0x25CF;
+        std::wstring wb(strlen(text), bullet);
         RECT bR = tR;
-        DrawTextW(hdc, wbullets.c_str(), (int)wbullets.size(), &bR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, wb.c_str(), (int)wb.size(), &bR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     } else {
         SetTextColor(hdc, C_TEXT);
         DrawText(hdc, text, -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
 
-    // Blinking cursor when focused
+    // Blinking cursor
     if (focused) {
         SIZE sz;
-        const char* t = isPwd ? std::string(strlen(text), '*').c_str() : text;
-        // Use a simple approach: draw cursor at end of text
         GetTextExtentPoint32(hdc, text, (int)strlen(text), &sz);
-        int cursorX = x + 54 + (isPwd ? (int)strlen(text) * 7 : sz.cx);
-        if (cursorX < x + w - 14) {
+        int curX = x + 44 + (isPwd ? (int)strlen(text) * 6 : sz.cx);
+        if (curX < x + w - 10) {
             HPEN cp = CreatePen(PS_SOLID, 1, C_ACCENT_L);
             SelectObject(hdc, cp);
-            MoveToEx(hdc, cursorX + 1, y + 12, NULL);
-            LineTo(hdc, cursorX + 1, y + FIELD_H - 12);
+            MoveToEx(hdc, curX + 1, y + 9, NULL);
+            LineTo(hdc, curX + 1, y + FIELD_H - 9);
             DeleteObject(cp);
         }
     }
 
-    // Store hit rect for click detection
-    g_fieldRects[g_fieldCount++] = { x, y, w, FIELD_H };
+    // Store hit rect AND the real edit index
+    g_fieldRects[g_fieldCount]   = { x, y, w, FIELD_H };
+    g_fieldEditIdx[g_fieldCount] = idx;
+    g_fieldCount++;
+
     return y + FIELD_H;
 }
 
 // ============================================================================
 // DRAW BUTTON
 // ============================================================================
-void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text, wchar_t icon, bool hover, COLORREF bg, COLORREF bgH) {
-    COLORREF c = hover ? bgH : bg;
+void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text,
+             wchar_t icon, bool hover, COLORREF bg, COLORREF bgH) {
+    COLORREF c   = hover ? bgH : bg;
     COLORREF brd = hover ? C_ACCENT : C_BORDER;
     RRect(hdc, x, y, w, h, RAD, c, brd);
 
-    // Glow on hover
     if (hover) {
         HPEN gp = CreatePen(PS_SOLID, 1, RGB(90, 50, 140));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
@@ -785,46 +744,77 @@ void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text, wchar_t icon
 
     COLORREF txtClr = hover ? C_WHITE : C_TEXT;
 
-    // Icon on left side of center
     SIZE textSz;
     SelectObject(hdc, fBtn);
     GetTextExtentPoint32(hdc, text, (int)strlen(text), &textSz);
-    int totalW = 18 + 8 + textSz.cx; // icon + gap + text
+    int totalW = 16 + 6 + textSz.cx;
     int startX = x + (w - totalW) / 2;
 
-    DrawGlyph(hdc, startX, y, 18, h, icon, txtClr, 14);
+    DrawGlyph(hdc, startX, y, 16, h, icon, txtClr, 12);
 
-    // Text
     SelectObject(hdc, fBtn);
     SetTextColor(hdc, txtClr);
-    RECT tr = { startX + 26, y, x + w, y + h };
+    RECT tr = { startX + 22, y, x + w, y + h };
     DrawText(hdc, text, -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 }
 
 // ============================================================================
-// LOGO
+// LOGO – gradient-filled rounded rect with "AC" text
 // ============================================================================
 void DrawLogo(HDC hdc, int cx, int cy) {
-    int sz = 40;
+    int sz = 30;
     int lx = cx - sz / 2, ly = cy - sz / 2;
 
     // Glow rings
-    for (int i = 4; i >= 1; i--) {
-        HPEN gp = CreatePen(PS_SOLID, 1, RGB(50 + i*8, 25 + i*5, 80 + i*12));
+    for (int i = 3; i >= 1; i--) {
+        HPEN gp = CreatePen(PS_SOLID, 1, RGB(60 + i*12, 30 + i*8, 100 + i*15));
         SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
         SelectObject(hdc, gp);
-        RoundRect(hdc, lx - i*3, ly - i*3, lx + sz + i*3, ly + sz + i*3, 14 + i*2, 14 + i*2);
+        RoundRect(hdc, lx - i*2, ly - i*2, lx + sz + i*2, ly + sz + i*2,
+                  12 + i*2, 12 + i*2);
         DeleteObject(gp);
     }
 
-    // Main box
-    RRect(hdc, lx, ly, sz, sz, 10, C_PANEL, C_ACCENT);
+    // Gradient fill clipped to rounded rect
+    HRGN clip = CreateRoundRectRgn(lx, ly, lx + sz + 1, ly + sz + 1, 12, 12);
+    SelectClipRgn(hdc, clip);
+
+    TRIVERTEX v[2];
+    v[0].x = lx;      v[0].y = ly;
+    v[0].Red   = (COLOR16)(110 << 8);
+    v[0].Green = (COLOR16)(40  << 8);
+    v[0].Blue  = (COLOR16)(210 << 8);
+    v[0].Alpha = 0;
+    v[1].x = lx + sz; v[1].y = ly + sz;
+    v[1].Red   = (COLOR16)(210 << 8);
+    v[1].Green = (COLOR16)(90  << 8);
+    v[1].Blue  = (COLOR16)(170 << 8);
+    v[1].Alpha = 0;
+
+    GRADIENT_RECT gr = { 0, 1 };
+    GradientFill(hdc, v, 2, &gr, 1, GRADIENT_FILL_RECT_V);
+
+    SelectClipRgn(hdc, NULL);
+    DeleteObject(clip);
+
+    // Border
+    HPEN bp = CreatePen(PS_SOLID, 1, C_ACCENT);
+    SelectObject(hdc, bp);
+    SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+    RoundRect(hdc, lx, ly, lx + sz, ly + sz, 12, 12);
+    DeleteObject(bp);
 
     // "AC" text
-    SelectObject(hdc, fTitle);
+    HFONT logoFont = CreateFont(14, 0,0,0, FW_BOLD, 0,0,0,
+                                DEFAULT_CHARSET, OUT_TT_PRECIS,
+                                CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                                0, "Segoe UI");
+    HFONT oldF = (HFONT)SelectObject(hdc, logoFont);
     SetTextColor(hdc, C_WHITE);
     RECT lr = { lx, ly, lx + sz, ly + sz };
     DrawText(hdc, "AC", -1, &lr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, oldF);
+    DeleteObject(logoFont);
 }
 
 // ============================================================================
@@ -950,7 +940,7 @@ bool LaunchGame(HWND hwnd) {
     };
     for (auto p : paths) {
         if (GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES) {
-            if (CreateProcessA(p, NULL,NULL,NULL, FALSE, 0, NULL,NULL, &si, &pi)) {
+            if (CreateProcessA(p, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
                 CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
                 ok = true; break;
             }
@@ -959,12 +949,13 @@ bool LaunchGame(HWND hwnd) {
 
     if (!ok) {
         HKEY hk; char sp[MAX_PATH] = "";
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Valve\\Steam", 0, KEY_READ, &hk) == ERROR_SUCCESS) {
+        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                "SOFTWARE\\WOW6432Node\\Valve\\Steam", 0, KEY_READ, &hk) == ERROR_SUCCESS) {
             DWORD sz = sizeof(sp);
             RegQueryValueExA(hk, "InstallPath", NULL, NULL, (LPBYTE)sp, &sz);
             RegCloseKey(hk);
             std::string full = std::string(sp) + "\\steam.exe";
-            if (CreateProcessA(full.c_str(), NULL,NULL,NULL, FALSE, 0, NULL,NULL, &si, &pi)) {
+            if (CreateProcessA(full.c_str(), NULL, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
                 CloseHandle(pi.hProcess); CloseHandle(pi.hThread); ok = true;
             }
         }
