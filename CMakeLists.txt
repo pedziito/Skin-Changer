@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(CS2SkinChanger VERSION 2.0.0 LANGUAGES CXX)
+project(CS2SkinChanger VERSION 3.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,26 +10,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # ============================================================================
-# IMGUI STATIC LIBRARY
-# ============================================================================
-set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
-
-add_library(ImGui STATIC
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_demo.cpp
-    ${IMGUI_DIR}/imgui_impl_win32.cpp
-    ${IMGUI_DIR}/imgui_impl_dx11.cpp
-)
-
-target_include_directories(ImGui PUBLIC
-    ${IMGUI_DIR}
-)
-
-# ============================================================================
 # SKIN CHANGER DLL (injected into cs2.exe)
+# Custom ACE rendering engine — zero ImGui dependency
 # ============================================================================
 add_library(skin_changer SHARED
     dll/dllmain.cpp
@@ -41,20 +23,23 @@ add_library(skin_changer SHARED
     dll/config.cpp
     dll/render.cpp
     dll/skindb.cpp
+    engine/ace_renderer.cpp
+    engine/ace_ui.cpp
 )
 
 target_include_directories(skin_changer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/dll
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/json
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor
 )
 
 target_link_libraries(skin_changer PRIVATE
-    ImGui
     d3d11
     dxgi
     dxguid
+    d3dcompiler
     dwmapi
     wininet
     shell32
@@ -129,11 +114,12 @@ endif()
 # Build Summary
 # ============================================================================
 message(STATUS "")
-message(STATUS "=== CS2 Skin Changer v2.0.0 Build ===")
+message(STATUS "=== CS2 Skin Changer v3.0.0 Build ===")
 message(STATUS "  DLL:    skin_changer.dll (injected into cs2.exe)")
 message(STATUS "  Loader: AC_Loader.exe (DLL injector)")
-message(STATUS "  ImGui:  v1.91.8 (Win32 + DX11)")
-message(STATUS "  Engine: Custom ACRender rendering engine")
+message(STATUS "  Engine: ACE Custom Rendering Engine (zero ImGui)")
+message(STATUS "  Shader: HLSL compiled at runtime via D3DCompile")
+message(STATUS "  Font:   stb_truetype (system TTF loading)")
 message(STATUS "  Output: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message(STATUS "======================================")
 message(STATUS "")

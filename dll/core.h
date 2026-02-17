@@ -1,7 +1,8 @@
 /*
  * AC Skin Changer - Core Header
  * Master header with CS2 SDK types, globals, and module declarations.
- * Architecture: Injected DLL → Hook DX11 Present → ImGui overlay + CS2 memory writing
+ * Architecture: Injected DLL → Hook DX11 Present → ACE custom engine overlay + CS2 memory writing
+ * Zero ImGui dependency — fully custom rendering pipeline.
  */
 
 #pragma once
