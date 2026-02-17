@@ -152,6 +152,59 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json")
 endif()
 
 # ============================================================================
+# ACE ENGINE V2 — Full UI Framework (standalone editor demo)
+# ============================================================================
+set(ACE_ENGINE_SOURCES
+    engine/render/dx11_backend.cpp
+    engine/render/font_atlas.cpp
+    engine/ui/widget.cpp
+    engine/ui/ui_context.cpp
+    engine/ui/dock_system.cpp
+    engine/ui/widgets/widgets.cpp
+    engine/ui/widgets/property_inspector.cpp
+    engine/ui/widgets/node_editor.cpp
+    engine/ui/widgets/graph_editor.cpp
+    engine/ui/widgets/viewport.cpp
+    engine/scripting/script_engine.cpp
+    engine/hot_reload/hot_reload.cpp
+)
+
+# Static library so multiple targets can link
+add_library(ace_engine_v2 STATIC ${ACE_ENGINE_SOURCES})
+
+target_include_directories(ace_engine_v2 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor
+)
+
+set_target_properties(ace_engine_v2 PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+if(MSVC)
+    target_compile_options(ace_engine_v2 PRIVATE /W4 /permissive-)
+endif()
+
+target_link_libraries(ace_engine_v2 PUBLIC
+    d3d11
+    dxgi
+    d3dcompiler
+    user32
+    gdi32
+)
+
+# Editor demo app
+add_executable(ace_editor WIN32 app/main.cpp)
+target_link_libraries(ace_editor PRIVATE ace_engine_v2)
+set_target_properties(ace_editor PROPERTIES
+    OUTPUT_NAME "ACE_Editor"
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+# ============================================================================
 # Build Summary
 # ============================================================================
 message(STATUS "")
@@ -163,6 +216,13 @@ message(STATUS "  Engine:   ACE Custom Rendering Engine (zero ImGui)")
 message(STATUS "  Shader: HLSL compiled at runtime via D3DCompile")
 message(STATUS "  Font:   stb_truetype (system TTF loading)")
 message(STATUS "  Output: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "")
+message(STATUS "=== ACE Engine v2.0 UI Framework ===")
+message(STATUS "  Library:  ace_engine_v2 (static)")
+message(STATUS "  Editor:   ACE_Editor.exe (demo app)")
+message(STATUS "  C++20, DX11, Hybrid UI, Dock, Node Editor")
+message(STATUS "  Scripting: Lua/Python (stub, link for full)")
+message(STATUS "  Hot Reload: File watcher + DLL loader")
 message(STATUS "======================================")
 message(STATUS "")
 
