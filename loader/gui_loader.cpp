@@ -79,7 +79,7 @@ static HWND g_edits[3]; // 0=license, 1=user, 2=pass
 static char g_bufs[3][256] = {};
 
 // Fonts
-static HFONT fTitle, fSub, fBody, fSmall, fBtn, fSymbol;
+static HFONT fTitle, fSub, fBody, fSmall, fBtn, fIcon;
 
 // ============================================================================
 // FORWARD DECL
@@ -90,8 +90,10 @@ void PaintLogin(HDC, RECT&);
 void PaintDash(HDC, RECT&);
 void RRect(HDC, int x, int y, int w, int h, int r, COLORREF fill, COLORREF brd);
 void RRectFill(HDC, int x, int y, int w, int h, int r, COLORREF fill);
-int  DrawFieldRow(HDC, int x, int y, int w, int idx, const char* symbol, const char* placeholder, bool isPwd);
-void DrawBtn(HDC, int x, int y, int w, int h, const char* text, const char* symbol, bool hover, COLORREF bg, COLORREF bgH);
+int  DrawFieldRow(HDC, int x, int y, int w, int idx, wchar_t icon, const char* placeholder, bool isPwd);
+void DrawBtn(HDC, int x, int y, int w, int h, const char* text, wchar_t icon, bool hover, COLORREF bg, COLORREF bgH);
+void DrawGlyph(HDC hdc, int x, int y, int w, int h, wchar_t glyph, COLORREF color, int size = 16);
+void DrawCardIcon(HDC hdc, int x, int y, int w, int h, int type, COLORREF color);
 void DrawGradient(HDC, RECT&);
 void DrawLogo(HDC, int cx, int cy);
 void SetStat(const char* msg, COLORREF c);
@@ -117,7 +119,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
     fBody   = CreateFont(14, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
     fSmall  = CreateFont(12, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
     fBtn    = CreateFont(14, 0,0,0, FW_SEMIBOLD, 0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI");
-    fSymbol = CreateFont(16, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI Symbol");
+    fIcon   = CreateFont(16, 0,0,0, FW_NORMAL,   0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe MDL2 Assets");
 
     WNDCLASSEX wc = { sizeof(wc) };
     wc.lpfnWndProc  = WndProc;
@@ -153,7 +155,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int nShow) {
     }
 
     DeleteObject(fTitle); DeleteObject(fSub); DeleteObject(fBody);
-    DeleteObject(fSmall); DeleteObject(fBtn); DeleteObject(fSymbol);
+    DeleteObject(fSmall); DeleteObject(fBtn); DeleteObject(fIcon);
     return (int)msg.wParam;
 }
 
@@ -401,12 +403,9 @@ void Paint(HWND hwnd, HDC hdc) {
     RECT tbR = { 14, 10, 200, 32 };
     DrawText(hdc, "AC Changer", -1, &tbR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    // Close button - "X" with circle
-    SelectObject(hdc, fBody);
-    SetTextColor(hdc, g_closeHover ? C_RED : C_TEXT3);
+    // Close button
     if (g_closeHover) RRectFill(hdc, WIN_W - 38, 6, 30, 26, 13, RGB(60, 20, 20));
-    RECT cr = { WIN_W - 38, 6, WIN_W - 8, 32 };
-    DrawText(hdc, "\xE2\x9C\x95", -1, &cr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawGlyph(hdc, WIN_W - 38, 6, 30, 26, 0xE711, g_closeHover ? C_RED : C_TEXT3, 12);
 
     if (g_loggedIn) PaintDash(hdc, rc);
     else PaintLogin(hdc, rc);
@@ -452,18 +451,18 @@ void PaintLogin(HDC hdc, RECT& rc) {
     if (g_signupMode) {
         // License key field
         y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 0,
-            "\xF0\x9F\x94\x91", "License Key  (AC-XXXX-XXXX)", false); // key symbol
+            0xE192, "License Key  (AC-XXXX-XXXX)", false);
         y += GAP;
     }
 
     // Username
     y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 1,
-        "\xF0\x9F\x91\xA4", "Brugernavn", false); // person symbol
+        0xE77B, "Brugernavn", false);
     y += GAP;
 
     // Password
     y = DrawFieldRow(hdc, MARGIN, y, FIELD_W, 2,
-        "\xF0\x9F\x94\x92", "Adgangskode", true); // lock symbol
+        0xE72E, "Adgangskode", true);
     y += 8;
 
     // Forgot password
@@ -475,8 +474,7 @@ void PaintLogin(HDC hdc, RECT& rc) {
 
     // Button
     const char* btnTxt = g_signupMode ? "Opret Konto" : "Log Ind";
-    const char* btnSym = "\xE2\x9E\x9C";  // arrow symbol
-    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H, btnTxt, btnSym, g_btnHover, C_BTN_BG, C_BTN_HOV);
+    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H, btnTxt, 0xE76C, g_btnHover, C_BTN_BG, C_BTN_HOV);
     g_btnRect = { MARGIN, y, FIELD_W, BTN_H };
     y += BTN_H + 12;
 
@@ -540,29 +538,17 @@ void PaintDash(HDC hdc, RECT& rc) {
     DeleteObject(sep);
     y += 20;
 
-    // Game cards (3)
+    // Game cards (3) with GDI-drawn icons
     int cardW = 76, cardH = 76, gap = 14;
     int totalW = cardW * 3 + gap * 2;
     int startX = (WIN_W - totalW) / 2;
-
-    const char* symbols[] = {
-        "\xF0\x9F\x8E\xAF",  // target/crosshair
-        "\xF0\x9F\x94\xAB",  // gun
-        "\xF0\x9F\x9B\xA1"   // shield
-    };
 
     for (int i = 0; i < 3; i++) {
         int x = startX + i * (cardW + gap);
         COLORREF cardBrd = (i == 1) ? C_ACCENT : C_BORDER;
         RRect(hdc, x, y, cardW, cardH, 10, C_PANEL, cardBrd);
-
-        // Symbol
-        HFONT bigSym = CreateFont(28, 0,0,0,FW_NORMAL,0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI Emoji");
-        SelectObject(hdc, bigSym);
-        SetTextColor(hdc, (i == 1) ? C_ACCENT_L : C_TEXT3);
-        RECT ir = { x, y + 4, x + cardW, y + cardH };
-        DrawText(hdc, symbols[i], -1, &ir, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        DeleteObject(bigSym);
+        COLORREF iconClr = (i == 1) ? C_ACCENT_L : C_TEXT3;
+        DrawCardIcon(hdc, x, y, cardW, cardH, i, iconClr);
     }
     y += cardH + 18;
 
@@ -577,20 +563,24 @@ void PaintDash(HDC hdc, RECT& rc) {
     int bw = 120, bh = 24;
     int bx = cx - bw / 2;
     RRect(hdc, bx, y, bw, bh, bh / 2, C_GREEN_DIM, C_GREEN);
+    // Checkmark glyph + text
+    DrawGlyph(hdc, bx + 8, y, 20, bh, 0xE73E, C_GREEN, 11);
     SelectObject(hdc, fSmall);
     SetTextColor(hdc, C_GREEN);
-    RECT bd = { bx, y, bx + bw, y + bh };
-    DrawText(hdc, "\xE2\x9C\x93  UNDETECTED", -1, &bd, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    RECT bd = { bx + 24, y, bx + bw, y + bh };
+    DrawText(hdc, "UNDETECTED", -1, &bd, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     y += bh + 16;
 
     // Expiry panel
     RRect(hdc, MARGIN, y, FIELD_W, 44, RAD, C_FIELD_BG, C_FIELD_BR);
     SelectObject(hdc, fBody);
 
-    // Clock symbol + label
+    // Clock icon + label
+    DrawGlyph(hdc, MARGIN + 12, y, 20, 44, 0xE823, C_TEXT2, 14);
     SetTextColor(hdc, C_TEXT2);
-    RECT exL = { MARGIN + 14, y, MARGIN + 200, y + 44 };
-    DrawText(hdc, "\xE2\x8F\xB0  Udloebsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, fBody);
+    RECT exL = { MARGIN + 36, y, MARGIN + 200, y + 44 };
+    DrawText(hdc, "Udloebsdato:", -1, &exL, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SetTextColor(hdc, C_GREEN);
     RECT exV = { MARGIN + 14, y, WIN_W - MARGIN - 14, y + 44 };
@@ -598,7 +588,7 @@ void PaintDash(HDC hdc, RECT& rc) {
     y += 44 + 16;
 
     // Load button
-    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H + 4, "Load Cheat", "\xE2\x9A\xA1", g_btnHover, C_BTN_BG, C_BTN_HOV);
+    DrawBtn(hdc, MARGIN, y, FIELD_W, BTN_H + 4, "Load Cheat", 0xE768, g_btnHover, C_BTN_BG, C_BTN_HOV);
     g_btnRect = { MARGIN, y, FIELD_W, BTN_H + 4 };
     y += BTN_H + 4 + 12;
 
@@ -618,9 +608,96 @@ void PaintDash(HDC hdc, RECT& rc) {
 }
 
 // ============================================================================
+// DRAW GLYPH - Renders a single Segoe MDL2 Assets icon
+// ============================================================================
+void DrawGlyph(HDC hdc, int x, int y, int w, int h, wchar_t glyph, COLORREF color, int size) {
+    HFONT iconFont = CreateFontW(size, 0,0,0, FW_NORMAL, 0,0,0,
+        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, 0, L"Segoe MDL2 Assets");
+    HFONT oldFont = (HFONT)SelectObject(hdc, iconFont);
+    SetTextColor(hdc, color);
+    SetBkMode(hdc, TRANSPARENT);
+    RECT r = { x, y, x + w, y + h };
+    wchar_t buf[2] = { glyph, 0 };
+    DrawTextW(hdc, buf, 1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(hdc, oldFont);
+    DeleteObject(iconFont);
+}
+
+// ============================================================================
+// DRAW CARD ICON - GDI vector-drawn icons for game cards
+// ============================================================================
+void DrawCardIcon(HDC hdc, int x, int y, int w, int h, int type, COLORREF color) {
+    int cx = x + w / 2;
+    int cy = y + h / 2;
+    HPEN pen = CreatePen(PS_SOLID, 2, color);
+    HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+    SelectObject(hdc, (HBRUSH)GetStockObject(NULL_BRUSH));
+
+    switch (type) {
+    case 0: {
+        // Crosshair icon
+        int r = 14;
+        Ellipse(hdc, cx - r, cy - r, cx + r, cy + r);
+        Ellipse(hdc, cx - r/2, cy - r/2, cx + r/2, cy + r/2);
+        MoveToEx(hdc, cx - r - 4, cy, NULL); LineTo(hdc, cx - r/2, cy);
+        MoveToEx(hdc, cx + r/2, cy, NULL); LineTo(hdc, cx + r + 4, cy);
+        MoveToEx(hdc, cx, cy - r - 4, NULL); LineTo(hdc, cx, cy - r/2);
+        MoveToEx(hdc, cx, cy + r/2, NULL); LineTo(hdc, cx, cy + r + 4);
+        break;
+    }
+    case 1: {
+        // Sword / blade icon (center card, highlighted)
+        POINT blade[] = {
+            { cx, cy - 18 }, { cx + 4, cy - 14 },
+            { cx + 3, cy + 4 }, { cx + 8, cy + 8 },
+            { cx + 6, cy + 10 }, { cx + 2, cy + 7 },
+            { cx, cy + 14 },
+            { cx - 2, cy + 7 }, { cx - 6, cy + 10 },
+            { cx - 8, cy + 8 }, { cx - 3, cy + 4 },
+            { cx - 4, cy - 14 }
+        };
+        HBRUSH fillBr = CreateSolidBrush(color);
+        SelectObject(hdc, fillBr);
+        Polygon(hdc, blade, 12);
+        DeleteObject(fillBr);
+        // Guard (horizontal line)
+        HPEN thickPen = CreatePen(PS_SOLID, 3, color);
+        SelectObject(hdc, thickPen);
+        MoveToEx(hdc, cx - 10, cy + 4, NULL); LineTo(hdc, cx + 10, cy + 4);
+        SelectObject(hdc, pen);
+        DeleteObject(thickPen);
+        break;
+    }
+    case 2: {
+        // Shield icon
+        POINT shield[] = {
+            { cx, cy - 16 },
+            { cx + 14, cy - 10 },
+            { cx + 14, cy + 2 },
+            { cx + 8, cy + 12 },
+            { cx, cy + 18 },
+            { cx - 8, cy + 12 },
+            { cx - 14, cy + 2 },
+            { cx - 14, cy - 10 }
+        };
+        Polygon(hdc, shield, 8);
+        // Inner checkmark
+        MoveToEx(hdc, cx - 5, cy, NULL);
+        LineTo(hdc, cx - 1, cy + 5);
+        LineTo(hdc, cx + 7, cy - 5);
+        break;
+    }
+    }
+
+    SelectObject(hdc, oldPen);
+    DeleteObject(pen);
+}
+
+// ============================================================================
 // DRAW FIELD ROW - returns bottom Y of the row, stores hit rect
 // ============================================================================
-int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, const char* symbol, const char* placeholder, bool isPwd) {
+int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, wchar_t icon, const char* placeholder, bool isPwd) {
     bool focused = (g_focus == idx);
     COLORREF brd = focused ? C_FIELD_FOC : C_FIELD_BR;
 
@@ -636,13 +713,8 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, const char* symbol, cons
         DeleteObject(gp);
     }
 
-    // Symbol
-    HFONT symFont = CreateFont(15, 0,0,0,FW_NORMAL,0,0,0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, 0, "Segoe UI Emoji");
-    SelectObject(hdc, symFont);
-    SetTextColor(hdc, focused ? C_ACCENT_L : C_TEXT3);
-    RECT sR = { x + 10, y, x + 40, y + FIELD_H };
-    DrawText(hdc, symbol, -1, &sR, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    DeleteObject(symFont);
+    // Icon (MDL2)
+    DrawGlyph(hdc, x + 8, y, 32, FIELD_H, icon, focused ? C_ACCENT_L : C_TEXT3, 15);
 
     // Divider
     HPEN dp = CreatePen(PS_SOLID, 1, C_BORDER);
@@ -661,11 +733,13 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, const char* symbol, cons
         DrawText(hdc, placeholder, -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     } else if (isPwd) {
         SetTextColor(hdc, C_TEXT);
-        std::string dots(strlen(text), '\xE2\x80\xA2'[0]);
-        // Use bullet char
-        std::string masked;
-        for (size_t i = 0; i < strlen(text); i++) masked += "*";
-        DrawText(hdc, masked.c_str(), -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        // Draw password bullets using MDL2 bullet glyph
+        std::string masked(strlen(text), '\xE2');
+        // Simple approach: use bullet dots
+        wchar_t bullet = 0x25CF; // filled circle
+        std::wstring wbullets(strlen(text), bullet);
+        RECT bR = tR;
+        DrawTextW(hdc, wbullets.c_str(), (int)wbullets.size(), &bR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     } else {
         SetTextColor(hdc, C_TEXT);
         DrawText(hdc, text, -1, &tR, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
@@ -695,7 +769,7 @@ int DrawFieldRow(HDC hdc, int x, int y, int w, int idx, const char* symbol, cons
 // ============================================================================
 // DRAW BUTTON
 // ============================================================================
-void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text, const char* symbol, bool hover, COLORREF bg, COLORREF bgH) {
+void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text, wchar_t icon, bool hover, COLORREF bg, COLORREF bgH) {
     COLORREF c = hover ? bgH : bg;
     COLORREF brd = hover ? C_ACCENT : C_BORDER;
     RRect(hdc, x, y, w, h, RAD, c, brd);
@@ -709,13 +783,22 @@ void DrawBtn(HDC hdc, int x, int y, int w, int h, const char* text, const char* 
         DeleteObject(gp);
     }
 
-    SelectObject(hdc, fBtn);
-    SetTextColor(hdc, hover ? C_WHITE : C_TEXT);
+    COLORREF txtClr = hover ? C_WHITE : C_TEXT;
 
-    // Symbol + text
-    std::string full = std::string(symbol) + "  " + text;
-    RECT br = { x, y, x + w, y + h };
-    DrawText(hdc, full.c_str(), -1, &br, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    // Icon on left side of center
+    SIZE textSz;
+    SelectObject(hdc, fBtn);
+    GetTextExtentPoint32(hdc, text, (int)strlen(text), &textSz);
+    int totalW = 18 + 8 + textSz.cx; // icon + gap + text
+    int startX = x + (w - totalW) / 2;
+
+    DrawGlyph(hdc, startX, y, 18, h, icon, txtClr, 14);
+
+    // Text
+    SelectObject(hdc, fBtn);
+    SetTextColor(hdc, txtClr);
+    RECT tr = { startX + 26, y, x + w, y + h };
+    DrawText(hdc, text, -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 }
 
 // ============================================================================
