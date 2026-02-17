@@ -85,6 +85,9 @@ target_include_directories(cs2inventory PRIVATE
 target_link_libraries(cs2inventory PRIVATE
     CS2Core
     ${INJECTOR_LIBS}
+    advapi32
+    shell32
+    msimg32
 )
 
 set_target_properties(cs2inventory PROPERTIES
