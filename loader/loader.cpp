@@ -201,6 +201,18 @@ static int g_navIndex = 0; // 0=Home, 1=Website, 2=Support, 3=Market
 static bool g_showPopup = false;
 static f32  g_popupAnim = 0.0f;
 
+// Remember Me
+static bool g_rememberMe = false;
+static char g_savedUser[64] = "";
+static char g_savedPass[64] = "";
+
+// Injection flow state
+enum InjectionPhase { INJ_IDLE, INJ_CLOSING_STEAM, INJ_STARTING_STEAM, INJ_WAIT_CS2, INJ_INJECTING, INJ_OVERLAY, INJ_DONE };
+static InjectionPhase g_injPhase = INJ_IDLE;
+static f32  g_injProgress = 0.0f;
+static f32  g_injTimer    = 0.0f;
+static bool g_steamWasRunning = false;
+
 // ============================================================================
 // USER DATABASE
 // ============================================================================
@@ -212,6 +224,32 @@ static std::string GetBasePath() {
 }
 static std::string GetLicensePath() { return GetBasePath() + "licenses.dat"; }
 static std::string GetKeysPath()    { return GetBasePath() + "license_keys.dat"; }
+static std::string GetRememberPath(){ return GetBasePath() + "remember.dat"; }
+
+static void SaveRememberMe() {
+    std::ofstream f(GetRememberPath());
+    if (g_rememberMe && strlen(g_loginUser) > 0) {
+        f << g_loginUser << "\n" << g_loginPass << "\n";
+    }
+}
+static void LoadRememberMe() {
+    std::ifstream f(GetRememberPath());
+    if (!f.is_open()) return;
+    std::string user, pass;
+    if (std::getline(f, user) && std::getline(f, pass) && !user.empty()) {
+        strncpy(g_savedUser, user.c_str(), 63); g_savedUser[63] = '\0';
+        strncpy(g_savedPass, pass.c_str(), 63); g_savedPass[63] = '\0';
+        strncpy(g_loginUser, user.c_str(), 63); g_loginUser[63] = '\0';
+        strncpy(g_loginPass, pass.c_str(), 63); g_loginPass[63] = '\0';
+        g_rememberMe = true;
+    }
+}
+static void ClearRememberMe() {
+    DeleteFileA(GetRememberPath().c_str());
+    g_rememberMe = false;
+    memset(g_savedUser, 0, 64);
+    memset(g_savedPass, 0, 64);
+}
 
 static std::string HashPw(const std::string& pw) {
     uint32_t h = 0x811c9dc5;
@@ -395,39 +433,186 @@ static bool Inject(DWORD pid, const char* dll) {
     CloseHandle(ht); VirtualFreeEx(hp, rm, 0, MEM_RELEASE); CloseHandle(hp);
     return ec != 0;
 }
+// ============================================================================
+// STEAM INTEGRATION
+// ============================================================================
+static bool IsSteamRunning() {
+    return FindProc("steam.exe") != 0;
+}
+static void CloseSteam() {
+    // Graceful shutdown via Steam command
+    ShellExecuteA(nullptr, "open", "taskkill", "/IM steam.exe /F", nullptr, SW_HIDE);
+    Log("Steam: sent close signal");
+}
+static void StartSteam() {
+    // Try default Steam path
+    const char* steamPaths[] = {
+        "C:\\Program Files (x86)\\Steam\\steam.exe",
+        "C:\\Program Files\\Steam\\steam.exe",
+        "D:\\Steam\\steam.exe",
+    };
+    for (auto* path : steamPaths) {
+        if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) {
+            ShellExecuteA(nullptr, "open", path, nullptr, nullptr, SW_SHOW);
+            Log("Steam: started from %s", path);
+            return;
+        }
+    }
+    // Fallback: try steam:// protocol
+    ShellExecuteA(nullptr, "open", "steam://open/main", nullptr, nullptr, SW_SHOW);
+    Log("Steam: started via protocol");
+}
+
+// ============================================================================
+// INJECTION WITH STEAM/CS2 FLOW
+// ============================================================================
 static void DoInject() {
+    if (g_injPhase != INJ_IDLE) return;
     g_injecting = true;
-    DWORD pid = FindProc("cs2.exe");
-    if (!pid) { g_toastMsg = "CS2 not running - start game first"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
+    g_injProgress = 0;
+    g_injTimer = 0;
 
-    // Extract embedded DLL from Windows resources
-    HRSRC hRes = FindResource(nullptr, MAKEINTRESOURCE(IDR_SKIN_DLL), RT_RCDATA);
-    if (!hRes) { g_toastMsg = "DLL resource not found"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
-    HGLOBAL hGlob = LoadResource(nullptr, hRes);
-    DWORD dwSize = SizeofResource(nullptr, hRes);
-    const void* pData = LockResource(hGlob);
-    if (!pData || dwSize == 0) { g_toastMsg = "Invalid DLL resource"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
-
-    // Write to temp directory
-    char tempDir[MAX_PATH];
-    GetTempPathA(MAX_PATH, tempDir);
-    std::string dllPath = std::string(tempDir) + "skin_changer.dll";
-    HANDLE hFile = CreateFileA(dllPath.c_str(), GENERIC_WRITE, 0, nullptr,
-                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        g_toastMsg = "Failed to extract DLL"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return;
-    }
-    DWORD written = 0;
-    WriteFile(hFile, pData, dwSize, &written, nullptr);
-    CloseHandle(hFile);
-
-    // Inject into CS2
-    if (Inject(pid, dllPath.c_str())) {
-        g_toastMsg = "Injected successfully"; g_toastCol = P::Green; g_injected = true;
+    // Step 1: Check/close Steam
+    if (IsSteamRunning()) {
+        g_steamWasRunning = true;
+        g_injPhase = INJ_CLOSING_STEAM;
+        CloseSteam();
+        g_toastMsg = "Closing Steam..."; g_toastCol = P::Yellow; g_toastTimer = 3;
     } else {
-        g_toastMsg = "Injection failed - run as administrator"; g_toastCol = P::Orange;
+        g_steamWasRunning = false;
+        g_injPhase = INJ_STARTING_STEAM;
+        StartSteam();
+        g_toastMsg = "Starting Steam..."; g_toastCol = P::Yellow; g_toastTimer = 3;
     }
-    g_toastTimer = 4; g_injecting = false;
+}
+
+static void UpdateInjectionFlow() {
+    if (g_injPhase == INJ_IDLE || g_injPhase == INJ_DONE) return;
+    g_injTimer += g_dt;
+
+    switch (g_injPhase) {
+    case INJ_CLOSING_STEAM:
+        if (!IsSteamRunning() || g_injTimer > 5.0f) {
+            g_injPhase = INJ_STARTING_STEAM;
+            g_injTimer = 0;
+            StartSteam();
+            g_toastMsg = "Starting Steam..."; g_toastCol = P::Yellow; g_toastTimer = 3;
+        }
+        break;
+
+    case INJ_STARTING_STEAM:
+        if (g_injTimer > 3.0f) {
+            g_injPhase = INJ_WAIT_CS2;
+            g_injTimer = 0;
+            MessageBoxA(g_hwnd, "Start venligst CS2 manuelt.",
+                        "AC Loader", MB_OK | MB_ICONINFORMATION);
+        }
+        break;
+
+    case INJ_WAIT_CS2: {
+        DWORD pid = FindProc("cs2.exe");
+        if (pid != 0) {
+            g_injPhase = INJ_OVERLAY;
+            g_injTimer = 0;
+            g_injProgress = 0;
+        } else if (g_injTimer > 120.0f) {
+            // Timeout after 2 minutes
+            g_toastMsg = "Timeout: CS2 ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
+            g_injecting = false;
+            g_injPhase = INJ_IDLE;
+        }
+        break;
+    }
+
+    case INJ_OVERLAY:
+        // Animate progress 0% → 100% over ~3 seconds
+        g_injProgress += g_dt * 33.0f; // ~3s to 100%
+        if (g_injProgress >= 100.0f) {
+            g_injProgress = 100.0f;
+            g_injPhase = INJ_INJECTING;
+            g_injTimer = 0;
+        }
+        break;
+
+    case INJ_INJECTING: {
+        // Actually inject the DLL
+        DWORD pid = FindProc("cs2.exe");
+        if (!pid) {
+            g_toastMsg = "CS2 lukkede uventet"; g_toastCol = P::Red; g_toastTimer = 4;
+            g_injPhase = INJ_IDLE; g_injecting = false; return;
+        }
+
+        HRSRC hRes = FindResource(nullptr, MAKEINTRESOURCE(IDR_SKIN_DLL), RT_RCDATA);
+        if (!hRes) { g_toastMsg = "DLL resource not found"; g_toastCol = P::Red; g_toastTimer = 4; g_injPhase = INJ_IDLE; g_injecting = false; return; }
+        HGLOBAL hGlob = LoadResource(nullptr, hRes);
+        DWORD dwSize = SizeofResource(nullptr, hRes);
+        const void* pData = LockResource(hGlob);
+        if (!pData || dwSize == 0) { g_toastMsg = "Invalid DLL resource"; g_toastCol = P::Red; g_toastTimer = 4; g_injPhase = INJ_IDLE; g_injecting = false; return; }
+
+        char tempDir[MAX_PATH];
+        GetTempPathA(MAX_PATH, tempDir);
+        std::string dllPath = std::string(tempDir) + "skin_changer.dll";
+        HANDLE hFile = CreateFileA(dllPath.c_str(), GENERIC_WRITE, 0, nullptr,
+                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            g_toastMsg = "Failed to extract DLL"; g_toastCol = P::Red; g_toastTimer = 4; g_injPhase = INJ_IDLE; g_injecting = false; return;
+        }
+        DWORD written = 0;
+        WriteFile(hFile, pData, dwSize, &written, nullptr);
+        CloseHandle(hFile);
+
+        if (Inject(pid, dllPath.c_str())) {
+            g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
+        } else {
+            g_toastMsg = "Injection failed - k\xc3\xb8r som administrator"; g_toastCol = P::Orange;
+        }
+        g_toastTimer = 4;
+        g_injPhase = INJ_DONE;
+        g_injecting = false;
+        break;
+    }
+
+    default: break;
+    }
+}
+
+// --- Draw injection overlay ---
+static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
+    if (g_injPhase == INJ_OVERLAY || (g_injPhase == INJ_WAIT_CS2 && FindProc("cs2.exe"))) {
+        // Semi-transparent blurred background
+        dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 180});
+
+        // CS2 logo centered
+        if (g_cs2Logo != INVALID_TEXTURE) {
+            f32 logoSz = 96;
+            f32 lx = (W - logoSz) * 0.5f;
+            f32 ly = H * 0.35f - logoSz * 0.5f;
+            dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
+                               g_cs2Logo, Color{255,255,255,255});
+        }
+
+        // Progress text
+        char progText[64];
+        snprintf(progText, 64, "Injecterer Inventory Changer (%.0f%%)", g_injProgress);
+        Vec2 pts = Measure(progText, g_fontSm);
+        f32 ptX = (W - pts.x) * 0.5f;
+        f32 ptY = H * 0.55f;
+        Text(dl, ptX, ptY, P::T1, progText, g_fontSm);
+
+        // Progress bar
+        f32 barW = W * 0.6f;
+        f32 barH = 8;
+        f32 barX = (W - barW) * 0.5f;
+        f32 barY = ptY + 24;
+        // Background
+        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{30, 30, 50, 200}, 4.0f, 8);
+        // Fill
+        f32 fillW = barW * (g_injProgress / 100.0f);
+        if (fillW > 1.0f) {
+            Color c1 = Mix(P::Accent1, P::Accent2, g_injProgress / 100.0f);
+            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 4.0f, 8);
+        }
+    }
 }
 
 // ============================================================================
@@ -880,7 +1065,31 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
 
     InputField(dl, "Password", g_loginPass, sizeof(g_loginPass),
                Rect{cx, cy, cw, 40}, true, "Username");
-    cy += 50;
+    cy += 46;
+
+    // Remember Me checkbox
+    {
+        u32 cbId = Hash("_remember_me");
+        f32 cbSz = 16;
+        bool cbH = Hit(cx, cy, cbSz + 90, cbSz + 4);
+        f32 cbA = Anim(cbId, cbH ? 1.0f : 0.0f);
+        if (cbH && g_input.IsMousePressed(MouseButton::Left))
+            g_rememberMe = !g_rememberMe;
+
+        // Checkbox border
+        Color cbc = Mix(P::Border, P::Accent1, g_rememberMe ? 0.8f : cbA * 0.4f);
+        dl.AddFilledRoundRect(Rect{cx, cy, cbSz, cbSz}, cbc, 3.0f, 6);
+        dl.AddFilledRoundRect(Rect{cx + 1, cy + 1, cbSz - 2, cbSz - 2},
+                              g_rememberMe ? P::Accent1 : P::Input, 2.0f, 6);
+        // Checkmark
+        if (g_rememberMe) {
+            f32 mx = cx + 3, my = cy + 4;
+            dl.AddLine(Vec2{mx, my + 4}, Vec2{mx + 3, my + 7}, Color{255,255,255,255}, 2.0f);
+            dl.AddLine(Vec2{mx + 3, my + 7}, Vec2{mx + 9, my + 1}, Color{255,255,255,255}, 2.0f);
+        }
+        Text(dl, cx + cbSz + 8, cy + 1, Mix(P::T2, P::T1, cbA), "Remember me", g_fontSm);
+    }
+    cy += 24;
 
     // Error
     if (g_authErrorTimer > 0) {
@@ -893,13 +1102,19 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
 
     // Sign in button
     if (GradientButton(dl, "SIGN IN", Rect{cx, cy, cw, 42})) {
-        if (DoLogin(g_loginUser, g_loginPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
+        if (DoLogin(g_loginUser, g_loginPass)) {
+            g_screen = DASHBOARD; g_navIndex = 0;
+            if (g_rememberMe) SaveRememberMe(); else ClearRememberMe();
+        }
     }
     cy += 52;
 
     // Enter key shortcut
     if (g_input.IsKeyPressed(Key::Enter) && strlen(g_loginUser) > 0 && strlen(g_loginPass) > 0) {
-        if (DoLogin(g_loginUser, g_loginPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
+        if (DoLogin(g_loginUser, g_loginPass)) {
+            g_screen = DASHBOARD; g_navIndex = 0;
+            if (g_rememberMe) SaveRememberMe(); else ClearRememberMe();
+        }
     }
 
     // Divider
@@ -1225,8 +1440,9 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         if (loH && g_input.IsMousePressed(MouseButton::Left)) {
             g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
             g_injected = false; g_injecting = false;
-            g_showPopup = false;
+            g_showPopup = false; g_injPhase = INJ_IDLE;
             memset(g_loginPass, 0, 64);
+            ClearRememberMe();
         }
     }
 
@@ -1340,6 +1556,13 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     // Popup overlay (drawn on top of everything)
     if (g_showPopup || g_popupAnim > 0.01f)
         DrawPopup(dl, W, H);
+
+    // Injection overlay (on top of popup)
+    DrawInjectionOverlay(dl, (f32)g_width, (f32)g_height);
+
+    // Toast on very top so errors/success always visible
+    if (g_showPopup || g_injPhase != INJ_IDLE)
+        DrawToast(dl, W, H);
 }
 
 // ============================================================================
@@ -1370,6 +1593,7 @@ static int LoaderMain(HINSTANCE hInstance) {
     LoadUsers();
     LoadKeys();
     SeedTestKeys();
+    LoadRememberMe();
     Log("Step 2: Users loaded (%d), Keys loaded (%d)", (int)g_users.size(), (int)g_keys.size());
 
     WNDCLASSEXA wc = {};
@@ -1471,6 +1695,14 @@ static int LoaderMain(HINSTANCE hInstance) {
     }
     Log("Step 7: Fonts loaded (bold/heavy weights)");
 
+    // Auto-login if Remember Me was saved
+    if (g_rememberMe && strlen(g_savedUser) > 0 && strlen(g_savedPass) > 0) {
+        if (DoLogin(g_savedUser, g_savedPass)) {
+            g_screen = DASHBOARD; g_navIndex = 0;
+            Log("Auto-login: %s", g_savedUser);
+        }
+    }
+
     ShowWindow(g_hwnd, SW_SHOWDEFAULT);
     UpdateWindow(g_hwnd);
     Log("Step 8: Window shown — entering render loop");
@@ -1499,6 +1731,9 @@ static int LoaderMain(HINSTANCE hInstance) {
 
         g_backend.BeginFrame();
         g_backend.SetClearColor(P::Bg);
+
+        // Update injection flow (Steam/CS2 state machine)
+        UpdateInjectionFlow();
 
         DrawList dl;
         f32 W = (f32)g_width, H = (f32)g_height;

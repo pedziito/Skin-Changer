@@ -110,6 +110,11 @@ set_target_properties(ac_loader PROPERTIES
 
 if(MSVC)
     target_compile_options(ac_loader PRIVATE /W4 /permissive- /Zc:preprocessor /EHa)
+    # Embed admin manifest (require UAC elevation)
+    target_link_options(ac_loader PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/loader/ac_loader.manifest"
+    )
 endif()
 
 # ============================================================================
