@@ -17,6 +17,15 @@
 
 #include "../engine/ace_engine_v2.h"
 
+// stb_image for decoding embedded PNG
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#include "../vendor/stb/stb_image.h"
+
+// Embedded CS2 logo (PNG → C array, compiled into binary)
+#include "../assets/cs2_logo_data.h"
+
 #include "resource.h"
 
 #include <cstdio>
@@ -68,6 +77,8 @@ static u32  g_font     = 0;   // 14pt
 static u32  g_fontMd   = 0;   // 17pt
 static u32  g_fontLg   = 0;   // 24pt
 static u32  g_fontXl   = 0;   // 32pt
+
+static TextureHandle g_cs2Logo = INVALID_TEXTURE;  // CS2 logo texture
 
 static HWND g_hwnd    = nullptr;
 static bool g_running = true;
@@ -1109,9 +1120,9 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     dl.AddFilledRect(Rect{0, 0, sideW, H}, Color{12, 12, 20, 240});
     dl.AddFilledRect(Rect{sideW - 1, 0, 1, H}, P::Border);
 
-    // Logo — "NL" like reference image
-    Vec2 logoSz = Measure("NL", g_fontLg);
-    Text(dl, (sideW - logoSz.x) * 0.5f, 18, P::Accent1, "NL", g_fontLg);
+    // Logo — "AC"
+    Vec2 logoSz = Measure("AC", g_fontLg);
+    Text(dl, (sideW - logoSz.x) * 0.5f, 18, P::Accent1, "AC", g_fontLg);
 
     // Navigation items with icons
     f32 navY = 76;
@@ -1253,14 +1264,20 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         snprintf(expStr, 48, "Expires in %d days", g_sub.daysLeft);
         Text(dl, txX, cardR.y + 34, P::T3, expStr, g_fontSm);
 
-        // Icon — right side (gold square with CS2)
+        // Icon — right side (CS2 logo image)
         f32 icoSz = 36;
         f32 icoX = cardR.Right() - icoSz - 10;
         f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
-        dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
-                              Color{220, 160, 40, 255}, 8.0f, 10);
-        TextCenter(dl, Rect{icoX, icoY, icoSz, icoSz},
-                   Color{255,255,255,240}, "CS2", g_fontSm);
+        if (g_cs2Logo != INVALID_TEXTURE) {
+            dl.AddTexturedRect(Rect{icoX, icoY, icoSz, icoSz},
+                               g_cs2Logo, Color{255,255,255,255});
+        } else {
+            // Fallback: gold square with text
+            dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
+                                  Color{220, 160, 40, 255}, 8.0f, 10);
+            TextCenter(dl, Rect{icoX, icoY, icoSz, icoSz},
+                       Color{255,255,255,240}, "CS2", g_fontSm);
+        }
 
         // Click → open popup
         if (cH && g_input.IsMousePressed(MouseButton::Left))
@@ -1382,6 +1399,25 @@ static int LoaderMain(HINSTANCE hInstance) {
         return 1;
     }
     Log("Step 6: DX11 OK");
+
+    // Load embedded CS2 logo
+    {
+        int imgW = 0, imgH = 0, imgC = 0;
+        unsigned char* pixels = stbi_load_from_memory(
+            g_cs2LogoPng, (int)g_cs2LogoPngSize, &imgW, &imgH, &imgC, 4);
+        if (pixels && imgW > 0 && imgH > 0) {
+            TextureDesc td{};
+            td.width = (u32)imgW;
+            td.height = (u32)imgH;
+            td.channels = 4;
+            td.data = pixels;
+            g_cs2Logo = g_backend.CreateTexture(td);
+            stbi_image_free(pixels);
+            Log("CS2 logo loaded: %dx%d handle=%llu", imgW, imgH, (unsigned long long)g_cs2Logo);
+        } else {
+            Log("WARN: CS2 logo decode failed");
+        }
+    }
 
     // Load fonts — bold/heavy weights for premium feel
     auto TryFont = [](const char* paths[], int count, f32 size) -> u32 {
