@@ -13,6 +13,8 @@
 #include <TlHelp32.h>
 #include <Shlobj.h>
 #include <shellapi.h>
+#include <ShellScalingApi.h>
+#pragma comment(lib, "Shcore.lib")
 #endif
 
 #include "../engine/ace_engine_v2.h"
@@ -93,6 +95,12 @@ static bool g_running = true;
 static int  g_width   = 480;
 static int  g_height  = 420;
 static constexpr int CORNER = 16;
+
+// DPI scaling — detected at startup, all UI scaled proportionally
+static f32 g_dpiScale = 1.0f;
+static f32 DPI(f32 v) { return v * g_dpiScale; }
+
+// Sound feedback — injection only (beep on overlay start + success/fail already handled)
 
 // ============================================================================
 // TIMING & ANIMATION
@@ -726,6 +734,41 @@ static char g_configName[64] = "";
 static const char* g_configSlots[] = {"Config 1", "Config 2", "Config 3", "Config 4", "Config 5"};
 static bool g_configSaved[5] = {false, false, false, false, false};
 
+// CS2 Menu — World settings state
+static bool g_worldNightMode = false;
+static bool g_worldSkyboxCustom = false;
+static int  g_worldSkyboxIndex = 0;
+static const char* g_skyboxNames[] = {"Default", "Clear Sky", "Cloudy", "Sunset", "Night", "Overcast"};
+static bool g_worldNoFog = false;
+static bool g_worldBrightModels = false;
+
+// CS2 Menu — View settings state
+static bool g_viewThirdPerson = false;
+static bool g_viewNoVisRecoil = false;
+static bool g_viewCustomFov = false;
+static int  g_viewFovValue = 90;
+static bool g_viewNoFlash = false;
+static bool g_viewNoSmoke = false;
+static bool g_viewHitMarker = true;
+
+// CS2 Menu — Profile Changer state
+static char g_profileName[32] = "";
+static int  g_profileRank = 0;
+static const char* g_rankNames[] = {"Unranked","Silver I","Silver II","Silver III","Silver IV",
+    "Silver Elite","Silver Elite Master","Gold Nova I","Gold Nova II","Gold Nova III",
+    "Gold Nova Master","Master Guardian I","Master Guardian II","MG Elite",
+    "Distinguished MG","Legendary Eagle","LE Master","Supreme","Global Elite"};
+static int g_profileLevel = 1;
+static int g_profileWins = 0;
+
+// CS2 Menu — Misc state
+static bool g_miscBunnyHop = false;
+static bool g_miscAutoAccept = true;
+static bool g_miscRevealRanks = false;
+static bool g_miscClanTag = false;
+static char g_miscClanText[16] = "";
+static bool g_miscAutoDisconnect = false;
+
 // ============================================================================
 // USER DATABASE
 // ============================================================================
@@ -1167,7 +1210,7 @@ static void UpdateInjectionFlow() {
 
         // Always transition to CS2 menu (788x638, starts hidden — toggle with Insert)
         {
-            int menuW = 788, menuH = 638;
+            int menuW = (int)(788 * g_dpiScale), menuH = (int)(638 * g_dpiScale);
             int mx, my;
             if (g_cs2Hwnd) {
                 RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
@@ -1350,6 +1393,88 @@ static bool CatMatch(const char* a, const char* b) {
         if (a[k] != b[k]) return false;
         if (a[k] == '\0') return true;
     }
+}
+
+// ============================================================================
+// REUSABLE UI WIDGETS — Toggle switch, slider, dropdown, section header
+// ============================================================================
+
+// Toggle switch: returns new state. Renders at (x, y) with width tW, height tH
+static bool UIToggle(DrawList& dl, u32 uid, f32 x, f32 y, f32 sc, u8 ga, bool value) {
+    f32 tW = 30*sc, tH = 16*sc;
+    bool hov = Hit(x, y - 2*sc, tW, tH + 4*sc);
+    f32 animVal = Anim(uid, value ? 1.0f : 0.0f, 10.0f);
+
+    Color bg = Mix(Color{45, 35, 65, ga}, Color{90, 50, 140, ga}, animVal);
+    dl.AddFilledRoundRect(Rect{x, y, tW, tH}, bg, tH*0.5f, 10);
+    f32 knobX = x + 2*sc + animVal * (tW - tH);
+    dl.AddFilledRoundRect(Rect{knobX, y + 2*sc, tH - 4*sc, tH - 4*sc},
+        Color{230, 220, 250, ga}, (tH-4*sc)*0.5f, 10);
+
+    if (hov && g_input.IsMousePressed(MouseButton::Left))
+        return !value;
+    return value;
+}
+
+// Setting row: label on left, toggle on right. Returns new toggle state.
+static bool UISettingToggle(DrawList& dl, const char* label, bool value,
+                            f32 x, f32 y, f32 w, f32 sc, u8 ga, u32 uid) {
+    Text(dl, x, y + 2*sc, Color{200, 185, 230, ga}, label, g_fontSm);
+    bool newVal = UIToggle(dl, uid, x + w - 36*sc, y, sc, ga, value);
+    return newVal;
+}
+
+// Section header with divider line
+static f32 UISectionHeader(DrawList& dl, const char* title, f32 x, f32 y, f32 w, f32 sc, u8 ga) {
+    Text(dl, x, y, Color{160, 130, 220, ga}, title, g_font);
+    dl.AddFilledRect(Rect{x, y + 18*sc, w, 1}, Color{50, 35, 75, (u8)(ga*0.4f)});
+    return y + 26*sc;
+}
+
+// Int slider: renders slider, returns new value
+static int UISlider(DrawList& dl, u32 uid, f32 x, f32 y, f32 w, f32 sc, u8 ga,
+                    int value, int minV, int maxV) {
+    f32 slH = 6*sc;
+    f32 norm = (f32)(value - minV) / (f32)(maxV - minV);
+    f32 fillW = w * norm;
+
+    dl.AddFilledRoundRect(Rect{x, y, w, slH}, Color{38, 28, 58, ga}, 3*sc, 6);
+    if (fillW > 1)
+        dl.AddFilledRoundRect(Rect{x, y, fillW, slH}, Color{160, 110, 220, ga}, 3*sc, 6);
+    dl.AddCircle(Vec2{x + fillW, y + slH*0.5f}, 5*sc, Color{180, 140, 240, ga}, 10);
+
+    if (Hit(x, y - 4*sc, w, slH + 8*sc) && g_input.IsMousePressed(MouseButton::Left)) {
+        f32 mx = g_input.MousePos().x;
+        f32 t = (mx - x) / w;
+        if (t < 0) t = 0; if (t > 1) t = 1;
+        return minV + (int)(t * (maxV - minV));
+    }
+    return value;
+}
+
+// Dropdown / cycle selector: click to cycle through options
+static int UIDropdown(DrawList& dl, u32 uid, f32 x, f32 y, f32 w, f32 h, f32 sc, u8 ga,
+                      const char** options, int count, int selected) {
+    bool hov = Hit(x, y, w, h);
+    f32 hovA = Anim(uid, hov ? 1.0f : 0.0f);
+
+    dl.AddFilledRoundRect(Rect{x, y, w, h},
+        Color{26, 18, 44, ga}, 4*sc, 6);
+    dl.AddFilledRoundRect(Rect{x, y, w, h},
+        Color{50, 35, 75, (u8)(ga * (0.3f + 0.3f*hovA))}, 4*sc, 6);
+
+    const char* label = (selected >= 0 && selected < count) ? options[selected] : "???";
+    Vec2 ls = Measure(label, g_fontSm);
+    Text(dl, x + 8*sc, y + (h-ls.y)*0.5f, Color{200, 185, 230, ga}, label, g_fontSm);
+
+    // Small arrow indicator
+    f32 ax = x + w - 14*sc, ay = y + h*0.5f;
+    dl.AddLine(Vec2{ax - 3*sc, ay - 2*sc}, Vec2{ax, ay + 2*sc}, Color{140, 120, 180, ga}, 1.5f);
+    dl.AddLine(Vec2{ax, ay + 2*sc}, Vec2{ax + 3*sc, ay - 2*sc}, Color{140, 120, 180, ga}, 1.5f);
+
+    if (hov && g_input.IsMousePressed(MouseButton::Left))
+        return (selected + 1) % count;
+    return selected;
 }
 
 // ============================================================================
@@ -2225,24 +2350,208 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         }
 
     // =============================================================
-    // NAV: OTHER PAGES (placeholder)
+    // NAV: WORLD SETTINGS
+    // =============================================================
+    } else if (g_navItem == NAV_WORLD) {
+        f32 settY = cY + 4*sc;
+        f32 settW = cW * 0.85f;
+        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 rowH = 28*sc;
+
+        settY = UISectionHeader(dl, "Environment", settX, settY, settW, sc, ga);
+
+        g_worldNightMode = UISettingToggle(dl, "Night Mode", g_worldNightMode,
+            settX, settY, settW, sc, ga, Hash("_world_night"));
+        settY += rowH;
+
+        g_worldNoFog = UISettingToggle(dl, "Remove Fog", g_worldNoFog,
+            settX, settY, settW, sc, ga, Hash("_world_nofog"));
+        settY += rowH;
+
+        g_worldBrightModels = UISettingToggle(dl, "Bright Player Models", g_worldBrightModels,
+            settX, settY, settW, sc, ga, Hash("_world_bright"));
+        settY += rowH + 8*sc;
+
+        settY = UISectionHeader(dl, "Skybox", settX, settY, settW, sc, ga);
+
+        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Skybox Override", g_fontSm);
+        g_worldSkyboxIndex = UIDropdown(dl, Hash("_world_sky"), settX + settW*0.55f, settY,
+            settW*0.45f, 22*sc, sc, ga, g_skyboxNames, 6, g_worldSkyboxIndex);
+        settY += rowH;
+
+        g_worldSkyboxCustom = UISettingToggle(dl, "Custom Skybox", g_worldSkyboxCustom,
+            settX, settY, settW, sc, ga, Hash("_world_skyc"));
+
+    // =============================================================
+    // NAV: VIEW SETTINGS
+    // =============================================================
+    } else if (g_navItem == NAV_VIEW) {
+        f32 settY = cY + 4*sc;
+        f32 settW = cW * 0.85f;
+        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 rowH = 28*sc;
+
+        settY = UISectionHeader(dl, "Camera", settX, settY, settW, sc, ga);
+
+        g_viewThirdPerson = UISettingToggle(dl, "Third Person", g_viewThirdPerson,
+            settX, settY, settW, sc, ga, Hash("_view_tp"));
+        settY += rowH;
+
+        g_viewCustomFov = UISettingToggle(dl, "Custom FOV", g_viewCustomFov,
+            settX, settY, settW, sc, ga, Hash("_view_fov_en"));
+        settY += rowH;
+
+        if (g_viewCustomFov) {
+            Text(dl, settX, settY + 2*sc, Color{160, 145, 190, ga}, "FOV Value", g_fontSm);
+            char fovBuf[16]; snprintf(fovBuf, 16, "%d", g_viewFovValue);
+            Vec2 fvs = Measure(fovBuf, g_fontSm);
+            Text(dl, settX + settW - fvs.x, settY + 2*sc, Color{180, 140, 240, ga}, fovBuf, g_fontSm);
+            settY += 14*sc;
+            g_viewFovValue = UISlider(dl, Hash("_view_fov_sl"), settX, settY, settW, sc, ga,
+                                      g_viewFovValue, 60, 140);
+            settY += 18*sc;
+        }
+
+        settY += 8*sc;
+        settY = UISectionHeader(dl, "Effects", settX, settY, settW, sc, ga);
+
+        g_viewNoVisRecoil = UISettingToggle(dl, "No Visual Recoil", g_viewNoVisRecoil,
+            settX, settY, settW, sc, ga, Hash("_view_norc"));
+        settY += rowH;
+
+        g_viewNoFlash = UISettingToggle(dl, "No Flash", g_viewNoFlash,
+            settX, settY, settW, sc, ga, Hash("_view_nofl"));
+        settY += rowH;
+
+        g_viewNoSmoke = UISettingToggle(dl, "No Smoke", g_viewNoSmoke,
+            settX, settY, settW, sc, ga, Hash("_view_nosmk"));
+        settY += rowH;
+
+        g_viewHitMarker = UISettingToggle(dl, "Hit Marker", g_viewHitMarker,
+            settX, settY, settW, sc, ga, Hash("_view_hitm"));
+
+    // =============================================================
+    // NAV: PROFILE CHANGER
+    // =============================================================
+    } else if (g_navItem == NAV_PROFILE_CHANGER) {
+        f32 settY = cY + 4*sc;
+        f32 settW = cW * 0.85f;
+        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 rowH = 28*sc;
+
+        settY = UISectionHeader(dl, "Profile", settX, settY, settW, sc, ga);
+
+        // Rank selector
+        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Competitive Rank", g_fontSm);
+        g_profileRank = UIDropdown(dl, Hash("_prof_rank"), settX + settW*0.5f, settY,
+            settW*0.5f, 22*sc, sc, ga, g_rankNames, 19, g_profileRank);
+        settY += rowH;
+
+        // Level
+        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "CS2 Level", g_fontSm);
+        char lvlBuf[16]; snprintf(lvlBuf, 16, "%d", g_profileLevel);
+        Vec2 lvs = Measure(lvlBuf, g_fontSm);
+        Text(dl, settX + settW - lvs.x, settY + 2*sc, Color{180, 140, 240, ga}, lvlBuf, g_fontSm);
+        settY += 14*sc;
+        g_profileLevel = UISlider(dl, Hash("_prof_level"), settX, settY, settW, sc, ga,
+                                  g_profileLevel, 1, 40);
+        settY += 22*sc;
+
+        // Wins
+        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Competitive Wins", g_fontSm);
+        char winBuf[16]; snprintf(winBuf, 16, "%d", g_profileWins);
+        Vec2 wvs = Measure(winBuf, g_fontSm);
+        Text(dl, settX + settW - wvs.x, settY + 2*sc, Color{180, 140, 240, ga}, winBuf, g_fontSm);
+        settY += 14*sc;
+        g_profileWins = UISlider(dl, Hash("_prof_wins"), settX, settY, settW, sc, ga,
+                                 g_profileWins, 0, 5000);
+        settY += 22*sc;
+
+        settY += 6*sc;
+        settY = UISectionHeader(dl, "Actions", settX, settY, settW, sc, ga);
+
+        // Apply button
+        {
+            f32 btnW = 130*sc, btnH = 30*sc;
+            f32 btnX = settX + (settW - btnW)*0.5f;
+            u32 applyId = Hash("_prof_apply");
+            bool applyHov = Hit(btnX, settY, btnW, btnH);
+            f32 applyA = Anim(applyId, applyHov ? 1.0f : 0.0f);
+            dl.AddFilledRoundRect(Rect{btnX, settY, btnW, btnH},
+                Color{120, 70, 180, (u8)((50 + 30*applyA)*a)}, 6*sc, 8);
+            TextCenter(dl, Rect{btnX, settY, btnW, btnH},
+                Color{200, 180, 240, ga}, "Apply Profile", g_fontSm);
+        }
+
+    // =============================================================
+    // NAV: MISC
+    // =============================================================
+    } else if (g_navItem == NAV_MISC) {
+        f32 settY = cY + 4*sc;
+        f32 settW = cW * 0.85f;
+        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 rowH = 28*sc;
+
+        settY = UISectionHeader(dl, "Movement", settX, settY, settW, sc, ga);
+
+        g_miscBunnyHop = UISettingToggle(dl, "Bunny Hop", g_miscBunnyHop,
+            settX, settY, settW, sc, ga, Hash("_misc_bhop"));
+        settY += rowH;
+
+        settY += 6*sc;
+        settY = UISectionHeader(dl, "Automation", settX, settY, settW, sc, ga);
+
+        g_miscAutoAccept = UISettingToggle(dl, "Auto Accept Match", g_miscAutoAccept,
+            settX, settY, settW, sc, ga, Hash("_misc_accept"));
+        settY += rowH;
+
+        g_miscRevealRanks = UISettingToggle(dl, "Reveal Ranks", g_miscRevealRanks,
+            settX, settY, settW, sc, ga, Hash("_misc_ranks"));
+        settY += rowH;
+
+        g_miscAutoDisconnect = UISettingToggle(dl, "Auto Disconnect", g_miscAutoDisconnect,
+            settX, settY, settW, sc, ga, Hash("_misc_disc"));
+        settY += rowH;
+
+        settY += 6*sc;
+        settY = UISectionHeader(dl, "Visual", settX, settY, settW, sc, ga);
+
+        g_miscClanTag = UISettingToggle(dl, "Custom Clan Tag", g_miscClanTag,
+            settX, settY, settW, sc, ga, Hash("_misc_clan"));
+
+    // =============================================================
+    // NAV: MARKETPLACE (placeholder — web feature)
+    // =============================================================
+    } else if (g_navItem == NAV_MARKETPLACE) {
+        Vec2 ps = Measure("Marketplace", g_fontLg);
+        Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.25f,
+             Color{95, 80, 135, ga}, "Marketplace", g_fontLg);
+        Vec2 cs = Measure("Browse skins on the web", g_font);
+        Text(dl, cX + (cW-cs.x)*0.5f, cY + cH*0.25f + ps.y + 10*sc,
+             Color{75, 60, 105, ga}, "Browse skins on the web", g_font);
+
+        // Open marketplace button
+        f32 btnW = 160*sc, btnH = 34*sc;
+        f32 btnX = cX + (cW - btnW)*0.5f;
+        f32 btnY = cY + cH*0.25f + ps.y + 50*sc;
+        u32 mktId = Hash("_mkt_open");
+        bool mktHov = Hit(btnX, btnY, btnW, btnH);
+        f32 mktA = Anim(mktId, mktHov ? 1.0f : 0.0f);
+        dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
+            Color{120, 70, 180, (u8)((50 + 30*mktA)*a)}, 6*sc, 8);
+        TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
+            Color{200, 180, 240, ga}, "Open CSFloat", g_fontSm);
+        if (mktHov && g_input.IsMousePressed(MouseButton::Left))
+            ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
+
+    // =============================================================
+    // FALLBACK
     // =============================================================
     } else {
-        // Placeholder for World, View, Profile Changer, Misc, Marketplace
         const char* pageName = "Unknown";
-        switch (g_navItem) {
-            case NAV_WORLD: pageName = "World Settings"; break;
-            case NAV_VIEW: pageName = "View Settings"; break;
-            case NAV_PROFILE_CHANGER: pageName = "Profile Changer"; break;
-            case NAV_MISC: pageName = "Miscellaneous"; break;
-            case NAV_MARKETPLACE: pageName = "Marketplace"; break;
-        }
         Vec2 ps = Measure(pageName, g_fontLg);
         Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.35f,
              Color{95, 80, 135, ga}, pageName, g_fontLg);
-        Vec2 cs = Measure("Coming Soon", g_font);
-        Text(dl, cX + (cW-cs.x)*0.5f, cY + cH*0.35f + ps.y + 10*sc,
-             Color{75, 60, 105, ga}, "Coming Soon", g_font);
     }
 }
 
@@ -3225,6 +3534,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 static int LoaderMain(HINSTANCE hInstance) {
     Log("Step 1: Init");
     srand((unsigned)time(nullptr));
+
+    // DPI awareness — Per-Monitor V2 for sharp rendering on high-DPI displays
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    {
+        HDC hdc = GetDC(nullptr);
+        int dpiX = GetDeviceCaps(hdc, LOGPIXELSX);
+        ReleaseDC(nullptr, hdc);
+        g_dpiScale = (f32)dpiX / 96.0f;
+        if (g_dpiScale < 1.0f) g_dpiScale = 1.0f;
+        if (g_dpiScale > 3.0f) g_dpiScale = 3.0f;
+        Log("DPI: %d (scale=%.2f)", dpiX, g_dpiScale);
+    }
+
+    // Scale initial window size for DPI
+    g_width  = (int)(480 * g_dpiScale);
+    g_height = (int)(420 * g_dpiScale);
+
     LoadUsers();
     LoadKeys();
     SeedTestKeys();
@@ -3354,11 +3680,11 @@ static int LoaderMain(HINSTANCE hInstance) {
         "C:\\Windows\\Fonts\\tahoma.ttf",
     };
 
-    g_fontSm = TryFont(bodyFonts,  4, 14.0f);
-    g_font   = TryFont(boldFonts,  4, 16.0f);
-    g_fontMd = TryFont(boldFonts,  4, 19.0f);
-    g_fontLg = TryFont(heavyFonts, 4, 28.0f);
-    g_fontXl = TryFont(heavyFonts, 4, 36.0f);
+    g_fontSm = TryFont(bodyFonts,  4, 14.0f * g_dpiScale);
+    g_font   = TryFont(boldFonts,  4, 16.0f * g_dpiScale);
+    g_fontMd = TryFont(boldFonts,  4, 19.0f * g_dpiScale);
+    g_fontLg = TryFont(heavyFonts, 4, 28.0f * g_dpiScale);
+    g_fontXl = TryFont(heavyFonts, 4, 36.0f * g_dpiScale);
 
     bool loaded = (g_fontSm && g_font && g_fontMd && g_fontLg && g_fontXl);
     if (!loaded) {
