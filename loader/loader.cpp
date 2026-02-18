@@ -872,7 +872,22 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
 // ============================================================================
 // ENTRY POINT
 // ============================================================================
+static int LoaderMain(HINSTANCE hInstance);
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
+    __try {
+        return LoaderMain(hInstance);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        MessageBoxA(nullptr,
+            "AC Loader crashed unexpectedly.\n\n"
+            "Try running as Administrator.",
+            "AC Loader - Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+}
+
+static int LoaderMain(HINSTANCE hInstance) {
     srand((unsigned)time(nullptr));
     LoadUsers();
 

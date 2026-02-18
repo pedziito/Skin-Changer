@@ -4,6 +4,11 @@ project(CS2SkinChanger VERSION 3.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Static CRT linking — embeds VC++ runtime so users don't need redistributables
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -104,7 +109,7 @@ set_target_properties(ac_loader PROPERTIES
 )
 
 if(MSVC)
-    target_compile_options(ac_loader PRIVATE /W4 /permissive- /Zc:preprocessor)
+    target_compile_options(ac_loader PRIVATE /W4 /permissive- /Zc:preprocessor /EHa)
 endif()
 
 # ============================================================================
