@@ -74,14 +74,41 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
         return 1;
     }
 
+    // Auto-load active preset from loader (if exists)
+    Config::Load("active");
     LogMsg("=== Initialization Complete ===");
     G::initialized = true;
 
-    // Keep-alive loop — watch for unload key (END)
+    // Keep-alive loop — watch for unload key (END) + periodic config reload
+    auto lastConfigCheck = std::chrono::steady_clock::now();
+    std::filesystem::file_time_type lastModTime{};
+    {
+        std::string cfgPath = Config::GetConfigDir() + "\\active.acpreset";
+        try { if (std::filesystem::exists(cfgPath)) lastModTime = std::filesystem::last_write_time(cfgPath); } catch (...) {}
+    }
+
     while (!G::shouldUnload) {
         if (GetAsyncKeyState(VK_END) & 1) {
             G::shouldUnload = true;
         }
+
+        // Check config file every 2 seconds for changes from loader
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastConfigCheck).count() >= 2) {
+            lastConfigCheck = now;
+            std::string cfgPath = Config::GetConfigDir() + "\\active.acpreset";
+            try {
+                if (std::filesystem::exists(cfgPath)) {
+                    auto modTime = std::filesystem::last_write_time(cfgPath);
+                    if (modTime != lastModTime) {
+                        lastModTime = modTime;
+                        Config::Load("active");
+                        LogMsg("Auto-reloaded active config (file changed)");
+                    }
+                }
+            } catch (...) {}
+        }
+
         Sleep(100);
     }
 

@@ -142,7 +142,7 @@ u32 FontAtlas::BuildAtlas(const u8* fontData, size_t dataSize, const std::string
     if (!stbtt_PackBegin(&packCtx, atlasBitmap.data(), atlasW, atlasH, 0, 1, nullptr))
         return 0;
 
-    stbtt_PackSetOversampling(&packCtx, 2, 2); // 2x oversampling for quality
+    stbtt_PackSetOversampling(&packCtx, 3, 3); // 3x oversampling for quality
 
     // Rasterize ASCII range 32..126
     constexpr int FIRST_CHAR = 32;

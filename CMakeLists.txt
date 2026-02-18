@@ -176,6 +176,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/config/offsets.json")
     )
 endif()
 
+# Copy skin images to output directory
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/skins")
+    add_custom_target(copy_skin_assets ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/skins"
+            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets/skins"
+        COMMENT "Copying skin images to build output..."
+    )
+endif()
+
 # ============================================================================
 # ACE ENGINE V2 — Full UI Framework (standalone editor demo)
 # ============================================================================

@@ -691,6 +691,31 @@ static TextureHandle LoadSkinImage(const char* weaponName, const char* skinName)
     return tex;
 }
 
+// Write equipped skins to .acpreset file so the DLL can apply them
+static void WriteEquippedConfig() {
+    // Get %APPDATA%\AC_Changer\presets\ path
+    char appData[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) {
+        std::string dir = std::string(appData) + "\\AC_Changer\\presets";
+        CreateDirectoryA((std::string(appData) + "\\AC_Changer").c_str(), nullptr);
+        CreateDirectoryA(dir.c_str(), nullptr);
+        std::string path = dir + "\\active.acpreset";
+        FILE* f = fopen(path.c_str(), "w");
+        if (f) {
+            for (auto& item : g_invItems) {
+                if (item.weaponIdx < 0 || item.weaponIdx >= g_weaponDBCount) continue;
+                const auto& wpn = g_weaponDB[item.weaponIdx];
+                if (item.skinIdx < 0 || item.skinIdx >= wpn.skinCount) continue;
+                const auto& sk = wpn.skins[item.skinIdx];
+                fprintf(f, "%s|%s|%d|%d|0|%.4f|%d\n",
+                    wpn.name, sk.name, wpn.id, sk.paintKit,
+                    item.wear, item.statTrak ? 0 : -1);
+            }
+            fclose(f);
+        }
+    }
+}
+
 // CS2 Menu — Configs tab state
 static int g_configSelected = 0;
 static char g_configName[64] = "";
@@ -1230,88 +1255,88 @@ static void DrawEditIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
 // Globe/world icon
 static void DrawWorldIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 r = sz * 0.38f;
-    dl.AddCircle(Vec2{cx, cy}, r, c, 16);
-    dl.AddLine(Vec2{cx - r, cy}, Vec2{cx + r, cy}, c, 1.2f); // equator
-    dl.AddLine(Vec2{cx, cy - r}, Vec2{cx, cy + r}, c, 1.2f); // meridian
+    dl.AddCircle(Vec2{cx, cy}, r, c, 24);
+    dl.AddLine(Vec2{cx - r, cy}, Vec2{cx + r, cy}, c, 1.5f); // equator
+    dl.AddLine(Vec2{cx, cy - r}, Vec2{cx, cy + r}, c, 1.5f); // meridian
     // Curved meridian
-    dl.AddLine(Vec2{cx - r*0.5f, cy - r*0.85f}, Vec2{cx - r*0.6f, cy}, c, 1.0f);
-    dl.AddLine(Vec2{cx - r*0.6f, cy}, Vec2{cx - r*0.5f, cy + r*0.85f}, c, 1.0f);
+    dl.AddLine(Vec2{cx - r*0.5f, cy - r*0.85f}, Vec2{cx - r*0.6f, cy}, c, 1.2f);
+    dl.AddLine(Vec2{cx - r*0.6f, cy}, Vec2{cx - r*0.5f, cy + r*0.85f}, c, 1.2f);
 }
 
 // Eye/view icon
 static void DrawViewIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.35f;
     // Eye shape
-    dl.AddLine(Vec2{cx - h, cy}, Vec2{cx - h*0.4f, cy - h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.4f, cy - h*0.5f}, Vec2{cx + h*0.4f, cy - h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h*0.4f, cy - h*0.5f}, Vec2{cx + h, cy}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h, cy}, Vec2{cx + h*0.4f, cy + h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h*0.4f, cy + h*0.5f}, Vec2{cx - h*0.4f, cy + h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.4f, cy + h*0.5f}, Vec2{cx - h, cy}, c, 1.5f);
-    dl.AddCircle(Vec2{cx, cy}, h*0.25f, c, 8);
+    dl.AddLine(Vec2{cx - h, cy}, Vec2{cx - h*0.4f, cy - h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.4f, cy - h*0.5f}, Vec2{cx + h*0.4f, cy - h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h*0.4f, cy - h*0.5f}, Vec2{cx + h, cy}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h, cy}, Vec2{cx + h*0.4f, cy + h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h*0.4f, cy + h*0.5f}, Vec2{cx - h*0.4f, cy + h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.4f, cy + h*0.5f}, Vec2{cx - h, cy}, c, 1.8f);
+    dl.AddCircle(Vec2{cx, cy}, h*0.25f, c, 12);
 }
 
 // Profile/User icon
 static void DrawProfileIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.5f;
-    dl.AddCircle(Vec2{cx, cy - h * 0.25f}, h * 0.32f, c, 12);
-    dl.AddLine(Vec2{cx - h*0.55f, cy + h*0.55f}, Vec2{cx - h*0.3f, cy + h*0.2f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.3f, cy + h*0.2f}, Vec2{cx, cy + h*0.12f}, c, 1.5f);
-    dl.AddLine(Vec2{cx, cy + h*0.12f}, Vec2{cx + h*0.3f, cy + h*0.2f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h*0.3f, cy + h*0.2f}, Vec2{cx + h*0.55f, cy + h*0.55f}, c, 1.5f);
+    dl.AddCircle(Vec2{cx, cy - h * 0.25f}, h * 0.32f, c, 16);
+    dl.AddLine(Vec2{cx - h*0.55f, cy + h*0.55f}, Vec2{cx - h*0.3f, cy + h*0.2f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.3f, cy + h*0.2f}, Vec2{cx, cy + h*0.12f}, c, 1.8f);
+    dl.AddLine(Vec2{cx, cy + h*0.12f}, Vec2{cx + h*0.3f, cy + h*0.2f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h*0.3f, cy + h*0.2f}, Vec2{cx + h*0.55f, cy + h*0.55f}, c, 1.8f);
 }
 
 // Chat/misc icon
 static void DrawMiscIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.38f;
     // Chat bubble
-    dl.AddLine(Vec2{cx - h, cy - h*0.5f}, Vec2{cx + h, cy - h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h, cy - h*0.5f}, Vec2{cx + h, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h, cy + h*0.3f}, Vec2{cx - h*0.2f, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.2f, cy + h*0.3f}, Vec2{cx - h*0.5f, cy + h*0.7f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.5f, cy + h*0.7f}, Vec2{cx - h*0.5f, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.5f, cy + h*0.3f}, Vec2{cx - h, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h, cy + h*0.3f}, Vec2{cx - h, cy - h*0.5f}, c, 1.5f);
+    dl.AddLine(Vec2{cx - h, cy - h*0.5f}, Vec2{cx + h, cy - h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h, cy - h*0.5f}, Vec2{cx + h, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h, cy + h*0.3f}, Vec2{cx - h*0.2f, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.2f, cy + h*0.3f}, Vec2{cx - h*0.5f, cy + h*0.7f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.5f, cy + h*0.7f}, Vec2{cx - h*0.5f, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.5f, cy + h*0.3f}, Vec2{cx - h, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h, cy + h*0.3f}, Vec2{cx - h, cy - h*0.5f}, c, 1.8f);
 }
 
 // Config/gear icon
 static void DrawConfigIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 r = sz * 0.35f;
-    dl.AddCircle(Vec2{cx, cy}, r * 0.45f, c, 8);
+    dl.AddCircle(Vec2{cx, cy}, r * 0.45f, c, 12);
     for (int i = 0; i < 6; i++) {
         f32 angle = (f32)i * 3.14159f / 3.0f;
         f32 x1 = cx + cosf(angle) * r * 0.7f;
         f32 y1 = cy + sinf(angle) * r * 0.7f;
         f32 x2 = cx + cosf(angle) * r;
         f32 y2 = cy + sinf(angle) * r;
-        dl.AddLine(Vec2{x1, y1}, Vec2{x2, y2}, c, 2.0f);
+        dl.AddLine(Vec2{x1, y1}, Vec2{x2, y2}, c, 2.5f);
     }
 }
 
 // Marketplace/cart icon
 static void DrawMarketIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.38f;
-    dl.AddLine(Vec2{cx - h, cy - h*0.5f}, Vec2{cx - h*0.6f, cy - h*0.5f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.6f, cy - h*0.5f}, Vec2{cx - h*0.3f, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx - h*0.3f, cy + h*0.3f}, Vec2{cx + h*0.7f, cy + h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h*0.7f, cy + h*0.3f}, Vec2{cx + h*0.85f, cy - h*0.3f}, c, 1.5f);
-    dl.AddLine(Vec2{cx + h*0.85f, cy - h*0.3f}, Vec2{cx - h*0.45f, cy - h*0.3f}, c, 1.5f);
-    dl.AddCircle(Vec2{cx - h*0.15f, cy + h*0.6f}, h*0.13f, c, 6);
-    dl.AddCircle(Vec2{cx + h*0.5f, cy + h*0.6f}, h*0.13f, c, 6);
+    dl.AddLine(Vec2{cx - h, cy - h*0.5f}, Vec2{cx - h*0.6f, cy - h*0.5f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.6f, cy - h*0.5f}, Vec2{cx - h*0.3f, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx - h*0.3f, cy + h*0.3f}, Vec2{cx + h*0.7f, cy + h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h*0.7f, cy + h*0.3f}, Vec2{cx + h*0.85f, cy - h*0.3f}, c, 1.8f);
+    dl.AddLine(Vec2{cx + h*0.85f, cy - h*0.3f}, Vec2{cx - h*0.45f, cy - h*0.3f}, c, 1.8f);
+    dl.AddCircle(Vec2{cx - h*0.15f, cy + h*0.6f}, h*0.13f, c, 10);
+    dl.AddCircle(Vec2{cx + h*0.5f, cy + h*0.6f}, h*0.13f, c, 10);
 }
 
 // Plus (+) icon for empty grid slots
 static void DrawPlusIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.35f;
-    dl.AddLine(Vec2{cx - h, cy}, Vec2{cx + h, cy}, c, 2.0f);
-    dl.AddLine(Vec2{cx, cy - h}, Vec2{cx, cy + h}, c, 2.0f);
+    dl.AddLine(Vec2{cx - h, cy}, Vec2{cx + h, cy}, c, 2.5f);
+    dl.AddLine(Vec2{cx, cy - h}, Vec2{cx, cy + h}, c, 2.5f);
 }
 
 // Back arrow (< BACK)
 static void DrawBackArrow(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     f32 h = sz * 0.35f;
-    dl.AddLine(Vec2{cx + h*0.3f, cy - h*0.6f}, Vec2{cx - h*0.5f, cy}, c, 2.0f);
-    dl.AddLine(Vec2{cx - h*0.5f, cy}, Vec2{cx + h*0.3f, cy + h*0.6f}, c, 2.0f);
+    dl.AddLine(Vec2{cx + h*0.3f, cy - h*0.6f}, Vec2{cx - h*0.5f, cy}, c, 2.5f);
+    dl.AddLine(Vec2{cx - h*0.5f, cy}, Vec2{cx + h*0.3f, cy + h*0.6f}, c, 2.5f);
 }
 
 // Helper: compare category strings
@@ -1344,7 +1369,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         Color{12, 11, 22, ga}, 10*sc, 12);
 
     // ===== LEFT SIDEBAR (LunaR-style) =====
-    f32 sbW = 160.0f * sc;  // sidebar width
+    f32 sbW = 195.0f * sc;  // sidebar width
     f32 sbX = ox;
     f32 sbY = oy;
     f32 sbH = sH;
@@ -1372,8 +1397,8 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
     // --- Navigation Items ---
     f32 navStartY = sbY + 60*sc;
-    f32 navItemH = 30*sc;
-    f32 navGap = 2*sc;
+    f32 navItemH = 34*sc;
+    f32 navGap = 3*sc;
 
     // Section headers and items
     struct NavItemDef {
@@ -1428,20 +1453,20 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         Color ic = active ? Color{120, 170, 255, ga}
                           : Color{100, 102, 130, (u8)(ga * (0.6f + 0.4f*nAnim))};
         if (ni.drawIcon) {
-            ni.drawIcon(dl, sbX + 26*sc, ny + navItemH * 0.5f, 14*sc, ic);
+            ni.drawIcon(dl, sbX + 28*sc, ny + navItemH * 0.5f, 16*sc, ic);
         }
 
         // Label
         Color lc = active ? Color{220, 230, 255, ga}
                           : Color{130, 132, 160, (u8)(ga * (0.6f + 0.4f*nAnim))};
-        Vec2 ls = Measure(ni.label, g_fontSm);
-        Text(dl, sbX + 42*sc, ny + (navItemH - ls.y)*0.5f, lc, ni.label, g_fontSm);
+        Vec2 ls = Measure(ni.label, g_font);
+        Text(dl, sbX + 46*sc, ny + (navItemH - ls.y)*0.5f, lc, ni.label, g_font);
 
         // Pink dot for "World" (like reference image)
         if (ni.id == NAV_WORLD) {
-            Vec2 ls2 = Measure(ni.label, g_fontSm);
-            dl.AddCircle(Vec2{sbX + 44*sc + ls2.x + 6*sc, ny + navItemH*0.5f - 2*sc},
-                        3.0f*sc, Color{255, 80, 120, ga}, 8);
+            Vec2 ls2 = Measure(ni.label, g_font);
+            dl.AddCircle(Vec2{sbX + 48*sc + ls2.x + 6*sc, ny + navItemH*0.5f - 2*sc},
+                        3.0f*sc, Color{255, 80, 120, ga}, 12);
         }
 
         // Click handler
@@ -1527,54 +1552,47 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             }
 
             // --- Show added inventory items to the right of "+" ---
-            f32 itemStartX = plusX + plusW + 8*sc;
-            int maxCols = (int)((cW - plusW - 8*sc) / (plusW + 8*sc));
-            if (maxCols < 1) maxCols = 1;
-            int maxRows = (int)(cH / (plusH + 8*sc));
-            if (maxRows < 1) maxRows = 1;
+            f32 cardW = plusW, cardH = plusH;
+            f32 gap = 8*sc;
+            int totalCols = (int)((cW + gap) / (cardW + gap));
+            if (totalCols < 2) totalCols = 2;
+
+            int removeIdx = -1; // track item to remove
 
             for (int ii = 0; ii < (int)g_invItems.size(); ii++) {
-                int col = ii % maxCols;
-                int row = ii / maxCols;
-                if (row >= maxRows) break;
-                // After filling cols right of +, wrap to next row starting at col 0
-                f32 ix, iy;
-                if (row == 0) {
-                    ix = itemStartX + col * (plusW + 8*sc);
-                    iy = plusY;
-                } else {
-                    int totalCol = ii - maxCols; // items after first row
-                    int r2 = totalCol / (maxCols + 1) + 1;
-                    int c2 = totalCol % (maxCols + 1);
-                    ix = cX + c2 * (plusW + 8*sc);
-                    iy = plusY + r2 * (plusH + 8*sc);
-                    if (iy + plusH > cY + cH) break;
-                }
+                // Item index (slot 0 is the + button, items start at slot 1)
+                int slot = ii + 1;
+                int col = slot % totalCols;
+                int row = slot / totalCols;
+                f32 ix = cX + col * (cardW + gap);
+                f32 iy = cY + row * (cardH + gap);
+                if (iy + cardH > cY + cH) break;
 
                 const auto& item = g_invItems[ii];
                 if (item.weaponIdx < 0 || item.weaponIdx >= g_weaponDBCount) continue;
                 const auto& wpn = g_weaponDB[item.weaponIdx];
+                if (item.skinIdx < 0 || item.skinIdx >= wpn.skinCount) continue;
                 const auto& sk = wpn.skins[item.skinIdx];
                 Color rc = RarityColor(sk.rarity);
 
                 u32 iid = Hash("inv_item") + ii * 37;
-                bool iHov = Hit(ix, iy, plusW, plusH);
+                bool iHov = Hit(ix, iy, cardW, cardH);
                 f32 iAnim = Anim(iid, iHov ? 1.0f : 0.0f);
 
                 // Card background with rarity tint
-                dl.AddFilledRoundRect(Rect{ix, iy, plusW, plusH},
+                dl.AddFilledRoundRect(Rect{ix, iy, cardW, cardH},
                     Color{(u8)(rc.r/8), (u8)(rc.g/8), (u8)(rc.b/8), ga}, 8*sc, 10);
                 // Rarity border bottom
-                dl.AddFilledRoundRect(Rect{ix, iy + plusH - 4*sc, plusW, 4*sc},
+                dl.AddFilledRoundRect(Rect{ix, iy + cardH - 4*sc, cardW, 4*sc},
                     Color{rc.r, rc.g, rc.b, (u8)(ga*0.5f)}, 2*sc, 4);
 
                 // Try loading skin image
                 TextureHandle skinTex = LoadSkinImage(wpn.name, sk.name);
                 if (skinTex != INVALID_TEXTURE) {
-                    f32 imgH = plusH - 24*sc;
+                    f32 imgH = cardH - 24*sc;
                     f32 imgW = imgH * 1.33f; // 4:3 aspect
-                    if (imgW > plusW - 8*sc) imgW = plusW - 8*sc;
-                    f32 imgX = ix + (plusW - imgW)*0.5f;
+                    if (imgW > cardW - 8*sc) imgW = cardW - 8*sc;
+                    f32 imgX = ix + (cardW - imgW)*0.5f;
                     f32 imgY = iy + 4*sc;
                     dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH},
                         skinTex, Color{255,255,255,ga});
@@ -1582,17 +1600,37 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // Weapon + skin name at bottom
                 Vec2 wns = Measure(wpn.name, g_fontSm);
-                Text(dl, ix + (plusW-wns.x)*0.5f, iy + plusH - 22*sc,
+                Text(dl, ix + (cardW-wns.x)*0.5f, iy + cardH - 22*sc,
                      Color{190, 195, 220, ga}, wpn.name, g_fontSm);
                 Vec2 sns = Measure(sk.name, g_fontSm);
-                Text(dl, ix + (plusW-sns.x)*0.5f, iy + plusH - 10*sc,
+                Text(dl, ix + (cardW-sns.x)*0.5f, iy + cardH - 10*sc,
                      Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
 
-                // Hover glow
+                // Hover overlay + red X to remove
                 if (iAnim > 0.01f) {
-                    dl.AddFilledRoundRect(Rect{ix, iy, plusW, plusH},
-                        Color{255,255,255,(u8)(6*iAnim*a)}, 8*sc, 10);
+                    dl.AddFilledRoundRect(Rect{ix, iy, cardW, cardH},
+                        Color{200,60,60,(u8)(15*iAnim*a)}, 8*sc, 10);
+                    // X icon top-right corner
+                    f32 xSz = 8*sc;
+                    f32 xCx = ix + cardW - 14*sc;
+                    f32 xCy = iy + 10*sc;
+                    dl.AddLine(Vec2{xCx-xSz*0.5f, xCy-xSz*0.5f},
+                               Vec2{xCx+xSz*0.5f, xCy+xSz*0.5f},
+                               Color{255,100,100,(u8)(ga*iAnim)}, 2.0f);
+                    dl.AddLine(Vec2{xCx+xSz*0.5f, xCy-xSz*0.5f},
+                               Vec2{xCx-xSz*0.5f, xCy+xSz*0.5f},
+                               Color{255,100,100,(u8)(ga*iAnim)}, 2.0f);
                 }
+
+                // Click to remove
+                if (iHov && g_input.IsMousePressed(MouseButton::Left))
+                    removeIdx = ii;
+            }
+
+            // Process removal after loop (avoids iterator invalidation)
+            if (removeIdx >= 0 && removeIdx < (int)g_invItems.size()) {
+                g_invItems.erase(g_invItems.begin() + removeIdx);
+                WriteEquippedConfig(); // update DLL config
             }
 
         // ---------- CATEGORIES VIEW: grid of categories (Pistol, Rifle, etc.) ----------
@@ -2037,6 +2075,9 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                         item.applied = false;
                         g_invItems.push_back(item);
 
+                        // Write config so DLL applies skins
+                        WriteEquippedConfig();
+
                         // Reset and go back to main
                         g_invView = INV_VIEW_MAIN;
                         g_detailWear = 0.0f;
@@ -2073,6 +2114,9 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                         item.customName[31] = '\0';
                         item.applied = true;
                         g_invItems.push_back(item);
+
+                        // Write config so DLL applies skins immediately
+                        WriteEquippedConfig();
 
                         g_invView = INV_VIEW_MAIN;
                         g_detailWear = 0.0f;
@@ -3285,11 +3329,11 @@ static int LoaderMain(HINSTANCE hInstance) {
         "C:\\Windows\\Fonts\\tahoma.ttf",
     };
 
-    g_fontSm = TryFont(bodyFonts,  4, 13.0f);
-    g_font   = TryFont(boldFonts,  4, 15.0f);
-    g_fontMd = TryFont(boldFonts,  4, 18.0f);
-    g_fontLg = TryFont(heavyFonts, 4, 26.0f);
-    g_fontXl = TryFont(heavyFonts, 4, 34.0f);
+    g_fontSm = TryFont(bodyFonts,  4, 14.0f);
+    g_font   = TryFont(boldFonts,  4, 16.0f);
+    g_fontMd = TryFont(boldFonts,  4, 19.0f);
+    g_fontLg = TryFont(heavyFonts, 4, 28.0f);
+    g_fontXl = TryFont(heavyFonts, 4, 36.0f);
 
     bool loaded = (g_fontSm && g_font && g_fontMd && g_fontLg && g_fontXl);
     if (!loaded) {
