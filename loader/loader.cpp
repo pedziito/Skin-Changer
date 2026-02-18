@@ -1280,7 +1280,8 @@ static void UpdateInjectionFlow() {
 
         // Transition to CS2 menu — VISIBLE immediately after beep
         {
-            int menuW = (int)(1182 * g_dpiScale), menuH = (int)(957 * g_dpiScale);
+            // Reduce CS2 menu size by 50% as requested
+            int menuW = (int)(1182 * g_dpiScale * 0.5f), menuH = (int)(957 * g_dpiScale * 0.5f);
             int mx, my;
             if (g_cs2Hwnd) {
                 RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
@@ -1520,6 +1521,11 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
     f32 a = g_menuOpenAnim;
     if (a < 0.001f) return;
 
+    // Keep menu focused when user clicks inside it so it doesn't disappear
+    if ((g_input.IsMousePressed(MouseButton::Left) || g_input.IsMousePressed(MouseButton::Right)) && Hit(0, 0, W, H)) {
+        SetForegroundWindow(g_hwnd);
+    }
+
     // === BACKGROUND — same as loader: P::Bg + animated orbs ===
     DrawBg(dl, W, H);
 
@@ -1539,47 +1545,46 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         Text(dl, logoX, logoY, P::Accent1, "AC", g_fontLg);
     }
 
-    // Nav — Website
+    // NOTE: Website/Support/Market nav removed per request.
+    // Instead render a compact top navigation bar (Skins / Configs) with AC logo on the left.
     {
-        u32 nid = Hash("cs2_Website");
-        f32 nY = 76;
-        bool nH = Hit(0, nY, sideW, 36);
-        f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
-        Color nc = Mix(P::T2, P::T1, nA);
-        DrawIconGlobe(dl, sideW * 0.5f, nY + 10, 7.0f, nc);
-        Vec2 lblSz = Measure("Website", g_fontSm);
-        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Website", g_fontSm);
-        if (nH && g_input.IsMousePressed(MouseButton::Left))
-            ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer", nullptr, nullptr, SW_SHOW);
-    }
-    // Nav — Support
-    {
-        u32 nid = Hash("cs2_Support");
-        f32 nY = 76 + 42;
-        bool nH = Hit(0, nY, sideW, 36);
-        f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
-        Color nc = Mix(P::T2, P::T1, nA);
-        DrawIconSupport(dl, sideW * 0.5f, nY + 10, 18.0f, nc);
-        Vec2 lblSz = Measure("Support", g_fontSm);
-        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Support", g_fontSm);
-        if (nH && g_input.IsMousePressed(MouseButton::Left))
-            ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer/issues", nullptr, nullptr, SW_SHOW);
-    }
-    // Nav — Market
-    {
-        u32 nid = Hash("cs2_Market");
-        f32 nY = 76 + 84;
-        bool nH = Hit(0, nY, sideW, 36);
-        f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
-        Color nc = Mix(P::T2, P::T1, nA);
-        DrawIconCart(dl, sideW * 0.5f, nY + 10, 20.0f, nc);
-        Vec2 lblSz = Measure("Market", g_fontSm);
-        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Market", g_fontSm);
-        if (nH && g_input.IsMousePressed(MouseButton::Left))
-            ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
+        // Top navbar (spans content area to the right of the sidebar)
+        f32 navH = 48.0f * g_dpiScale;
+        f32 navX = sideW;
+        f32 navW = W - sideW;
+        dl.AddFilledRect(Rect{navX, 0, navW, navH}, Color{18,14,28,240});
+        dl.AddFilledRect(Rect{navX, navH - 1, navW, 1}, P::Border);
+
+        // Center tabs: "Skins" and "Configs"
+        const char* tabs[] = { "Skins", "Configs" };
+        int tabCount = 2;
+        // measure total width
+        Vec2 s0 = Measure(tabs[0], g_fontSm);
+        Vec2 s1 = Measure(tabs[1], g_fontSm);
+        f32 spacing = 36.0f * g_dpiScale;
+        f32 totalW = s0.x + s1.x + spacing;
+        f32 cx = navX + (navW - totalW) * 0.5f;
+
+        // Skins tab (icon + label)
+        bool hov0 = Hit(cx - 22.0f * g_dpiScale, 8.0f * g_dpiScale, s0.x + 40.0f * g_dpiScale, navH - 16.0f * g_dpiScale);
+        Color col0 = hov0 || (g_cs2Tab == TAB_SKINS) ? P::T1 : P::T2;
+        // icon
+        DrawIconSkins(dl, cx + 6.0f * g_dpiScale, 12.0f * g_dpiScale, 18.0f * g_dpiScale, col0);
+        Text(dl, cx + 18.0f * g_dpiScale, 12.0f * g_dpiScale, col0, tabs[0], g_fontSm);
+        if (hov0 && g_input.IsMousePressed(MouseButton::Left)) g_cs2Tab = TAB_SKINS;
+        if (g_cs2Tab == TAB_SKINS) dl.AddFilledRect(Rect{cx - 4.0f * g_dpiScale, navH - 6.0f * g_dpiScale, s0.x + 32.0f * g_dpiScale, 3.0f * g_dpiScale}, P::Accent1);
+
+        // Configs tab (icon + label)
+        f32 cx2 = cx + s0.x + spacing;
+        bool hov1 = Hit(cx2 - 22.0f * g_dpiScale, 8.0f * g_dpiScale, s1.x + 40.0f * g_dpiScale, navH - 16.0f * g_dpiScale);
+        Color col1 = hov1 || (g_cs2Tab == TAB_CONFIGS) ? P::T1 : P::T2;
+        DrawIconServer(dl, cx2 + 6.0f * g_dpiScale, 12.0f * g_dpiScale, 18.0f * g_dpiScale, col1);
+        Text(dl, cx2 + 18.0f * g_dpiScale, 12.0f * g_dpiScale, col1, tabs[1], g_fontSm);
+        if (hov1 && g_input.IsMousePressed(MouseButton::Left)) g_cs2Tab = TAB_CONFIGS;
+        if (g_cs2Tab == TAB_CONFIGS) dl.AddFilledRect(Rect{cx2 - 4.0f * g_dpiScale, navH - 6.0f * g_dpiScale, s1.x + 32.0f * g_dpiScale, 3.0f * g_dpiScale}, P::Accent1);
     }
 
-    // User avatar + name + logout — bottom of sidebar (identical to loader)
+    // User avatar rendered, but logout removed per request (no action)
     {
         f32 avSz = 30;
         f32 avX = 10;
@@ -1593,26 +1598,21 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         Text(dl, avX + (avSz - iSz.x) * 0.5f, avY + (avSz - iSz.y) * 0.5f,
              P::T1, ini, g_font);
         Text(dl, avX + avSz + 6, avY + (avSz - 12) * 0.5f, P::T2, userName, g_fontSm);
-
-        // Logout
-        u32 loId = Hash("_cs2_logout");
-        f32 loY = avY + avSz + 4;
-        Vec2 loSz = Measure("Logout", g_fontSm);
-        bool loH = Hit(avX - 2, loY - 2, loSz.x + 8, loSz.y + 4);
-        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
-        Text(dl, avX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
-        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
-            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
-            g_injected = false; g_injecting = false;
-            g_showPopup = false; g_injPhase = INJ_IDLE;
-            memset(g_loginPass, 0, 64);
-            ClearRememberMe();
-        }
     }
 
     // === CONTENT AREA (right of sidebar) ===
     f32 cX = sideW + 16;
     f32 cW = W - sideW - 32;
+    // Center main content so skins/configs are visually in the middle
+    {
+        f32 available = W - sideW;
+        f32 preferred = 820.0f * g_dpiScale;
+        f32 innerW = (available < preferred) ? available : preferred;
+        f32 offset = (available - innerW) * 0.5f;
+        cX = sideW + offset + 16.0f * g_dpiScale;
+        cW = innerW - 32.0f * g_dpiScale;
+        if (cW < 220.0f * g_dpiScale) { cX = sideW + 16; cW = W - sideW - 32; }
+    }
 
     // Min/Close buttons — identical to loader dashboard
     {
@@ -1969,6 +1969,22 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         }
 
     // ================= VIEW: SKINS (grid + detail) =================
+    } else if (g_invView == INV_VIEW_SKINS && (g_selectedWeapon < 0 || g_selectedWeapon >= g_weaponDBCount)) {
+        // No weapon selected: show centered prompt and preview of a default weapon skin
+        Text(dl, cX + cW * 0.5f - 60.0f * g_dpiScale, cY + 40.0f * g_dpiScale,
+             P::T2, "Select a weapon to view skins", g_font);
+        // try to preview first available weapon skin as example
+        for (int wi = 0; wi < g_weaponDBCount; wi++) {
+            if (g_weaponDB[wi].skinCount > 0) {
+                TextureHandle tex = LoadSkinImage(g_weaponDB[wi].name, g_weaponDB[wi].skins[0].name);
+                if (tex != INVALID_TEXTURE) {
+                    f32 prevW = cW * 0.5f, prevH = prevW * 0.6f;
+                    dl.AddTexturedRect(Rect{cX + (cW - prevW) * 0.5f, cY + 80.0f * g_dpiScale, prevW, prevH}, tex, Color{255,255,255,255});
+                    break;
+                }
+            }
+        }
+
     } else if (g_invView == INV_VIEW_SKINS && g_selectedWeapon >= 0 && g_selectedWeapon < g_weaponDBCount) {
         const auto& wpn = g_weaponDB[g_selectedWeapon];
 
@@ -2018,7 +2034,11 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             bool sHov = Hit(sx, sy2, cellW, cellH);
             f32 sAn = Anim(sid, selected ? 0.8f : (sHov ? 0.5f : 0.0f));
 
-            // Loader-style card
+            // Loader-style card with hover/selected glow
+            if (sAn > 0.05f) {
+                // glow behind card
+                dl.AddFilledRect(Rect{sx - 6, sy2 - 6, cellW + 12, cellH + 12}, Fade(P::Accent1, 0.06f + 0.06f * sAn));
+            }
             dl.AddFilledRoundRect(Rect{sx + 2, sy2 + 2, cellW - 4, cellH},
                                   Fade(Color{0,0,0,255}, 0.12f), 10.0f, 10);
             Color bc = selected ? Color{rc.r, rc.g, rc.b, 200} :
@@ -2032,13 +2052,17 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             dl.AddFilledRect(Rect{sx + 4, sy2 + cellH - 3, cellW - 8, 3},
                 Color{rc.r, rc.g, rc.b, 200});
 
-            // Skin image
+            // Skin image (scale up slightly on hover)
             TextureHandle skinTex = LoadSkinImage(wpn.name, sk.name);
             if (skinTex != INVALID_TEXTURE) {
                 f32 iH = cellH - 22, iW = iH * 1.33f;
                 if (iW > cellW - 8) { iW = cellW - 8; iH = iW / 1.33f; }
-                dl.AddTexturedRect(Rect{sx+(cellW-iW)*0.5f, sy2+3, iW, iH},
-                    skinTex, Color{255,255,255,255});
+                f32 lift = sAn * 3.0f;
+                f32 scale = 1.0f + sAn * 0.04f;
+                f32 dw = iW * (scale - 1.0f) * 0.5f;
+                f32 dh = iH * (scale - 1.0f) * 0.5f;
+                dl.AddTexturedRect(Rect{sx+(cellW-iW)*0.5f - dw, sy2+3 - dh - lift, iW * scale, iH * scale},
+                    skinTex, Color{255,255,255, (u8)(255 * (0.9f + 0.1f * sAn))});
             }
 
             // Skin name
@@ -2506,6 +2530,33 @@ static void DrawIconSupport(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
     // Mic (small line from right earpiece)
     dl.AddLine(Vec2{cx + bandR, cy + r*0.05f}, Vec2{cx + bandR - 2, cy + r*0.35f}, c, 1.5f);
     dl.AddFilledRoundRect(Rect{cx + bandR - 5, cy + r*0.32f, 6, 4}, c, 2.0f, 4);
+}
+
+// Skins icon (stylized blade + circle)
+static void DrawIconSkins(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
+    f32 r = sz * 0.5f;
+    // blade triangle
+    Vec2 p1{cx - r*0.2f, cy - r*0.7f};
+    Vec2 p2{cx + r*0.9f, cy};
+    Vec2 p3{cx - r*0.2f, cy + r*0.7f};
+    dl.AddTriangle(p1, p2, p3, c);
+    // highlight edge
+    dl.AddLine(p1, p2, Fade(Color{255,255,255,255}, 0.12f), 1.2f);
+    dl.AddLine(p2, p3, Fade(Color{255,255,255,255}, 0.12f), 1.2f);
+    // small circle accent
+    dl.AddFilledRoundRect(Rect{cx - r*0.95f, cy - r*0.25f, r*0.5f, r*0.5f}, Fade(c, 0.18f), r*0.25f, 8);
+}
+
+// Server icon (stacked rectangles)
+static void DrawIconServer(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
+    f32 w = sz * 0.9f;
+    f32 h = sz * 0.22f;
+    dl.AddFilledRoundRect(Rect{cx - w*0.5f, cy - h*1.1f, w, h}, Fade(c, 0.08f), 4.0f, 6);
+    dl.AddFilledRoundRect(Rect{cx - w*0.5f, cy - h*0.1f, w, h}, Fade(c, 0.06f), 4.0f, 6);
+    dl.AddFilledRoundRect(Rect{cx - w*0.5f, cy + h*0.9f, w, h}, Fade(c, 0.04f), 4.0f, 6);
+    // indicator lights
+    dl.AddFilledRoundRect(Rect{cx + w*0.25f, cy - h*1.0f + 2, 6, 6}, Color{140,100,220,200}, 3.0f, 8);
+    dl.AddFilledRoundRect(Rect{cx + w*0.25f, cy - h*0.0f + 2, 6, 6}, Color{59,130,246,200}, 3.0f, 8);
 }
 
 // --- Glass card container ---
@@ -3409,7 +3460,9 @@ static int LoaderMain(HINSTANCE hInstance) {
         // This eliminates the "ghost frame" (stale content flash) on menu toggle
         if (s_pendingShow) {
             s_pendingShow = false;
-            ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
+            // Bring overlay to foreground so mouse can be used in-game
+            ShowWindow(g_hwnd, SW_SHOW);
+            SetForegroundWindow(g_hwnd);
             SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
