@@ -244,7 +244,7 @@ void NodeEditor::LayoutNode(Node& node) {
 // ============================================================================
 // UPDATE
 // ============================================================================
-void NodeEditor::OnUpdate(f32 dt) {
+void NodeEditor::OnUpdate(f32 /*dt*/) {
     for (auto& node : _nodes) LayoutNode(node);
 }
 
@@ -445,7 +445,7 @@ bool NodeEditor::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
     return true;
 }
 
-bool NodeEditor::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
+bool NodeEditor::OnMouseUp(Vec2 pos, MouseButtonEvent& /*e*/) {
     if (_mode == InteractionMode::CreatingLink) {
         Vec2 canvasPos = ScreenToCanvas(pos);
         Pin* endPin = FindPinAt(canvasPos);

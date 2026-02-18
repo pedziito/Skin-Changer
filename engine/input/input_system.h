@@ -192,7 +192,7 @@ public:
     /**
      * Emit events to an EventBus (optional integration).
      */
-    void EmitEvents(EventBus& bus) const {
+    void EmitEvents(EventBus& /*bus*/) const {
         // Could iterate changed keys and emit KeyEvent, MouseMoveEvent, etc.
         // Left as extension point for per-project needs.
     }

@@ -175,25 +175,25 @@ public:
     const WidgetStyle& Style() const { return _style; }
 
     // --- Lifecycle (override in subclasses) ---
-    virtual void OnUpdate(f32 dt) {}
-    virtual void OnDraw(DrawList& drawList, const ThemeEngine& theme) {}
+    virtual void OnUpdate(f32 /*dt*/) {}
+    virtual void OnDraw(DrawList& /*drawList*/, const ThemeEngine& /*theme*/) {}
     virtual void OnLayout() {}
 
     // --- Events (override in subclasses) ---
     virtual bool OnMouseEnter() { return false; }
     virtual bool OnMouseLeave() { return false; }
-    virtual bool OnMouseDown(Vec2 pos, MouseButtonEvent& e) { return false; }
-    virtual bool OnMouseUp(Vec2 pos, MouseButtonEvent& e) { return false; }
-    virtual bool OnMouseMove(Vec2 pos, MouseMoveEvent& e) { return false; }
-    virtual bool OnMouseScroll(f32 delta) { return false; }
-    virtual bool OnKeyDown(KeyEvent& e) { return false; }
-    virtual bool OnKeyUp(KeyEvent& e) { return false; }
-    virtual bool OnTextInput(TextInputEvent& e) { return false; }
+    virtual bool OnMouseDown(Vec2 /*pos*/, MouseButtonEvent& /*e*/) { return false; }
+    virtual bool OnMouseUp(Vec2 /*pos*/, MouseButtonEvent& /*e*/) { return false; }
+    virtual bool OnMouseMove(Vec2 /*pos*/, MouseMoveEvent& /*e*/) { return false; }
+    virtual bool OnMouseScroll(f32 /*delta*/) { return false; }
+    virtual bool OnKeyDown(KeyEvent& /*e*/) { return false; }
+    virtual bool OnKeyUp(KeyEvent& /*e*/) { return false; }
+    virtual bool OnTextInput(TextInputEvent& /*e*/) { return false; }
     virtual void OnFocusGained() {}
     virtual void OnFocusLost() {}
-    virtual void OnDragStart(Vec2 pos) {}
-    virtual void OnDragMove(Vec2 pos, Vec2 delta) {}
-    virtual void OnDragEnd(Vec2 pos) {}
+    virtual void OnDragStart(Vec2 /*pos*/) {}
+    virtual void OnDragMove(Vec2 /*pos*/, Vec2 /*delta*/) {}
+    virtual void OnDragEnd(Vec2 /*pos*/) {}
 
     // --- Hit testing ---
     virtual bool HitTest(Vec2 point) const;

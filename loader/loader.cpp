@@ -2310,7 +2310,7 @@ static void DrawTitleBar(DrawList& dl, f32 W) {
 }
 
 // --- Gradient accent button ---
-static bool GradientButton(DrawList& dl, const char* label, Rect r, bool enabled = true) {
+static bool GradientButton(DrawList& dl, const char* label, Rect r, bool enabled) {
     u32 id = Hash(label);
     bool hov = enabled && Hit(r.x, r.y, r.w, r.h);
     bool click = hov && g_input.IsMousePressed(MouseButton::Left);

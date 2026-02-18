@@ -68,12 +68,12 @@ bool ButtonWidget::OnMouseLeave() {
     return true;
 }
 
-bool ButtonWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool ButtonWidget::OnMouseDown(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     _pressAnim.target = 1.0f;
     return true;
 }
 
-bool ButtonWidget::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
+bool ButtonWidget::OnMouseUp(Vec2 pos, MouseButtonEvent& /*e*/) {
     _pressAnim.target = 0.0f;
     if (HitTest(pos)) InvokeClick();
     return true;
@@ -126,7 +126,7 @@ void PanelWidget::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
     drawList.AddRect(bounds, theme.GetColor(ThemeToken::BorderPrimary), theme.GetMetric(ThemeMetric::BorderWidth));
 }
 
-bool PanelWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool PanelWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& /*e*/) {
     if (_collapsible) {
         Rect headerRect{GetBounds().x, GetBounds().y, GetBounds().w, _headerHeight};
         if (headerRect.Contains(pos)) {
@@ -169,7 +169,7 @@ void TextInputWidget::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
     }
 }
 
-bool TextInputWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool TextInputWidget::OnMouseDown(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     // Position cursor based on click position (simplified)
     return true;
 }
@@ -258,7 +258,7 @@ void SliderWidget::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
     drawList.AddCircle({handleX, bounds.Center().y}, handleRadius, handleColor);
 }
 
-bool SliderWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool SliderWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& /*e*/) {
     _dragging = true;
     f32 t = math::Saturate((pos.x - GetBounds().x) / GetBounds().w);
     _value = math::Lerp(_min, _max, t);
@@ -266,7 +266,7 @@ bool SliderWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
     return true;
 }
 
-bool SliderWidget::OnMouseMove(Vec2 pos, MouseMoveEvent& e) {
+bool SliderWidget::OnMouseMove(Vec2 pos, MouseMoveEvent& /*e*/) {
     if (_dragging) {
         f32 t = math::Saturate((pos.x - GetBounds().x) / GetBounds().w);
         _value = math::Lerp(_min, _max, t);
@@ -276,7 +276,7 @@ bool SliderWidget::OnMouseMove(Vec2 pos, MouseMoveEvent& e) {
     return false;
 }
 
-bool SliderWidget::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
+bool SliderWidget::OnMouseUp(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     _dragging = false;
     return true;
 }
@@ -323,7 +323,7 @@ void CheckboxWidget::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
     }
 }
 
-bool CheckboxWidget::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool CheckboxWidget::OnMouseDown(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     _checked = !_checked;
     _toggleAnim.target = _checked ? 1.0f : 0.0f;
     if (_onToggle) _onToggle(_checked);
@@ -338,7 +338,7 @@ LabelWidget::LabelWidget(std::string_view text, Color color)
     _layout.preferredSize = {100, 20};
 }
 
-void LabelWidget::OnDraw(DrawList& drawList, const ThemeEngine& theme) {
+void LabelWidget::OnDraw(DrawList& /*drawList*/, const ThemeEngine& theme) {
     Color color = _color.a > 0 ? _color : theme.GetColor(ThemeToken::TextPrimary);
     // Text rendering handled by font system
     // Widget bounds are used for layout

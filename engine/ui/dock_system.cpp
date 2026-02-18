@@ -298,11 +298,11 @@ void DockSystem::DrawTabBar(DockNode* node, Rect tabBarRect, DrawList& drawList,
 // ============================================================================
 // INPUT
 // ============================================================================
-void DockSystem::OnUpdate(f32 dt) {
+void DockSystem::OnUpdate(f32 /*dt*/) {
     OnLayout();
 }
 
-bool DockSystem::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool DockSystem::OnMouseDown(Vec2 pos, MouseButtonEvent& /*e*/) {
     DockNode* hitNode = FindNodeContainingPoint(_rootNode.get(), pos);
     if (!hitNode || !hitNode->IsLeaf()) return false;
 
@@ -343,7 +343,7 @@ bool DockSystem::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
     return false;
 }
 
-bool DockSystem::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
+bool DockSystem::OnMouseUp(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     if (_isDragging) {
         // Check for drop target
         if (_dropTarget && _dropPreview != DockSide::None) {
@@ -377,7 +377,7 @@ bool DockSystem::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
     return false;
 }
 
-bool DockSystem::OnMouseMove(Vec2 pos, MouseMoveEvent& e) {
+bool DockSystem::OnMouseMove(Vec2 pos, MouseMoveEvent& /*e*/) {
     if (_isDragging) {
         // Find drop target
         DockNode* target = FindNodeContainingPoint(_rootNode.get(), pos);

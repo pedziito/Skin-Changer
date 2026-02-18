@@ -108,7 +108,7 @@ class IGraphNodeRenderer {
 public:
     virtual ~IGraphNodeRenderer() = default;
     virtual void DrawNode(const GraphNode& node, DrawList& dl, Vec2 screenPos, Vec2 screenSize, f32 zoom) = 0;
-    virtual void DrawEdge(const GraphEdge& edge, Vec2 p0, Vec2 p3, DrawList& dl, f32 zoom) {}
+    virtual void DrawEdge(const GraphEdge& /*edge*/, Vec2 /*p0*/, Vec2 /*p3*/, DrawList& /*dl*/, f32 /*zoom*/) {}
 };
 
 // ============================================================================

@@ -159,14 +159,14 @@ void PropertyInspector::DrawFloatEditor(const PropertyInfo& prop, Rect editorRec
     }
 }
 
-void PropertyInspector::DrawStringEditor(const PropertyInfo& prop, Rect editorRect,
+void PropertyInspector::DrawStringEditor(const PropertyInfo& /*prop*/, Rect editorRect,
                                           DrawList& drawList, const ThemeEngine& theme) {
     Rect fieldRect = editorRect.Shrink(2);
     drawList.AddFilledRoundRect(fieldRect, theme.GetColor(ThemeToken::InputBg), 3);
     drawList.AddRect(fieldRect, theme.GetColor(ThemeToken::InputBorder));
 }
 
-void PropertyInspector::DrawVec2Editor(const PropertyInfo& prop, Rect editorRect,
+void PropertyInspector::DrawVec2Editor(const PropertyInfo& /*prop*/, Rect editorRect,
                                         DrawList& drawList, const ThemeEngine& theme) {
     f32 halfW = (editorRect.w - 4) * 0.5f;
     Rect xRect{editorRect.x, editorRect.y + 2, halfW, editorRect.h - 4};
@@ -202,7 +202,7 @@ void PropertyInspector::DrawColorEditor(const PropertyInfo& prop, Rect editorRec
     drawList.AddRect(swatchRect, theme.GetColor(ThemeToken::BorderPrimary));
 }
 
-bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
+bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& /*e*/) {
     if (!_target || !_typeDesc) return false;
 
     Rect bounds = GetContentBounds();
@@ -247,7 +247,7 @@ bool PropertyInspector::OnMouseDown(Vec2 pos, MouseButtonEvent& e) {
     return false;
 }
 
-bool PropertyInspector::OnMouseMove(Vec2 pos, MouseMoveEvent& e) {
+bool PropertyInspector::OnMouseMove(Vec2 pos, MouseMoveEvent& /*e*/) {
     if (_isDragging && _editingProperty >= 0) {
         auto& prop = _typeDesc->properties[_editingProperty];
         Rect bounds = GetContentBounds();
@@ -270,7 +270,7 @@ bool PropertyInspector::OnMouseMove(Vec2 pos, MouseMoveEvent& e) {
     return false;
 }
 
-bool PropertyInspector::OnMouseUp(Vec2 pos, MouseButtonEvent& e) {
+bool PropertyInspector::OnMouseUp(Vec2 /*pos*/, MouseButtonEvent& /*e*/) {
     _isDragging = false;
     _editingProperty = -1;
     return false;

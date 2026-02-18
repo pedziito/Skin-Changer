@@ -383,7 +383,7 @@ public:
     void OnThemeChange(std::function<void(ThemeID)> cb) { _onThemeChange = std::move(cb); }
 
     // Animated theme transition
-    Color GetAnimatedColor(ThemeToken token, f32 t) const {
+    Color GetAnimatedColor(ThemeToken token, f32 /*t*/) const {
         return GetColor(token); // Extend with interpolation between themes
     }
 
