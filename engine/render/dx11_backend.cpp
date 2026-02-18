@@ -128,6 +128,7 @@ void DX11Backend::Shutdown() {
 
 void DX11Backend::Resize(u32 width, u32 height) {
     if (width == 0 || height == 0) return;
+    if (!_swapChain) return;  // Not yet initialized
     _width = width;
     _height = height;
 
