@@ -1107,38 +1107,15 @@ static void UpdateInjectionFlow() {
 
         bool windowReady = (ed.result != nullptr);
 
-        // Need CS2 window AND at least 25 seconds (15s load + 10s buffer)
-        if (windowReady && g_injTimer > 25.0f) {
+        // Need CS2 window AND at least 20 seconds — then inject directly (no overlay)
+        if (windowReady && g_injTimer > 20.0f) {
             g_cs2Hwnd = ed.result;
-
-            // Save original loader position
             GetWindowRect(g_hwnd, &g_origWindowRect);
 
-            // Show transparent overlay centered on CS2 — no background,
-            // only the AC logo, progress bar & text float on top of CS2
-            int panelW = 400, panelH = 180;
-            RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
-            int cs2w = cr.right - cr.left;
-            int cs2h = cr.bottom - cr.top;
-            int ovX = cr.left + (cs2w - panelW) / 2;
-            int ovY = cr.top  + (cs2h - panelH) / 2;
-
-            // Make window layered for color-key transparency
-            // NOTE: Do NOT use WS_EX_TRANSPARENT — it prevents DX11 rendering
-            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
-            SetWindowLongA(g_hwnd, GWL_EXSTYLE, (exStyle | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT);
-            SetLayeredWindowAttributes(g_hwnd, RGB(1, 0, 1), 0, LWA_COLORKEY);
-            SetWindowRgn(g_hwnd, nullptr, TRUE); // Remove rounded region for overlay
-            SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, panelW, panelH, SWP_SHOWWINDOW);
-            g_width = panelW; g_height = panelH;
-            g_backend.Resize((u32)panelW, (u32)panelH);
-            SetForegroundWindow(g_hwnd);
-            Log("Overlay: transparent %dx%d centered on CS2", panelW, panelH);
-
             g_hasInjected = true;
-            g_injPhase = INJ_OVERLAY;
+            g_injPhase = INJ_INJECTING;
             g_injTimer = 0;
-            g_injProgress = 0;
+            Log("CS2 ready after 20s — injecting directly (no overlay)");
         } else if (g_injTimer > 90.0f) {
             // Timeout waiting for CS2 window
             g_toastMsg = "Timeout: CS2 hovedmenu ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
@@ -1147,21 +1124,6 @@ static void UpdateInjectionFlow() {
         }
         break;
     }
-
-    case INJ_OVERLAY:
-        // Beep once when overlay starts
-        if (g_injProgress == 0.0f && g_injTimer < 0.1f) {
-            Beep(800, 200);
-        }
-        // Transparent overlay: AC logo + progress bar floating on CS2
-        // Animate progress 0% → 100% over ~4 seconds, then inject
-        g_injProgress += g_dt * 25.0f; // ~4s to 100%
-        if (g_injProgress >= 100.0f) {
-            g_injProgress = 100.0f;
-            g_injPhase = INJ_INJECTING;
-            g_injTimer = 0;
-        }
-        break;
 
     case INJ_INJECTING: {
         // Actually inject the DLL
@@ -1191,9 +1153,9 @@ static void UpdateInjectionFlow() {
         CloseHandle(hFile);
 
         if (Inject(pid, dllPath.c_str())) {
-            g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
+            g_toastMsg = "Injected!"; g_toastCol = P::Green; g_injected = true;
             Log("Injection successful into PID %lu", pid);
-            Beep(1200, 150); // Success beep
+            Beep(1200, 200); // Success beep — the ONLY sound feedback
         } else {
             g_toastMsg = "Injection fejlede"; g_toastCol = P::Orange;
             Log("Injection FAILED into PID %lu (GetLastError=%lu)", pid, GetLastError());
@@ -1208,7 +1170,7 @@ static void UpdateInjectionFlow() {
             SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle);
         }
 
-        // Always transition to CS2 menu (788x638, starts hidden — toggle with Insert)
+        // Transition to CS2 menu — VISIBLE immediately after beep
         {
             int menuW = (int)(788 * g_dpiScale), menuH = (int)(638 * g_dpiScale);
             int mx, my;
@@ -1229,8 +1191,10 @@ static void UpdateInjectionFlow() {
             SetWindowRgn(g_hwnd, rgn2, TRUE);
             Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
         }
-        g_cs2MenuVisible = false;
-        ShowWindow(g_hwnd, SW_HIDE); // Start hidden — press Insert to show
+        // Auto-open menu right after beep
+        g_cs2MenuVisible = true;
+        g_menuOpenAnim = 0.0f; // Start animation from 0 → 1
+        ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
         g_injPhase = INJ_CS2_MENU;
         g_showPopup = false;
         g_injecting = false;
@@ -1238,49 +1202,6 @@ static void UpdateInjectionFlow() {
     }
 
     default: break;
-    }
-}
-
-// --- Draw injection overlay ---
-// No background — WS_EX_LAYERED + LWA_COLORKEY makes magenta(1,0,1) transparent
-// Only the logo, text, and progress bar are visible, floating on CS2
-static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
-    if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
-        // NO background — clear color (1,0,1) is the transparency key
-
-        // AC logo centered — fully transparent background, no backdrop
-        // Logo PNG has hard alpha edges (no semi-transparent pixels)
-        TextureHandle overlayLogo = (g_acLogo != INVALID_TEXTURE) ? g_acLogo :
-                                   (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
-        if (overlayLogo != INVALID_TEXTURE) {
-            f32 logoSz = 80;
-            f32 lx = (W - logoSz) * 0.5f;
-            f32 ly = 16;
-            dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
-                               overlayLogo, Color{255,255,255,255});
-        }
-
-        // Progress text — flat, clean, no shadow/outline
-        char progText[64];
-        snprintf(progText, 64, "Injecterer Inventory Changer (%.0f%%)", g_injProgress);
-        Vec2 pts = Measure(progText, g_fontSm);
-        f32 ptX = (W - pts.x) * 0.5f;
-        f32 ptY = 108;
-        Text(dl, ptX, ptY, Color{230, 220, 250, 255}, progText, g_fontSm);
-
-        // Progress bar — dark-to-light blue gradient matching the AC logo
-        f32 barW = W * 0.6f;
-        f32 barH = 6;
-        f32 barX = (W - barW) * 0.5f;
-        f32 barY = ptY + 22;
-        f32 fillW = barW * (g_injProgress / 100.0f);
-        if (fillW > 1.0f) {
-            // Gradient: dark navy → medium blue matching logo colors
-            Color darkNavy{13, 43, 107, 255};
-            Color medBlue{21, 101, 192, 255};
-            Color c1 = Mix(darkNavy, medBlue, g_injProgress / 100.0f);
-            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 3.0f, 8);
-        }
     }
 }
 
@@ -1478,9 +1399,7 @@ static int UIDropdown(DrawList& dl, u32 uid, f32 x, f32 y, f32 w, f32 h, f32 sc,
 }
 
 // ============================================================================
-// CS2 IN-GAME MENU — LunaR-style layout
-// Left sidebar with logo, nav items, user profile at bottom
-// Right content area: inventory → categories → weapons → skins
+// DRAW CS2 MENU — Complete in-game menu
 // ============================================================================
 static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
     f32 a = g_menuOpenAnim;
@@ -1498,205 +1417,117 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
     dl.AddFilledRoundRect(Rect{ox, oy, sW, sH},
         Color{14, 10, 26, ga}, 10*sc, 12);
 
-    // ===== LEFT SIDEBAR (LunaR-style) =====
-    f32 sbW = 195.0f * sc;  // sidebar width
-    f32 sbX = ox;
-    f32 sbY = oy;
-    f32 sbH = sH;
+    // ===== LEFT SIDEBAR =====
+    f32 sbW = 180.0f * sc;
+    f32 sbX = ox, sbY = oy, sbH = sH;
 
-    // Sidebar background (slightly lighter than main)
     dl.AddFilledRoundRect(Rect{sbX, sbY, sbW, sbH},
-        Color{20, 14, 35, ga}, 10*sc, 12);
-    // Right edge separator
+        Color{18, 13, 30, ga}, 10*sc, 12);
     dl.AddFilledRect(Rect{sbX + sbW - 1, sbY + 10*sc, 1, sbH - 20*sc},
-        Color{50, 35, 75, (u8)(ga * 0.5f)});
+        Color{50, 35, 75, (u8)(ga * 0.4f)});
 
-    // --- Logo at top ---
+    // Logo
     {
         TextureHandle logo = (g_acLogo != INVALID_TEXTURE) ? g_acLogo :
                               (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
-        f32 logoSz = 32.0f * sc;
-        f32 logoX = sbX + 14*sc;
-        f32 logoY = sbY + 14*sc;
-        if (logo != INVALID_TEXTURE) {
+        f32 logoSz = 28.0f * sc;
+        f32 logoX = sbX + 12*sc, logoY = sbY + 12*sc;
+        if (logo != INVALID_TEXTURE)
             dl.AddTexturedRect(Rect{logoX, logoY, logoSz, logoSz}, logo, Color{255,255,255,ga});
-        }
-        // App name next to logo
-        Text(dl, logoX + logoSz + 8*sc, logoY + (logoSz - Measure("AC", g_fontMd).y)*0.5f,
+        Text(dl, logoX + logoSz + 6*sc, logoY + (logoSz - Measure("AC", g_fontMd).y)*0.5f,
              Color{230, 220, 250, ga}, "AC", g_fontMd);
     }
 
-    // --- Navigation Items ---
-    f32 navStartY = sbY + 60*sc;
-    f32 navItemH = 34*sc;
-    f32 navGap = 3*sc;
-
-    // Section headers and items
-    struct NavItemDef {
-        const char* label;
-        int id;
-        bool isHeader;
-        void (*drawIcon)(DrawList&, f32, f32, f32, Color);
+    // Nav items
+    struct NavDef { const char* label; int id; void (*icon)(DrawList&,f32,f32,f32,Color); };
+    NavDef navItems[] = {
+        {"Inventory",       NAV_INVENTORY,      DrawEditIcon},
+        {"World",           NAV_WORLD,           DrawWorldIcon},
+        {"View",            NAV_VIEW,            DrawViewIcon},
+        {"Profile Changer", NAV_PROFILE_CHANGER, DrawProfileIcon},
+        {"Misc",            NAV_MISC,            DrawMiscIcon},
+        {"Configs",         NAV_CONFIG,          DrawConfigIcon},
+        {"Marketplace",     NAV_MARKETPLACE,     DrawMarketIcon},
     };
-    NavItemDef navItems[] = {
-        {"Features",          -1,                 true,  nullptr},
-        {"Inventory Changer", NAV_INVENTORY,      false, DrawEditIcon},
-        {"World",             NAV_WORLD,           false, DrawWorldIcon},
-        {"View",              NAV_VIEW,            false, DrawViewIcon},
-        {"Profile Changer",   NAV_PROFILE_CHANGER, false, DrawProfileIcon},
-        {"Misc",              -2,                 true,  nullptr},
-        {"Misc",              NAV_MISC,            false, DrawMiscIcon},
-        {"Configs",           NAV_CONFIG,          false, DrawConfigIcon},
-        {"Marketplace",       NAV_MARKETPLACE,     false, DrawMarketIcon},
-    };
-    int navCount = 9;
+    int navCount = 7;
 
-    f32 ny = navStartY;
+    f32 ny = sbY + 52*sc;
     for (int i = 0; i < navCount; i++) {
-        const auto& ni = navItems[i];
+        f32 navH = 32*sc;
+        bool active = (g_navItem == navItems[i].id);
+        u32 nid = Hash(navItems[i].label) + 7700;
+        bool nHov = Hit(sbX + 4*sc, ny, sbW - 8*sc, navH);
+        f32 nAn = Anim(nid, active ? 1.0f : (nHov ? 0.4f : 0.0f));
 
-        if (ni.isHeader) {
-            // Section header (small dimmed text)
-            Text(dl, sbX + 16*sc, ny + 2*sc, Color{90, 70, 130, ga}, ni.label, g_fontSm);
-            ny += 20*sc;
-            continue;
-        }
+        if (nAn > 0.01f)
+            dl.AddFilledRoundRect(Rect{sbX + 6*sc, ny, sbW - 12*sc, navH},
+                Color{140, 80, 200, (u8)(18 * nAn * a)}, 6*sc, 8);
 
-        // Nav item
-        bool active = (g_navItem == ni.id);
-        u32 nid = Hash(ni.label) + 7700 + i;
-        bool nHov = Hit(sbX + 4*sc, ny, sbW - 8*sc, navItemH);
-        f32 nAnim = Anim(nid, active ? 1.0f : (nHov ? 0.4f : 0.0f));
-
-        // Active/hover background
-        if (nAnim > 0.01f) {
-            dl.AddFilledRoundRect(Rect{sbX + 6*sc, ny, sbW - 12*sc, navItemH},
-                Color{140, 80, 200, (u8)(18 * nAnim * a)}, 6*sc, 8);
-        }
-
-        // Active left indicator bar
-        if (active) {
-            dl.AddFilledRoundRect(Rect{sbX + 2*sc, ny + 6*sc, 3*sc, navItemH - 12*sc},
+        if (active)
+            dl.AddFilledRoundRect(Rect{sbX + 2*sc, ny + 6*sc, 3*sc, navH - 12*sc},
                 Color{160, 110, 220, ga}, 1.5f, 4);
-        }
 
-        // Icon
-        Color ic = active ? Color{180, 140, 240, ga}
-                          : Color{110, 90, 145, (u8)(ga * (0.6f + 0.4f*nAnim))};
-        if (ni.drawIcon) {
-            ni.drawIcon(dl, sbX + 28*sc, ny + navItemH * 0.5f, 16*sc, ic);
-        }
+        Color ic = active ? Color{180,140,240,ga} : Color{110,90,145,(u8)(ga*(0.6f+0.4f*nAn))};
+        if (navItems[i].icon)
+            navItems[i].icon(dl, sbX + 24*sc, ny + navH*0.5f, 14*sc, ic);
 
-        // Label
-        Color lc = active ? Color{230, 220, 250, ga}
-                          : Color{140, 125, 170, (u8)(ga * (0.6f + 0.4f*nAnim))};
-        Vec2 ls = Measure(ni.label, g_font);
-        Text(dl, sbX + 46*sc, ny + (navItemH - ls.y)*0.5f, lc, ni.label, g_font);
+        Color lc = active ? Color{230,220,250,ga} : Color{140,125,170,(u8)(ga*(0.6f+0.4f*nAn))};
+        Text(dl, sbX + 42*sc, ny + (navH - Measure(navItems[i].label, g_fontSm).y)*0.5f,
+             lc, navItems[i].label, g_fontSm);
 
-        // Pink dot for "World" (like reference image)
-        if (ni.id == NAV_WORLD) {
-            Vec2 ls2 = Measure(ni.label, g_font);
-            dl.AddCircle(Vec2{sbX + 48*sc + ls2.x + 6*sc, ny + navItemH*0.5f - 2*sc},
-                        3.0f*sc, Color{255, 80, 120, ga}, 12);
-        }
-
-        // Click handler
         if (nHov && g_input.IsMousePressed(MouseButton::Left)) {
-            g_navItem = ni.id;
-            // Reset view when switching to inventory
-            if (ni.id == NAV_INVENTORY) {
-                g_invView = INV_VIEW_MAIN;
-            }
+            g_navItem = navItems[i].id;
+            if (navItems[i].id == NAV_INVENTORY) g_invView = INV_VIEW_MAIN;
         }
-
-        ny += navItemH + navGap;
+        ny += navH + 2*sc;
     }
 
-    // --- User Profile at bottom ---
+    // User at bottom
     {
-        f32 profY = sbY + sbH - 48*sc;
-        f32 profH = 36*sc;
-
-        // Avatar circle
-        f32 avSz = 26*sc;
-        f32 avX = sbX + 12*sc;
-        f32 avY = profY + (profH - avSz)*0.5f;
-
-        // Avatar background circle
-        dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
-            Color{60, 30, 100, ga}, avSz*0.5f, 10);
-        DrawProfileIcon(dl, avX + avSz*0.5f, avY + avSz*0.5f, avSz*0.7f,
-            Color{160, 130, 220, ga});
-
-        // Username
+        f32 profY = sbY + sbH - 40*sc;
         const char* uname = (strlen(g_loginUser) > 0) ? g_loginUser : "User";
-        char truncName[16];
-        strncpy(truncName, uname, 14); truncName[14] = '\0';
-        Text(dl, avX + avSz + 8*sc, profY + 4*sc,
-             Color{200, 185, 230, ga}, truncName, g_fontSm);
-
-        // UID line
-        char uidBuf[24];
-        snprintf(uidBuf, 24, "UID: %04d", (int)(Hash(uname) & 0xFFFF));
-        Text(dl, avX + avSz + 8*sc, profY + 18*sc,
-             Color{100, 85, 130, ga}, uidBuf, g_fontSm);
+        DrawProfileIcon(dl, sbX + 24*sc, profY + 12*sc, 16*sc, Color{160,130,220,ga});
+        Text(dl, sbX + 40*sc, profY + 4*sc, Color{200,185,230,ga}, uname, g_fontSm);
+        char uid[24]; snprintf(uid, 24, "UID: %04d", (int)(Hash(uname)&0xFFFF));
+        Text(dl, sbX + 40*sc, profY + 18*sc, Color{100,85,130,ga}, uid, g_fontSm);
     }
 
-    // ===== CONTENT AREA (right of sidebar) =====
+    // ===== CONTENT AREA =====
     f32 cX = ox + sbW + 6*sc;
     f32 cY = oy + 6*sc;
     f32 cW = sW - sbW - 12*sc;
     f32 cH = sH - 12*sc;
 
-    // =============================================================
-    // NAV: INVENTORY CHANGER
-    // =============================================================
+    // =================================================================
+    // INVENTORY CHANGER
+    // =================================================================
     if (g_navItem == NAV_INVENTORY) {
 
-        // ---------- MAIN VIEW: Inventory items + single "+" button ----------
         if (g_invView == INV_VIEW_MAIN) {
-
-            // Single "+" button (top-left, like reference image 1)
-            f32 plusW = 120*sc, plusH = 100*sc;
-            f32 plusX = cX, plusY = cY;
+            // "+" button
+            f32 cardW = 110*sc, cardH = 90*sc, gap = 8*sc;
+            int totalCols = (int)((cW + gap) / (cardW + gap));
+            if (totalCols < 2) totalCols = 2;
 
             u32 plusId = Hash("_inv_plus");
-            bool plusHov = Hit(plusX, plusY, plusW, plusH);
-            f32 plusAnim = Anim(plusId, plusHov ? 1.0f : 0.0f);
+            bool plusHov = Hit(cX, cY, cardW, cardH);
+            f32 plusAn = Anim(plusId, plusHov ? 1.0f : 0.0f);
 
-            // Plus button card
-            dl.AddFilledRoundRect(Rect{plusX, plusY, plusW, plusH},
+            dl.AddFilledRoundRect(Rect{cX, cY, cardW, cardH},
                 Color{26, 18, 44, ga}, 8*sc, 10);
-            // Border
-            Color plusBorderC = Color{70, 40, 110, (u8)(ga * (0.4f + 0.4f*plusAnim))};
-            dl.AddFilledRoundRect(Rect{plusX-1, plusY-1, plusW+2, plusH+2}, plusBorderC, 9*sc, 10);
-            dl.AddFilledRoundRect(Rect{plusX, plusY, plusW, plusH},
-                Color{26, 18, 44, ga}, 8*sc, 10);
-
-            // "+" symbol
-            DrawPlusIcon(dl, plusX + plusW*0.5f, plusY + plusH*0.5f, 28*sc,
-                Color{120, 80, 200, (u8)(ga * (0.5f + 0.5f*plusAnim))});
+            DrawPlusIcon(dl, cX + cardW*0.5f, cY + cardH*0.5f, 28*sc,
+                Color{120, 80, 200, (u8)(ga*(0.5f+0.5f*plusAn))});
 
             if (plusHov && g_input.IsMousePressed(MouseButton::Left)) {
                 g_invView = INV_VIEW_CATEGORIES;
                 g_selectedCategory = -1;
             }
 
-            // --- Show added inventory items to the right of "+" ---
-            f32 cardW = plusW, cardH = plusH;
-            f32 gap = 8*sc;
-            int totalCols = (int)((cW + gap) / (cardW + gap));
-            if (totalCols < 2) totalCols = 2;
-
-            int removeIdx = -1; // track item to remove
-
+            int removeIdx = -1;
             for (int ii = 0; ii < (int)g_invItems.size(); ii++) {
-                // Item index (slot 0 is the + button, items start at slot 1)
                 int slot = ii + 1;
-                int col = slot % totalCols;
-                int row = slot / totalCols;
-                f32 ix = cX + col * (cardW + gap);
-                f32 iy = cY + row * (cardH + gap);
+                int col = slot % totalCols, row = slot / totalCols;
+                f32 ix = cX + col*(cardW+gap), iy = cY + row*(cardH+gap);
                 if (iy + cardH > cY + cH) break;
 
                 const auto& item = g_invItems[ii];
@@ -1706,137 +1537,98 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 const auto& sk = wpn.skins[item.skinIdx];
                 Color rc = RarityColor(sk.rarity);
 
-                u32 iid = Hash("inv_item") + ii * 37;
+                u32 iid = Hash("inv_item") + ii*37;
                 bool iHov = Hit(ix, iy, cardW, cardH);
-                f32 iAnim = Anim(iid, iHov ? 1.0f : 0.0f);
+                f32 iAn = Anim(iid, iHov ? 1.0f : 0.0f);
 
-                // Card background with rarity tint
                 dl.AddFilledRoundRect(Rect{ix, iy, cardW, cardH},
                     Color{(u8)(rc.r/8), (u8)(rc.g/8), (u8)(rc.b/8), ga}, 8*sc, 10);
-                // Rarity border bottom
-                dl.AddFilledRoundRect(Rect{ix, iy + cardH - 4*sc, cardW, 4*sc},
+                dl.AddFilledRoundRect(Rect{ix, iy + cardH - 3*sc, cardW, 3*sc},
                     Color{rc.r, rc.g, rc.b, (u8)(ga*0.5f)}, 2*sc, 4);
 
-                // Try loading skin image
                 TextureHandle skinTex = LoadSkinImage(wpn.name, sk.name);
                 if (skinTex != INVALID_TEXTURE) {
-                    f32 imgH = cardH - 24*sc;
-                    f32 imgW = imgH * 1.33f; // 4:3 aspect
+                    f32 imgH = cardH - 22*sc, imgW = imgH * 1.33f;
                     if (imgW > cardW - 8*sc) imgW = cardW - 8*sc;
-                    f32 imgX = ix + (cardW - imgW)*0.5f;
-                    f32 imgY = iy + 4*sc;
-                    dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH},
+                    dl.AddTexturedRect(Rect{ix + (cardW-imgW)*0.5f, iy + 3*sc, imgW, imgH},
                         skinTex, Color{255,255,255,ga});
                 }
 
-                // Weapon + skin name at bottom
                 Vec2 wns = Measure(wpn.name, g_fontSm);
-                Text(dl, ix + (cardW-wns.x)*0.5f, iy + cardH - 22*sc,
-                     Color{200, 185, 230, ga}, wpn.name, g_fontSm);
+                Text(dl, ix + (cardW-wns.x)*0.5f, iy + cardH - 20*sc,
+                     Color{200,185,230,ga}, wpn.name, g_fontSm);
                 Vec2 sns = Measure(sk.name, g_fontSm);
-                Text(dl, ix + (cardW-sns.x)*0.5f, iy + cardH - 10*sc,
+                Text(dl, ix + (cardW-sns.x)*0.5f, iy + cardH - 9*sc,
                      Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
 
-                // Hover overlay + red X to remove
-                if (iAnim > 0.01f) {
-                    dl.AddFilledRoundRect(Rect{ix, iy, cardW, cardH},
-                        Color{200,60,60,(u8)(15*iAnim*a)}, 8*sc, 10);
-                    // X icon top-right corner
-                    f32 xSz = 8*sc;
-                    f32 xCx = ix + cardW - 14*sc;
-                    f32 xCy = iy + 10*sc;
-                    dl.AddLine(Vec2{xCx-xSz*0.5f, xCy-xSz*0.5f},
-                               Vec2{xCx+xSz*0.5f, xCy+xSz*0.5f},
-                               Color{255,100,100,(u8)(ga*iAnim)}, 2.0f);
-                    dl.AddLine(Vec2{xCx+xSz*0.5f, xCy-xSz*0.5f},
-                               Vec2{xCx-xSz*0.5f, xCy+xSz*0.5f},
-                               Color{255,100,100,(u8)(ga*iAnim)}, 2.0f);
+                if (iAn > 0.01f) {
+                    f32 xSz = 7*sc, xCx = ix + cardW - 12*sc, xCy = iy + 10*sc;
+                    dl.AddLine(Vec2{xCx-xSz*0.5f,xCy-xSz*0.5f}, Vec2{xCx+xSz*0.5f,xCy+xSz*0.5f},
+                        Color{255,100,100,(u8)(ga*iAn)}, 2.0f);
+                    dl.AddLine(Vec2{xCx+xSz*0.5f,xCy-xSz*0.5f}, Vec2{xCx-xSz*0.5f,xCy+xSz*0.5f},
+                        Color{255,100,100,(u8)(ga*iAn)}, 2.0f);
                 }
-
-                // Click to remove
-                if (iHov && g_input.IsMousePressed(MouseButton::Left))
-                    removeIdx = ii;
+                if (iHov && g_input.IsMousePressed(MouseButton::Left)) removeIdx = ii;
             }
-
-            // Process removal after loop (avoids iterator invalidation)
             if (removeIdx >= 0 && removeIdx < (int)g_invItems.size()) {
                 g_invItems.erase(g_invItems.begin() + removeIdx);
-                WriteEquippedConfig(); // update DLL config
+                WriteEquippedConfig();
             }
 
-        // ---------- CATEGORIES VIEW: grid of categories (Pistol, Rifle, etc.) ----------
         } else if (g_invView == INV_VIEW_CATEGORIES) {
-
-            // "< BACK" button
+            // Back button
             {
-                f32 bx = cX, by = cY, bw = 80*sc, bh = 26*sc;
+                f32 bw = 70*sc, bh = 24*sc;
                 u32 bid = Hash("_cat_back");
-                bool bHov = Hit(bx, by, bw, bh);
-                f32 ba = Anim(bid, bHov ? 1.0f : 0.0f);
-                dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
-                    Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
-                DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
+                bool bH2 = Hit(cX, cY, bw, bh);
+                f32 ba = Anim(bid, bH2 ? 1.0f : 0.0f);
+                dl.AddFilledRoundRect(Rect{cX, cY, bw, bh},
+                    Color{255,255,255,(u8)(5*a+10*ba*a)}, 4*sc, 6);
+                DrawBackArrow(dl, cX + 12*sc, cY + bh*0.5f, 10*sc,
                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
-                Vec2 bs = Measure("BACK", g_fontSm);
-                Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
+                Text(dl, cX + 24*sc, cY + (bh-Measure("BACK",g_fontSm).y)*0.5f,
                      Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
-                if (bHov && g_input.IsMousePressed(MouseButton::Left))
-                    g_invView = INV_VIEW_MAIN;
+                if (bH2 && g_input.IsMousePressed(MouseButton::Left)) g_invView = INV_VIEW_MAIN;
             }
 
-            // Category grid — 4 columns like reference image 2
-            f32 gridY = cY + 34*sc;
-            int cols = 4;
+            // Category grid
+            f32 gridY = cY + 30*sc;
+            int cols = 3;
             f32 pad = 8*sc;
             f32 cellW = (cW - (cols-1)*pad) / cols;
-            f32 cellH = cellW * 0.7f;  // shorter aspect ratio
+            f32 cellH = cellW * 0.6f;
 
-            // Categories to display (matching reference images)
-            const char* catLabels[] = {"Pistol", "Rifle", "Heavy", "SMG", "Knife", "Glove"};
-            const char* catKeys[] = {"Pistols", "Rifles", "Heavy", "SMGs", "Knives", "Gloves"};
-            int catCount = 6;
+            for (int ci = 0; ci < g_categoryCount; ci++) {
+                int col = ci % cols, row = ci / cols;
+                f32 cx2 = cX + col*(cellW+pad), cy2 = gridY + row*(cellH+pad);
 
-            for (int ci = 0; ci < catCount; ci++) {
-                int col = ci % cols;
-                int row = ci / cols;
-                f32 cx2 = cX + col * (cellW + pad);
-                f32 cy2 = gridY + row * (cellH + pad);
-
-                u32 cid = Hash(catLabels[ci]) + 5500;
+                u32 cid = Hash(g_categories[ci].name) + 5500;
                 bool cHov = Hit(cx2, cy2, cellW, cellH);
-                f32 cAnim = Anim(cid, cHov ? 1.0f : 0.0f);
+                f32 cAn = Anim(cid, cHov ? 1.0f : 0.0f);
 
-                // Card background
                 dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
                     Color{26, 18, 44, ga}, 8*sc, 10);
-
-                // Hover glow
-                if (cAnim > 0.01f) {
+                if (cAn > 0.01f)
                     dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{140,80,200,(u8)(10*cAnim*a)}, 8*sc, 10);
-                }
+                        Color{140,80,200,(u8)(10*cAn*a)}, 8*sc, 10);
 
-                // Category label at bottom
-                Vec2 ls = Measure(catLabels[ci], g_font);
-                Text(dl, cx2 + (cellW-ls.x)*0.5f, cy2 + cellH - ls.y - 6*sc,
-                     Color{(u8)(160+50*cAnim), (u8)(170+40*cAnim), 220, ga},
-                     catLabels[ci], g_font);
-
-                // Try to load first weapon image from this category as preview
+                // Preview image
                 for (int wi = 0; wi < g_weaponDBCount; wi++) {
-                    if (CatMatch(g_weaponDB[wi].category, catKeys[ci]) && g_weaponDB[wi].skinCount > 0) {
+                    if (CatMatch(g_weaponDB[wi].category, g_categories[ci].filterKey) && g_weaponDB[wi].skinCount > 0) {
                         TextureHandle tex = LoadSkinImage(g_weaponDB[wi].name, g_weaponDB[wi].skins[0].name);
                         if (tex != INVALID_TEXTURE) {
-                            f32 imgH = cellH - 28*sc;
-                            f32 imgW = imgH * 1.33f;
-                            if (imgW > cellW - 12*sc) { imgW = cellW - 12*sc; imgH = imgW / 1.33f; }
-                            f32 imgX = cx2 + (cellW - imgW)*0.5f;
-                            f32 imgY = cy2 + 6*sc;
-                            dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH}, tex, Color{255,255,255,ga});
+                            f32 imgH = cellH - 26*sc, imgW = imgH * 1.33f;
+                            if (imgW > cellW - 10*sc) { imgW = cellW - 10*sc; imgH = imgW / 1.33f; }
+                            dl.AddTexturedRect(Rect{cx2+(cellW-imgW)*0.5f, cy2+4*sc, imgW, imgH},
+                                tex, Color{255,255,255,ga});
                         }
                         break;
                     }
                 }
+
+                Vec2 ls = Measure(g_categories[ci].name, g_font);
+                Text(dl, cx2 + (cellW-ls.x)*0.5f, cy2 + cellH - ls.y - 4*sc,
+                     Color{(u8)(160+50*cAn),(u8)(170+40*cAn),220,ga}, g_categories[ci].name, g_font);
 
                 if (cHov && g_input.IsMousePressed(MouseButton::Left)) {
                     g_selectedCategory = ci;
@@ -1845,717 +1637,411 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 }
             }
 
-        // ---------- WEAPONS VIEW: grid of weapons in selected category ----------
         } else if (g_invView == INV_VIEW_WEAPONS && g_selectedCategory >= 0) {
+            const char* catKey = g_categories[g_selectedCategory].filterKey;
 
-            const char* catKeys[] = {"Pistols", "Rifles", "Heavy", "SMGs", "Knives", "Gloves"};
-            const char* catKey = catKeys[g_selectedCategory];
-
-            // "< BACK" + search placeholder
+            // Back button
             {
-                f32 bx = cX, by = cY, bw = 80*sc, bh = 26*sc;
-                u32 bid = Hash("_wpn_back2");
-                bool bHov = Hit(bx, by, bw, bh);
-                f32 ba = Anim(bid, bHov ? 1.0f : 0.0f);
-                dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
-                    Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
-                DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
+                f32 bw = 70*sc, bh = 24*sc;
+                u32 bid = Hash("_wpn_back");
+                bool bH2 = Hit(cX, cY, bw, bh);
+                f32 ba = Anim(bid, bH2 ? 1.0f : 0.0f);
+                dl.AddFilledRoundRect(Rect{cX, cY, bw, bh},
+                    Color{255,255,255,(u8)(5*a+10*ba*a)}, 4*sc, 6);
+                DrawBackArrow(dl, cX + 12*sc, cY + bh*0.5f, 10*sc,
                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
-                Vec2 bs = Measure("BACK", g_fontSm);
-                Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
+                Text(dl, cX + 24*sc, cY + (bh-Measure("BACK",g_fontSm).y)*0.5f,
                      Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
-                if (bHov && g_input.IsMousePressed(MouseButton::Left))
-                    g_invView = INV_VIEW_CATEGORIES;
+                if (bH2 && g_input.IsMousePressed(MouseButton::Left)) g_invView = INV_VIEW_CATEGORIES;
             }
 
-            // Weapon grid — 4 columns, scrollable
-            f32 gridY = cY + 34*sc;
-            f32 gridH = cH - 40*sc;
+            // Weapon grid
+            f32 gridY = cY + 30*sc, gridH = cH - 36*sc;
             int cols = 4;
             f32 pad = 8*sc;
             f32 cellW = (cW - (cols-1)*pad) / cols;
-            f32 cellH = cellW * 0.7f;
+            f32 cellH = cellW * 0.65f;
 
-            // Collect weapons in this category
-            int wpnIndices[64];
-            int wpnCount = 0;
-            for (int wi = 0; wi < g_weaponDBCount && wpnCount < 64; wi++) {
-                if (CatMatch(g_weaponDB[wi].category, catKey))
-                    wpnIndices[wpnCount++] = wi;
-            }
+            int widx = 0;
+            for (int wi = 0; wi < g_weaponDBCount; wi++) {
+                if (!CatMatch(g_weaponDB[wi].category, catKey)) continue;
 
-            for (int i = 0; i < wpnCount; i++) {
-                int vi = i - g_weaponScrollY;
-                if (vi < 0) continue;
+                int col = widx % cols, row = widx / cols;
+                f32 wx = cX + col*(cellW+pad), wy = gridY + row*(cellH+pad);
+                if (wy + cellH > cY + cH) break;
 
-                int col = vi % cols;
-                int row = vi / cols;
-                f32 cx2 = cX + col * (cellW + pad);
-                f32 cy2 = gridY + row * (cellH + pad);
-                if (cy2 + cellH > gridY + gridH) break;
+                u32 wid = Hash(g_weaponDB[wi].name) + 6600;
+                bool wHov = Hit(wx, wy, cellW, cellH);
+                f32 wAn = Anim(wid, wHov ? 1.0f : 0.0f);
 
-                int wi = wpnIndices[i];
-                const auto& wpn = g_weaponDB[wi];
-
-                u32 wid = Hash(wpn.name) + 6600;
-                bool wHov = Hit(cx2, cy2, cellW, cellH);
-                f32 wAnim = Anim(wid, wHov ? 1.0f : 0.0f);
-
-                // Card
-                dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
+                dl.AddFilledRoundRect(Rect{wx, wy, cellW, cellH},
                     Color{26, 18, 44, ga}, 8*sc, 10);
-                if (wAnim > 0.01f) {
-                    dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{140,80,200,(u8)(10*wAnim*a)}, 8*sc, 10);
-                }
+                if (wAn > 0.01f)
+                    dl.AddFilledRoundRect(Rect{wx, wy, cellW, cellH},
+                        Color{140,80,200,(u8)(10*wAn*a)}, 8*sc, 10);
 
-                // Try loading first skin image as preview
-                if (wpn.skinCount > 0) {
-                    TextureHandle tex = LoadSkinImage(wpn.name, wpn.skins[0].name);
+                if (g_weaponDB[wi].skinCount > 0) {
+                    TextureHandle tex = LoadSkinImage(g_weaponDB[wi].name, g_weaponDB[wi].skins[0].name);
                     if (tex != INVALID_TEXTURE) {
-                        f32 imgH = cellH - 28*sc;
-                        f32 imgW = imgH * 1.33f;
-                        if (imgW > cellW - 12*sc) { imgW = cellW - 12*sc; imgH = imgW / 1.33f; }
-                        f32 imgX = cx2 + (cellW - imgW)*0.5f;
-                        f32 imgY = cy2 + 6*sc;
-                        dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH}, tex, Color{255,255,255,ga});
+                        f32 imgH = cellH - 22*sc, imgW = imgH * 1.33f;
+                        if (imgW > cellW - 8*sc) { imgW = cellW - 8*sc; imgH = imgW / 1.33f; }
+                        dl.AddTexturedRect(Rect{wx+(cellW-imgW)*0.5f, wy+3*sc, imgW, imgH},
+                            tex, Color{255,255,255,ga});
                     }
                 }
 
-                // Weapon name at bottom
-                Vec2 wns = Measure(wpn.name, g_fontSm);
-                Text(dl, cx2 + (cellW-wns.x)*0.5f, cy2 + cellH - wns.y - 6*sc,
-                     Color{(u8)(170+50*wAnim), (u8)(180+40*wAnim), 230, ga},
-                     wpn.name, g_fontSm);
+                Vec2 ns = Measure(g_weaponDB[wi].name, g_fontSm);
+                Text(dl, wx + (cellW-ns.x)*0.5f, wy + cellH - ns.y - 3*sc,
+                     Color{200,185,230,ga}, g_weaponDB[wi].name, g_fontSm);
 
                 if (wHov && g_input.IsMousePressed(MouseButton::Left)) {
                     g_selectedWeapon = wi;
+                    g_invView = INV_VIEW_SKINS;
                     g_selectedSkin = -1;
                     g_skinScrollY = 0;
-                    g_invView = INV_VIEW_SKINS;
                 }
+                widx++;
             }
 
-            // Scroll
-            f32 wd = g_input.ScrollDelta();
-            if (wd != 0.0f && Hit(cX, gridY, cW, gridH)) {
-                g_weaponScrollY -= (int)(wd * cols);
-                if (g_weaponScrollY < 0) g_weaponScrollY = 0;
-                int maxS = wpnCount - (int)(gridH / (cellH+pad)) * cols;
-                if (maxS < 0) maxS = 0;
-                if (g_weaponScrollY > maxS) g_weaponScrollY = maxS;
-            }
-
-        // ---------- SKINS VIEW: grid of skins + detail panel ----------
-        } else if (g_invView == INV_VIEW_SKINS && g_selectedWeapon >= 0) {
-
+        } else if (g_invView == INV_VIEW_SKINS && g_selectedWeapon >= 0 && g_selectedWeapon < g_weaponDBCount) {
             const auto& wpn = g_weaponDB[g_selectedWeapon];
 
-            // "< BACK"
+            // Back + weapon name header
             {
-                f32 bx = cX, by = cY, bw = 80*sc, bh = 26*sc;
-                u32 bid = Hash("_skin_back2");
-                bool bHov = Hit(bx, by, bw, bh);
-                f32 ba = Anim(bid, bHov ? 1.0f : 0.0f);
-                dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
-                    Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
-                DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
+                f32 bw = 70*sc, bh = 24*sc;
+                u32 bid = Hash("_sk_back");
+                bool bH2 = Hit(cX, cY, bw, bh);
+                f32 ba = Anim(bid, bH2 ? 1.0f : 0.0f);
+                dl.AddFilledRoundRect(Rect{cX, cY, bw, bh},
+                    Color{255,255,255,(u8)(5*a+10*ba*a)}, 4*sc, 6);
+                DrawBackArrow(dl, cX + 12*sc, cY + bh*0.5f, 10*sc,
                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
-                Vec2 bs = Measure("BACK", g_fontSm);
-                Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
+                Text(dl, cX + 24*sc, cY + (bh-Measure("BACK",g_fontSm).y)*0.5f,
                      Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
-                if (bHov && g_input.IsMousePressed(MouseButton::Left))
-                    g_invView = INV_VIEW_WEAPONS;
+                if (bH2 && g_input.IsMousePressed(MouseButton::Left)) g_invView = INV_VIEW_WEAPONS;
             }
 
-            // Layout: skins grid on left (70%), detail panel on right (30%)
-            f32 detailW = 180*sc;
-            f32 skinAreaW = cW - detailW - 8*sc;
+            Text(dl, cX + 80*sc, cY + 3*sc, Color{230,220,250,ga}, wpn.name, g_font);
 
-            // Skin grid — 4 columns
-            f32 gridY = cY + 34*sc;
-            f32 gridH = cH - 40*sc;
-            int cols = 4;
+            // Skin grid (left 60%) + detail panel (right 40%)
+            f32 gridY = cY + 30*sc;
+            f32 detailW = cW * 0.38f;
+            f32 gridW = cW - detailW - 8*sc;
+            f32 gridH = cH - 36*sc;
+
+            int cols = 3;
             f32 pad = 6*sc;
-            f32 cellW = (skinAreaW - (cols-1)*pad) / cols;
-            f32 cellH = cellW * 0.75f;
+            f32 cellW = (gridW - (cols-1)*pad) / cols;
+            f32 cellH = 60*sc;
 
             for (int si = 0; si < wpn.skinCount; si++) {
-                int vi = si - g_skinScrollY;
-                if (vi < 0) continue;
-
-                int col = vi % cols;
-                int row = vi / cols;
-                f32 cx2 = cX + col * (cellW + pad);
-                f32 cy2 = gridY + row * (cellH + pad);
-                if (cy2 + cellH > gridY + gridH) break;
-
                 const auto& sk = wpn.skins[si];
-                bool isSel = (g_selectedSkin == si);
+                int col = si % cols, row = si / cols;
+                f32 sx = cX + col*(cellW+pad);
+                f32 sy2 = gridY + row*(cellH+pad);
+                if (sy2 + cellH > cY + cH) break;
+
+                bool selected = (g_selectedSkin == si);
                 Color rc = RarityColor(sk.rarity);
 
-                u32 sid = Hash(sk.name) + 3300 + g_selectedWeapon * 100;
-                bool sHov = Hit(cx2, cy2, cellW, cellH);
-                f32 sAnim = Anim(sid, isSel ? 1.0f : (sHov ? 0.6f : 0.0f));
+                u32 sid = Hash(sk.name) + g_selectedWeapon * 100 + si;
+                bool sHov = Hit(sx, sy2, cellW, cellH);
+                f32 sAn = Anim(sid, selected ? 0.8f : (sHov ? 0.5f : 0.0f));
 
-                // Card with rarity tint
-                Color cardBg = isSel
-                    ? Color{(u8)(rc.r/5), (u8)(rc.g/5), (u8)(rc.b/5), ga}
-                    : Color{26, 18, 44, ga};
-                dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH}, cardBg, 6*sc, 8);
+                dl.AddFilledRoundRect(Rect{sx, sy2, cellW, cellH},
+                    Color{(u8)(20+8*sAn), (u8)(14+6*sAn), (u8)(38+10*sAn), ga}, 6*sc, 8);
+                dl.AddFilledRect(Rect{sx, sy2, cellW, 2*sc},
+                    Color{rc.r, rc.g, rc.b, (u8)(ga*0.6f)});
 
-                // Selected border
-                if (isSel) {
-                    dl.AddFilledRoundRect(Rect{cx2-1, cy2-1, cellW+2, cellH+2},
-                        Color{rc.r, rc.g, rc.b, (u8)(ga*0.5f)}, 7*sc, 8);
-                    dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH}, cardBg, 6*sc, 8);
+                if (selected)
+                    dl.AddFilledRoundRect(Rect{sx-1, sy2-1, cellW+2, cellH+2},
+                        Color{160,110,220,(u8)(ga*0.3f)}, 7*sc, 8);
+
+                TextureHandle skinTex = LoadSkinImage(wpn.name, sk.name);
+                if (skinTex != INVALID_TEXTURE) {
+                    f32 imgH = cellH - 18*sc, imgW = imgH * 1.33f;
+                    if (imgW > cellW - 6*sc) { imgW = cellW - 6*sc; imgH = imgW / 1.33f; }
+                    dl.AddTexturedRect(Rect{sx+(cellW-imgW)*0.5f, sy2+2*sc, imgW, imgH},
+                        skinTex, Color{255,255,255,ga});
                 }
 
-                // Hover glow
-                if (sAnim > 0.01f && !isSel) {
-                    dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{140,80,200,(u8)(8*sAnim*a)}, 6*sc, 8);
-                }
+                // Truncated skin name
+                char dn[20]; strncpy(dn, sk.name, 17); dn[17] = '\0';
+                if (strlen(sk.name) > 17) { dn[15] = '.'; dn[16] = '.'; dn[17] = '\0'; }
+                Vec2 ns2 = Measure(dn, g_fontSm);
+                Text(dl, sx + (cellW-ns2.x)*0.5f, sy2 + cellH - ns2.y - 2*sc,
+                     Color{rc.r, rc.g, rc.b, ga}, dn, g_fontSm);
 
-                // Skin image
-                TextureHandle tex = LoadSkinImage(wpn.name, sk.name);
-                if (tex != INVALID_TEXTURE) {
-                    f32 imgH = cellH - 22*sc;
-                    f32 imgW = imgH * 1.33f;
-                    if (imgW > cellW - 8*sc) { imgW = cellW - 8*sc; imgH = imgW / 1.33f; }
-                    f32 imgX = cx2 + (cellW - imgW)*0.5f;
-                    f32 imgY = cy2 + 3*sc;
-                    dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH}, tex, Color{255,255,255,ga});
-                }
-
-                // Weapon name + skin name at bottom
-                char fullName[64];
-                snprintf(fullName, 64, "%s", wpn.name);
-                Vec2 wns = Measure(fullName, g_fontSm);
-                f32 textY = cy2 + cellH - 20*sc;
-                if (cellH > 80*sc) {
-                    Text(dl, cx2 + 4*sc, textY, Color{180,165,215,ga}, fullName, g_fontSm);
-                    Text(dl, cx2 + 4*sc, textY + 10*sc, Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
-                } else {
-                    Text(dl, cx2 + 4*sc, textY + 5*sc, Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
-                }
-
-                if (sHov && g_input.IsMousePressed(MouseButton::Left))
+                if (sHov && g_input.IsMousePressed(MouseButton::Left)) {
                     g_selectedSkin = si;
+                    g_detailWear = 0.0f;
+                    g_detailStatTrak = false;
+                }
             }
 
-            // Scroll
-            f32 sd = g_input.ScrollDelta();
-            if (sd != 0.0f && Hit(cX, gridY, skinAreaW, gridH)) {
-                g_skinScrollY -= (int)(sd * cols);
-                if (g_skinScrollY < 0) g_skinScrollY = 0;
-                int maxS = wpn.skinCount - (int)(gridH / (cellH+pad)) * cols;
-                if (maxS < 0) maxS = 0;
-                if (g_skinScrollY > maxS) g_skinScrollY = maxS;
-            }
-
-            // ===== DETAIL PANEL (right side) =====
-            f32 dpX = cX + skinAreaW + 8*sc;
+            // Detail panel on the right
+            f32 dpX = cX + gridW + 8*sc;
             f32 dpY = gridY;
-            f32 dpW = detailW;
             f32 dpH = gridH;
 
-            // Panel background
-            dl.AddFilledRoundRect(Rect{dpX, dpY, dpW, dpH},
+            dl.AddFilledRoundRect(Rect{dpX, dpY, detailW, dpH},
                 Color{22, 16, 38, ga}, 8*sc, 10);
 
             if (g_selectedSkin >= 0 && g_selectedSkin < wpn.skinCount) {
                 const auto& sk = wpn.skins[g_selectedSkin];
                 Color rc = RarityColor(sk.rarity);
 
-                // Preview image
-                TextureHandle tex = LoadSkinImage(wpn.name, sk.name);
-                if (tex != INVALID_TEXTURE) {
-                    f32 imgW = dpW - 16*sc;
-                    f32 imgH = imgW * 0.75f;
-                    f32 imgX = dpX + 8*sc;
-                    f32 imgY = dpY + 8*sc;
-                    dl.AddTexturedRect(Rect{imgX, imgY, imgW, imgH}, tex, Color{255,255,255,ga});
+                // Skin preview image
+                TextureHandle skinTex = LoadSkinImage(wpn.name, sk.name);
+                if (skinTex != INVALID_TEXTURE) {
+                    f32 imgW = detailW - 16*sc, imgH = imgW * 0.75f;
+                    dl.AddTexturedRect(Rect{dpX + 8*sc, dpY + 8*sc, imgW, imgH},
+                        skinTex, Color{255,255,255,ga});
                 }
 
-                f32 infoY = dpY + dpW * 0.75f + 4*sc;
+                f32 infoY = dpY + (detailW - 16*sc)*0.75f + 16*sc;
 
-                // Skin name
-                Vec2 sns = Measure(sk.name, g_font);
-                Text(dl, dpX + (dpW-sns.x)*0.5f, infoY,
-                     Color{rc.r, rc.g, rc.b, ga}, sk.name, g_font);
-                infoY += sns.y + 4*sc;
+                // Weapon + skin name
+                Text(dl, dpX + 10*sc, infoY, Color{230,220,250,ga}, wpn.name, g_fontSm);
+                Text(dl, dpX + 10*sc, infoY + 14*sc, Color{rc.r,rc.g,rc.b,ga}, sk.name, g_font);
 
-                // Rarity
-                const char* rarName = RarityName(sk.rarity);
-                Vec2 rns = Measure(rarName, g_fontSm);
-                Text(dl, dpX + (dpW-rns.x)*0.5f, infoY,
-                     Color{rc.r, rc.g, rc.b, (u8)(ga*0.7f)}, rarName, g_fontSm);
-                infoY += rns.y + 12*sc;
+                // Rarity + paint kit
+                Text(dl, dpX + 10*sc, infoY + 34*sc, rc, RarityName(sk.rarity), g_fontSm);
+                char pkBuf[32]; snprintf(pkBuf, 32, "Paint Kit: %d", sk.paintKit);
+                Text(dl, dpX + 10*sc, infoY + 48*sc, Color{130,115,165,ga}, pkBuf, g_fontSm);
 
-                // --- Wear slider ---
+                // Wear slider
+                Text(dl, dpX + 10*sc, infoY + 68*sc, Color{170,155,200,ga}, "Wear", g_fontSm);
+                char wearBuf[16]; snprintf(wearBuf, 16, "%.4f", g_detailWear);
+                Vec2 ws = Measure(wearBuf, g_fontSm);
+                Text(dl, dpX + detailW - ws.x - 10*sc, infoY + 68*sc, Color{180,140,240,ga}, wearBuf, g_fontSm);
+                // Wear slider bar
                 {
-                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "Wear", g_fontSm);
-                    char wearBuf[16];
-                    snprintf(wearBuf, 16, "%.0f%%", g_detailWear * 100.0f);
-                    Vec2 ws = Measure(wearBuf, g_fontSm);
-                    Text(dl, dpX + dpW - ws.x - 10*sc, infoY, Color{160,145,190,ga}, wearBuf, g_fontSm);
-                    infoY += 14*sc;
-
-                    // Slider track
-                    f32 slX = dpX + 10*sc;
-                    f32 slW = dpW - 20*sc;
-                    f32 slH = 6*sc;
-                    dl.AddFilledRoundRect(Rect{slX, infoY, slW, slH},
-                        Color{38, 28, 58, ga}, 3*sc, 6);
-                    // Filled portion
+                    f32 slX = dpX + 10*sc, slY = infoY + 82*sc;
+                    f32 slW = detailW - 20*sc, slH2 = 6*sc;
                     f32 fillW = slW * g_detailWear;
-                    if (fillW > 1) {
-                        dl.AddFilledRoundRect(Rect{slX, infoY, fillW, slH},
-                            Color{160, 110, 220, ga}, 3*sc, 6);
-                    }
-                    // Handle
-                    dl.AddCircle(Vec2{slX + fillW, infoY + slH*0.5f}, 5*sc,
-                        Color{180, 140, 240, ga}, 10);
-
-                    // Drag interaction
-                    if (Hit(slX, infoY - 4*sc, slW, slH + 8*sc) && g_input.IsMousePressed(MouseButton::Left)) {
-                        f32 mx = g_input.MousePos().x;
-                        g_detailWear = (mx - slX) / slW;
-                        if (g_detailWear < 0) g_detailWear = 0;
-                        if (g_detailWear > 1) g_detailWear = 1;
-                    }
-                    infoY += slH + 12*sc;
-                }
-
-                // --- StatTrak toggle ---
-                {
-                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "StatTrak", g_fontSm);
-
-                    // Toggle switch
-                    f32 tX = dpX + dpW - 40*sc;
-                    f32 tW = 30*sc, tH = 16*sc;
-                    u32 tid = Hash("_stattrak_tog");
-                    bool tHov = Hit(tX, infoY - 2*sc, tW, tH + 4*sc);
-
-                    Color togBg = g_detailStatTrak ? Color{90, 50, 140, ga} : Color{45, 35, 65, ga};
-                    dl.AddFilledRoundRect(Rect{tX, infoY, tW, tH}, togBg, tH*0.5f, 10);
-                    // Knob
-                    f32 knobX = g_detailStatTrak ? tX + tW - tH + 2*sc : tX + 2*sc;
-                    dl.AddFilledRoundRect(Rect{knobX, infoY + 2*sc, tH - 4*sc, tH - 4*sc},
-                        Color{230, 220, 250, ga}, (tH-4*sc)*0.5f, 10);
-
-                    // Gear icon next to StatTrak
-                    DrawConfigIcon(dl, dpX + dpW - 50*sc, infoY + tH*0.5f, 10*sc,
-                        Color{110, 95, 140, ga});
-
-                    if (tHov && g_input.IsMousePressed(MouseButton::Left))
-                        g_detailStatTrak = !g_detailStatTrak;
-
-                    infoY += tH + 10*sc;
-                }
-
-                // --- Custom Name input ---
-                {
-                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "Custom Name", g_fontSm);
-                    infoY += 14*sc;
-
-                    f32 inputX = dpX + 8*sc;
-                    f32 inputW = dpW - 16*sc;
-                    f32 inputH = 24*sc;
-                    dl.AddFilledRoundRect(Rect{inputX, infoY, inputW, inputH},
-                        Color{18, 12, 32, ga}, 4*sc, 6);
-                    dl.AddFilledRoundRect(Rect{inputX, infoY, inputW, inputH},
-                        Color{45, 32, 65, ga}, 4*sc, 6);
-
-                    const char* dispName = strlen(g_detailCustomName) > 0
-                        ? g_detailCustomName : "";
-                    if (strlen(dispName) > 0) {
-                        Vec2 ns = Measure(dispName, g_fontSm);
-                        Text(dl, inputX + 6*sc, infoY + (inputH-ns.y)*0.5f,
-                             Color{200,185,230,ga}, dispName, g_fontSm);
-                    }
-                    infoY += inputH + 14*sc;
-                }
-
-                // --- ADD TO INVENTORY button ---
-                {
-                    f32 btnW = dpW - 16*sc;
-                    f32 btnH = 30*sc;
-                    f32 btnX = dpX + 8*sc;
-                    f32 btnY = infoY;
-
-                    u32 addId = Hash("_add_inv2");
-                    bool addHov = Hit(btnX, btnY, btnW, btnH);
-                    f32 addA = Anim(addId, addHov ? 1.0f : 0.0f);
-
-                    dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
-                        Color{120, 70, 180, (u8)((50 + 30*addA)*a)}, 6*sc, 8);
-                    TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
-                        Color{200, 180, 240, ga}, "Add To Inventory", g_fontSm);
-
-                    if (addHov && g_input.IsMousePressed(MouseButton::Left)) {
-                        // Add item to inventory
-                        InvItem item;
-                        item.weaponIdx = g_selectedWeapon;
-                        item.skinIdx = g_selectedSkin;
-                        item.wear = g_detailWear;
-                        item.statTrak = g_detailStatTrak;
-                        strncpy(item.customName, g_detailCustomName, 31);
-                        item.customName[31] = '\0';
-                        item.applied = false;
-                        g_invItems.push_back(item);
-
-                        // Write config so DLL applies skins
-                        WriteEquippedConfig();
-
-                        // Reset and go back to main
-                        g_invView = INV_VIEW_MAIN;
-                        g_detailWear = 0.0f;
-                        g_detailStatTrak = false;
-                        memset(g_detailCustomName, 0, 32);
-                    }
-                    infoY += btnH + 6*sc;
-                }
-
-                // --- INSTANT APPLY button ---
-                {
-                    f32 btnW = dpW - 16*sc;
-                    f32 btnH = 30*sc;
-                    f32 btnX = dpX + 8*sc;
-                    f32 btnY = infoY;
-
-                    u32 applyId = Hash("_instant_apply");
-                    bool applyHov = Hit(btnX, btnY, btnW, btnH);
-                    f32 applyA = Anim(applyId, applyHov ? 1.0f : 0.0f);
-
-                    dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
-                        Color{130, 90, 180, (u8)((35 + 25*applyA)*a)}, 6*sc, 8);
-                    TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
-                        Color{180, 160, 230, ga}, "Instant Apply", g_fontSm);
-
-                    if (applyHov && g_input.IsMousePressed(MouseButton::Left)) {
-                        // Add + mark as applied
-                        InvItem item;
-                        item.weaponIdx = g_selectedWeapon;
-                        item.skinIdx = g_selectedSkin;
-                        item.wear = g_detailWear;
-                        item.statTrak = g_detailStatTrak;
-                        strncpy(item.customName, g_detailCustomName, 31);
-                        item.customName[31] = '\0';
-                        item.applied = true;
-                        g_invItems.push_back(item);
-
-                        // Write config so DLL applies skins immediately
-                        WriteEquippedConfig();
-
-                        g_invView = INV_VIEW_MAIN;
-                        g_detailWear = 0.0f;
-                        g_detailStatTrak = false;
-                        memset(g_detailCustomName, 0, 32);
+                    dl.AddFilledRoundRect(Rect{slX, slY, slW, slH2}, Color{38,28,58,ga}, 3*sc, 6);
+                    if (fillW > 1)
+                        dl.AddFilledRoundRect(Rect{slX, slY, fillW, slH2}, Color{160,110,220,ga}, 3*sc, 6);
+                    if (Hit(slX, slY - 4*sc, slW, slH2 + 8*sc) && g_input.IsMousePressed(MouseButton::Left)) {
+                        f32 t = (g_input.MousePos().x - slX) / slW;
+                        if (t < 0) t = 0; if (t > 1) t = 1;
+                        g_detailWear = t;
                     }
                 }
 
+                // StatTrak toggle
+                g_detailStatTrak = UISettingToggle(dl, "StatTrak", g_detailStatTrak,
+                    dpX + 10*sc, infoY + 96*sc, detailW - 20*sc, sc, ga, Hash("_det_st"));
+
+                // ADD TO INVENTORY button
+                f32 btnW = detailW - 20*sc, btnH = 30*sc;
+                f32 btnX = dpX + 10*sc, btnY = dpY + dpH - btnH - 10*sc;
+                u32 addId = Hash("_add_inv");
+                bool addHov = Hit(btnX, btnY, btnW, btnH);
+                f32 addAn = Anim(addId, addHov ? 1.0f : 0.0f);
+
+                dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
+                    Color{90, 50, 160, (u8)((180 + 75*addAn)*a)}, 6*sc, 8);
+                TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
+                    Color{255,255,255,ga}, "ADD TO INVENTORY", g_fontSm);
+
+                if (addHov && g_input.IsMousePressed(MouseButton::Left)) {
+                    InvItem item;
+                    item.weaponIdx = g_selectedWeapon;
+                    item.skinIdx = g_selectedSkin;
+                    item.wear = g_detailWear;
+                    item.statTrak = g_detailStatTrak;
+                    item.customName[0] = '\0';
+                    item.applied = false;
+                    g_invItems.push_back(item);
+                    WriteEquippedConfig();
+                    g_toastMsg = "Added to inventory!"; g_toastCol = P::Green; g_toastTimer = 2;
+                }
             } else {
-                // No skin selected — prompt
-                Vec2 ps = Measure("Select a skin", g_font);
-                Text(dl, dpX + (dpW-ps.x)*0.5f, dpY + dpH*0.4f,
-                     Color{110, 95, 140, ga}, "Select a skin", g_font);
+                TextCenter(dl, Rect{dpX, dpY + dpH*0.4f, detailW, 20*sc},
+                    Color{100,85,130,ga}, "Select a skin", g_fontSm);
             }
         }
 
-    // =============================================================
-    // NAV: CONFIG
-    // =============================================================
+    // =================================================================
+    // CONFIG PAGE
+    // =================================================================
     } else if (g_navItem == NAV_CONFIG) {
-        f32 listY = cY + 4*sc;
-        f32 itemH = 40*sc;
-        f32 itemPad = 4*sc;
-        f32 listW = cW * 0.85f;
-        f32 listX = cX + (cW - listW) * 0.5f;
-
-        Vec2 hdrSz = Measure("Configuration Slots", g_fontMd);
-        Text(dl, listX, listY, Color{210,195,240,ga}, "Configuration Slots", g_fontMd);
-        listY += hdrSz.y + 10*sc;
-
-        for (int i = 0; i < 5; i++) {
-            f32 iy = listY + i * (itemH + itemPad);
-            bool isSel = (g_configSelected == i);
-            u32 cfgId = Hash(g_configSlots[i]) + 8000;
-            bool cfgHov = Hit(listX, iy, listW, itemH);
-            f32 cfgA = Anim(cfgId, isSel ? 1.0f : (cfgHov ? 0.5f : 0.0f));
-
-            Color slotBg = isSel ? Color{140,80,200,(u8)(25*a)}
-                                 : Color{255,255,255,(u8)(4*cfgA*a)};
-            dl.AddFilledRoundRect(Rect{listX, iy, listW, itemH}, slotBg, 6*sc, 8);
-
-            if (isSel) {
-                dl.AddFilledRoundRect(Rect{listX, iy+4*sc, 3*sc, itemH-8*sc},
-                    Color{160,110,220,ga}, 1.5f, 4);
-            }
-
-            Color slotNameC = isSel ? Color{230,220,250,ga}
-                                    : Color{170,155,200,(u8)(ga*(0.65f+0.35f*cfgA))};
-            Text(dl, listX+14*sc, iy+(itemH*0.5f-6*sc), slotNameC, g_configSlots[i], g_font);
-
-            const char* status = g_configSaved[i] ? "Saved" : "Empty";
-            Color stC = g_configSaved[i] ? Color{160,130,220,ga} : Color{130,115,160,ga};
-            Vec2 stSz = Measure(status, g_fontSm);
-            Text(dl, listX+listW-stSz.x-12*sc, iy+(itemH-stSz.y)*0.5f, stC, status, g_fontSm);
-
-            if (cfgHov && g_input.IsMousePressed(MouseButton::Left))
-                g_configSelected = i;
-        }
-
-        // Action buttons
-        f32 btnY = listY + 5*(itemH+itemPad) + 10*sc;
-        f32 btnW = 90*sc, btnH = 32*sc, btnPad = 8*sc;
-        f32 btnRowW = btnW*3 + btnPad*2;
-        f32 btnStartX = listX + (listW - btnRowW) * 0.5f;
-
-        // Save
-        {
-            Rect r{btnStartX, btnY, btnW, btnH};
-            u32 id = Hash("cfg_save");
-            bool hov = Hit(r.x, r.y, r.w, r.h);
-            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
-            dl.AddFilledRoundRect(r, Color{100,60,160,(u8)((30+25*ba)*a)}, 6, 8);
-            TextCenter(dl, r, Color{180,160,230,ga}, "Save", g_font);
-            if (hov && g_input.IsMousePressed(MouseButton::Left))
-                g_configSaved[g_configSelected] = true;
-        }
-        // Load
-        {
-            Rect r{btnStartX+btnW+btnPad, btnY, btnW, btnH};
-            u32 id = Hash("cfg_load");
-            bool hov = Hit(r.x, r.y, r.w, r.h);
-            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
-            bool can = g_configSaved[g_configSelected];
-            dl.AddFilledRoundRect(r, can ? Color{40,80,160,(u8)((30+25*ba)*a)}
-                                        : Color{45,38,60,(u8)(20*a)}, 6, 8);
-            TextCenter(dl, r, can ? Color{170,150,230,ga} : Color{110,95,140,ga}, "Load", g_font);
-        }
-        // Delete
-        {
-            Rect r{btnStartX+2*(btnW+btnPad), btnY, btnW, btnH};
-            u32 id = Hash("cfg_del");
-            bool hov = Hit(r.x, r.y, r.w, r.h);
-            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
-            bool can = g_configSaved[g_configSelected];
-            dl.AddFilledRoundRect(r, can ? Color{160,50,50,(u8)((30+25*ba)*a)}
-                                        : Color{45,38,60,(u8)(20*a)}, 6, 8);
-            TextCenter(dl, r, can ? Color{255,140,140,ga} : Color{110,95,140,ga}, "Delete", g_font);
-            if (hov && g_input.IsMousePressed(MouseButton::Left) && can)
-                g_configSaved[g_configSelected] = false;
-        }
-
-    // =============================================================
-    // NAV: WORLD SETTINGS
-    // =============================================================
-    } else if (g_navItem == NAV_WORLD) {
         f32 settY = cY + 4*sc;
         f32 settW = cW * 0.85f;
         f32 settX = cX + (cW - settW) * 0.5f;
+
+        settY = UISectionHeader(dl, "Presets", settX, settY, settW, sc, ga);
+
+        // Save button
+        {
+            f32 btnW = 100*sc, btnH = 28*sc;
+            f32 btnX = settX;
+            u32 savId = Hash("_cfg_save");
+            bool savHov = Hit(btnX, settY, btnW, btnH);
+            f32 savAn = Anim(savId, savHov ? 1.0f : 0.0f);
+            dl.AddFilledRoundRect(Rect{btnX, settY, btnW, btnH},
+                Color{70,180,70,(u8)((140+80*savAn)*a)}, 6*sc, 8);
+            TextCenter(dl, Rect{btnX, settY, btnW, btnH},
+                Color{255,255,255,ga}, "Save Config", g_fontSm);
+            if (savHov && g_input.IsMousePressed(MouseButton::Left)) {
+                WriteEquippedConfig();
+                g_toastMsg = "Config saved!"; g_toastCol = P::Green; g_toastTimer = 2;
+            }
+        }
+
+        // Info text
+        settY += 40*sc;
+        Text(dl, settX, settY, Color{130,115,165,ga},
+             "Configs auto-save as active.acpreset", g_fontSm);
+        settY += 16*sc;
+        Text(dl, settX, settY, Color{130,115,165,ga},
+             "The DLL reloads configs every 2 seconds", g_fontSm);
+        settY += 16*sc;
+
+        // Stats
+        settY += 10*sc;
+        settY = UISectionHeader(dl, "Stats", settX, settY, settW, sc, ga);
+        char statBuf[64];
+        snprintf(statBuf, 64, "Equipped skins: %d", (int)g_invItems.size());
+        Text(dl, settX, settY, Color{200,185,230,ga}, statBuf, g_fontSm);
+        settY += 16*sc;
+        snprintf(statBuf, 64, "Weapons in DB: %d", g_weaponDBCount);
+        Text(dl, settX, settY, Color{200,185,230,ga}, statBuf, g_fontSm);
+
+    // =================================================================
+    // WORLD PAGE
+    // =================================================================
+    } else if (g_navItem == NAV_WORLD) {
+        f32 settY = cY + 4*sc, settW = cW * 0.85f, settX = cX + (cW-settW)*0.5f;
         f32 rowH = 28*sc;
 
         settY = UISectionHeader(dl, "Environment", settX, settY, settW, sc, ga);
-
-        g_worldNightMode = UISettingToggle(dl, "Night Mode", g_worldNightMode,
-            settX, settY, settW, sc, ga, Hash("_world_night"));
+        g_worldNightMode = UISettingToggle(dl, "Night Mode", g_worldNightMode, settX, settY, settW, sc, ga, Hash("_w_night"));
         settY += rowH;
-
-        g_worldNoFog = UISettingToggle(dl, "Remove Fog", g_worldNoFog,
-            settX, settY, settW, sc, ga, Hash("_world_nofog"));
+        g_worldNoFog = UISettingToggle(dl, "Remove Fog", g_worldNoFog, settX, settY, settW, sc, ga, Hash("_w_fog"));
         settY += rowH;
-
-        g_worldBrightModels = UISettingToggle(dl, "Bright Player Models", g_worldBrightModels,
-            settX, settY, settW, sc, ga, Hash("_world_bright"));
+        g_worldBrightModels = UISettingToggle(dl, "Bright Models", g_worldBrightModels, settX, settY, settW, sc, ga, Hash("_w_bright"));
         settY += rowH + 8*sc;
 
         settY = UISectionHeader(dl, "Skybox", settX, settY, settW, sc, ga);
-
-        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Skybox Override", g_fontSm);
-        g_worldSkyboxIndex = UIDropdown(dl, Hash("_world_sky"), settX + settW*0.55f, settY,
+        Text(dl, settX, settY + 2*sc, Color{200,185,230,ga}, "Skybox", g_fontSm);
+        g_worldSkyboxIndex = UIDropdown(dl, Hash("_w_sky"), settX + settW*0.55f, settY,
             settW*0.45f, 22*sc, sc, ga, g_skyboxNames, 6, g_worldSkyboxIndex);
-        settY += rowH;
 
-        g_worldSkyboxCustom = UISettingToggle(dl, "Custom Skybox", g_worldSkyboxCustom,
-            settX, settY, settW, sc, ga, Hash("_world_skyc"));
-
-    // =============================================================
-    // NAV: VIEW SETTINGS
-    // =============================================================
+    // =================================================================
+    // VIEW PAGE
+    // =================================================================
     } else if (g_navItem == NAV_VIEW) {
-        f32 settY = cY + 4*sc;
-        f32 settW = cW * 0.85f;
-        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 settY = cY + 4*sc, settW = cW * 0.85f, settX = cX + (cW-settW)*0.5f;
         f32 rowH = 28*sc;
 
         settY = UISectionHeader(dl, "Camera", settX, settY, settW, sc, ga);
-
-        g_viewThirdPerson = UISettingToggle(dl, "Third Person", g_viewThirdPerson,
-            settX, settY, settW, sc, ga, Hash("_view_tp"));
+        g_viewThirdPerson = UISettingToggle(dl, "Third Person", g_viewThirdPerson, settX, settY, settW, sc, ga, Hash("_v_tp"));
         settY += rowH;
-
-        g_viewCustomFov = UISettingToggle(dl, "Custom FOV", g_viewCustomFov,
-            settX, settY, settW, sc, ga, Hash("_view_fov_en"));
+        g_viewCustomFov = UISettingToggle(dl, "Custom FOV", g_viewCustomFov, settX, settY, settW, sc, ga, Hash("_v_fov"));
         settY += rowH;
-
         if (g_viewCustomFov) {
-            Text(dl, settX, settY + 2*sc, Color{160, 145, 190, ga}, "FOV Value", g_fontSm);
-            char fovBuf[16]; snprintf(fovBuf, 16, "%d", g_viewFovValue);
-            Vec2 fvs = Measure(fovBuf, g_fontSm);
-            Text(dl, settX + settW - fvs.x, settY + 2*sc, Color{180, 140, 240, ga}, fovBuf, g_fontSm);
+            char fb[16]; snprintf(fb, 16, "%d", g_viewFovValue);
+            Text(dl, settX, settY + 2*sc, Color{160,145,190,ga}, "FOV", g_fontSm);
+            Vec2 fvs = Measure(fb, g_fontSm);
+            Text(dl, settX + settW - fvs.x, settY + 2*sc, Color{180,140,240,ga}, fb, g_fontSm);
             settY += 14*sc;
-            g_viewFovValue = UISlider(dl, Hash("_view_fov_sl"), settX, settY, settW, sc, ga,
-                                      g_viewFovValue, 60, 140);
+            g_viewFovValue = UISlider(dl, Hash("_v_fovsl"), settX, settY, settW, sc, ga, g_viewFovValue, 60, 140);
             settY += 18*sc;
         }
-
         settY += 8*sc;
         settY = UISectionHeader(dl, "Effects", settX, settY, settW, sc, ga);
-
-        g_viewNoVisRecoil = UISettingToggle(dl, "No Visual Recoil", g_viewNoVisRecoil,
-            settX, settY, settW, sc, ga, Hash("_view_norc"));
+        g_viewNoVisRecoil = UISettingToggle(dl, "No Visual Recoil", g_viewNoVisRecoil, settX, settY, settW, sc, ga, Hash("_v_rc"));
         settY += rowH;
-
-        g_viewNoFlash = UISettingToggle(dl, "No Flash", g_viewNoFlash,
-            settX, settY, settW, sc, ga, Hash("_view_nofl"));
+        g_viewNoFlash = UISettingToggle(dl, "No Flash", g_viewNoFlash, settX, settY, settW, sc, ga, Hash("_v_fl"));
         settY += rowH;
-
-        g_viewNoSmoke = UISettingToggle(dl, "No Smoke", g_viewNoSmoke,
-            settX, settY, settW, sc, ga, Hash("_view_nosmk"));
+        g_viewNoSmoke = UISettingToggle(dl, "No Smoke", g_viewNoSmoke, settX, settY, settW, sc, ga, Hash("_v_sm"));
         settY += rowH;
+        g_viewHitMarker = UISettingToggle(dl, "Hit Marker", g_viewHitMarker, settX, settY, settW, sc, ga, Hash("_v_hm"));
 
-        g_viewHitMarker = UISettingToggle(dl, "Hit Marker", g_viewHitMarker,
-            settX, settY, settW, sc, ga, Hash("_view_hitm"));
-
-    // =============================================================
-    // NAV: PROFILE CHANGER
-    // =============================================================
+    // =================================================================
+    // PROFILE CHANGER
+    // =================================================================
     } else if (g_navItem == NAV_PROFILE_CHANGER) {
-        f32 settY = cY + 4*sc;
-        f32 settW = cW * 0.85f;
-        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 settY = cY + 4*sc, settW = cW * 0.85f, settX = cX + (cW-settW)*0.5f;
         f32 rowH = 28*sc;
 
         settY = UISectionHeader(dl, "Profile", settX, settY, settW, sc, ga);
-
-        // Rank selector
-        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Competitive Rank", g_fontSm);
-        g_profileRank = UIDropdown(dl, Hash("_prof_rank"), settX + settW*0.5f, settY,
+        Text(dl, settX, settY + 2*sc, Color{200,185,230,ga}, "Rank", g_fontSm);
+        g_profileRank = UIDropdown(dl, Hash("_p_rank"), settX + settW*0.5f, settY,
             settW*0.5f, 22*sc, sc, ga, g_rankNames, 19, g_profileRank);
         settY += rowH;
 
-        // Level
-        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "CS2 Level", g_fontSm);
-        char lvlBuf[16]; snprintf(lvlBuf, 16, "%d", g_profileLevel);
-        Vec2 lvs = Measure(lvlBuf, g_fontSm);
-        Text(dl, settX + settW - lvs.x, settY + 2*sc, Color{180, 140, 240, ga}, lvlBuf, g_fontSm);
+        Text(dl, settX, settY + 2*sc, Color{200,185,230,ga}, "Level", g_fontSm);
+        char lb[16]; snprintf(lb, 16, "%d", g_profileLevel);
+        Vec2 lvs = Measure(lb, g_fontSm);
+        Text(dl, settX + settW - lvs.x, settY + 2*sc, Color{180,140,240,ga}, lb, g_fontSm);
         settY += 14*sc;
-        g_profileLevel = UISlider(dl, Hash("_prof_level"), settX, settY, settW, sc, ga,
-                                  g_profileLevel, 1, 40);
+        g_profileLevel = UISlider(dl, Hash("_p_lvl"), settX, settY, settW, sc, ga, g_profileLevel, 1, 40);
         settY += 22*sc;
 
-        // Wins
-        Text(dl, settX, settY + 2*sc, Color{200, 185, 230, ga}, "Competitive Wins", g_fontSm);
-        char winBuf[16]; snprintf(winBuf, 16, "%d", g_profileWins);
-        Vec2 wvs = Measure(winBuf, g_fontSm);
-        Text(dl, settX + settW - wvs.x, settY + 2*sc, Color{180, 140, 240, ga}, winBuf, g_fontSm);
+        Text(dl, settX, settY + 2*sc, Color{200,185,230,ga}, "Wins", g_fontSm);
+        char wb[16]; snprintf(wb, 16, "%d", g_profileWins);
+        Vec2 wvs = Measure(wb, g_fontSm);
+        Text(dl, settX + settW - wvs.x, settY + 2*sc, Color{180,140,240,ga}, wb, g_fontSm);
         settY += 14*sc;
-        g_profileWins = UISlider(dl, Hash("_prof_wins"), settX, settY, settW, sc, ga,
-                                 g_profileWins, 0, 5000);
-        settY += 22*sc;
+        g_profileWins = UISlider(dl, Hash("_p_wins"), settX, settY, settW, sc, ga, g_profileWins, 0, 5000);
 
-        settY += 6*sc;
-        settY = UISectionHeader(dl, "Actions", settX, settY, settW, sc, ga);
-
-        // Apply button
-        {
-            f32 btnW = 130*sc, btnH = 30*sc;
-            f32 btnX = settX + (settW - btnW)*0.5f;
-            u32 applyId = Hash("_prof_apply");
-            bool applyHov = Hit(btnX, settY, btnW, btnH);
-            f32 applyA = Anim(applyId, applyHov ? 1.0f : 0.0f);
-            dl.AddFilledRoundRect(Rect{btnX, settY, btnW, btnH},
-                Color{120, 70, 180, (u8)((50 + 30*applyA)*a)}, 6*sc, 8);
-            TextCenter(dl, Rect{btnX, settY, btnW, btnH},
-                Color{200, 180, 240, ga}, "Apply Profile", g_fontSm);
-        }
-
-    // =============================================================
-    // NAV: MISC
-    // =============================================================
+    // =================================================================
+    // MISC
+    // =================================================================
     } else if (g_navItem == NAV_MISC) {
-        f32 settY = cY + 4*sc;
-        f32 settW = cW * 0.85f;
-        f32 settX = cX + (cW - settW) * 0.5f;
+        f32 settY = cY + 4*sc, settW = cW * 0.85f, settX = cX + (cW-settW)*0.5f;
         f32 rowH = 28*sc;
 
         settY = UISectionHeader(dl, "Movement", settX, settY, settW, sc, ga);
+        g_miscBunnyHop = UISettingToggle(dl, "Bunny Hop", g_miscBunnyHop, settX, settY, settW, sc, ga, Hash("_m_bhop"));
+        settY += rowH + 6*sc;
 
-        g_miscBunnyHop = UISettingToggle(dl, "Bunny Hop", g_miscBunnyHop,
-            settX, settY, settW, sc, ga, Hash("_misc_bhop"));
-        settY += rowH;
-
-        settY += 6*sc;
         settY = UISectionHeader(dl, "Automation", settX, settY, settW, sc, ga);
-
-        g_miscAutoAccept = UISettingToggle(dl, "Auto Accept Match", g_miscAutoAccept,
-            settX, settY, settW, sc, ga, Hash("_misc_accept"));
+        g_miscAutoAccept = UISettingToggle(dl, "Auto Accept", g_miscAutoAccept, settX, settY, settW, sc, ga, Hash("_m_acc"));
         settY += rowH;
-
-        g_miscRevealRanks = UISettingToggle(dl, "Reveal Ranks", g_miscRevealRanks,
-            settX, settY, settW, sc, ga, Hash("_misc_ranks"));
+        g_miscRevealRanks = UISettingToggle(dl, "Reveal Ranks", g_miscRevealRanks, settX, settY, settW, sc, ga, Hash("_m_rnk"));
         settY += rowH;
+        g_miscAutoDisconnect = UISettingToggle(dl, "Auto Disconnect", g_miscAutoDisconnect, settX, settY, settW, sc, ga, Hash("_m_disc"));
+        settY += rowH + 6*sc;
 
-        g_miscAutoDisconnect = UISettingToggle(dl, "Auto Disconnect", g_miscAutoDisconnect,
-            settX, settY, settW, sc, ga, Hash("_misc_disc"));
-        settY += rowH;
-
-        settY += 6*sc;
         settY = UISectionHeader(dl, "Visual", settX, settY, settW, sc, ga);
+        g_miscClanTag = UISettingToggle(dl, "Custom Clan Tag", g_miscClanTag, settX, settY, settW, sc, ga, Hash("_m_clan"));
 
-        g_miscClanTag = UISettingToggle(dl, "Custom Clan Tag", g_miscClanTag,
-            settX, settY, settW, sc, ga, Hash("_misc_clan"));
-
-    // =============================================================
-    // NAV: MARKETPLACE (placeholder — web feature)
-    // =============================================================
+    // =================================================================
+    // MARKETPLACE
+    // =================================================================
     } else if (g_navItem == NAV_MARKETPLACE) {
         Vec2 ps = Measure("Marketplace", g_fontLg);
-        Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.25f,
-             Color{95, 80, 135, ga}, "Marketplace", g_fontLg);
+        Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.25f, Color{95,80,135,ga}, "Marketplace", g_fontLg);
         Vec2 cs = Measure("Browse skins on the web", g_font);
         Text(dl, cX + (cW-cs.x)*0.5f, cY + cH*0.25f + ps.y + 10*sc,
-             Color{75, 60, 105, ga}, "Browse skins on the web", g_font);
+             Color{75,60,105,ga}, "Browse skins on the web", g_font);
 
-        // Open marketplace button
-        f32 btnW = 160*sc, btnH = 34*sc;
-        f32 btnX = cX + (cW - btnW)*0.5f;
-        f32 btnY = cY + cH*0.25f + ps.y + 50*sc;
+        f32 btnW = 150*sc, btnH = 32*sc;
+        f32 btnX = cX + (cW - btnW)*0.5f, btnY = cY + cH*0.25f + ps.y + 45*sc;
         u32 mktId = Hash("_mkt_open");
         bool mktHov = Hit(btnX, btnY, btnW, btnH);
-        f32 mktA = Anim(mktId, mktHov ? 1.0f : 0.0f);
+        f32 mktAn = Anim(mktId, mktHov ? 1.0f : 0.0f);
         dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
-            Color{120, 70, 180, (u8)((50 + 30*mktA)*a)}, 6*sc, 8);
+            Color{120,70,180,(u8)((50+30*mktAn)*a)}, 6*sc, 8);
         TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
-            Color{200, 180, 240, ga}, "Open CSFloat", g_fontSm);
+            Color{200,180,240,ga}, "Open CSFloat", g_fontSm);
         if (mktHov && g_input.IsMousePressed(MouseButton::Left))
             ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
 
-    // =============================================================
-    // FALLBACK
-    // =============================================================
     } else {
-        const char* pageName = "Unknown";
-        Vec2 ps = Measure(pageName, g_fontLg);
-        Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.35f,
-             Color{95, 80, 135, ga}, pageName, g_fontLg);
+        Vec2 ps = Measure("Unknown", g_fontLg);
+        Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.35f, Color{95,80,135,ga}, "Unknown", g_fontLg);
     }
+
+    // Toast
+    DrawToast(dl, W, H);
 }
 
-// ============================================================================
 // WNDPROC
 // ============================================================================
 static bool g_dragging = false;
@@ -3501,9 +2987,6 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     if (g_showPopup || g_popupAnim > 0.01f)
         DrawPopup(dl, W, H);
 
-    // Injection overlay (on top of popup)
-    DrawInjectionOverlay(dl, (f32)g_width, (f32)g_height);
-
     // Toast on very top so errors/success always visible
     if (g_showPopup || g_injPhase != INJ_IDLE)
         DrawToast(dl, W, H);
@@ -3728,11 +3211,7 @@ static int LoaderMain(HINSTANCE hInstance) {
         g_time += g_dt;
         last = now;
 
-        // Set clear color — magenta key during overlay (transparent), normal bg otherwise
-        if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING)
-            g_backend.SetClearColor(Color{1, 0, 1, 0}); // Magenta = transparent via LWA_COLORKEY
-        else
-            g_backend.SetClearColor(P::Bg);
+        g_backend.SetClearColor(P::Bg);
 
         g_backend.BeginFrame();
 
@@ -3808,10 +3287,6 @@ static int LoaderMain(HINSTANCE hInstance) {
                 if (g_menuOpenAnim > 1.0f) g_menuOpenAnim = 1.0f;
             }
             DrawCS2Menu(dl, W, H);
-        } else if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
-            // Transparent overlay phase — AC logo + progress bar floating on CS2
-            DrawInjectionOverlay(dl, W, H);
-            DrawToast(dl, W, H);
         } else {
             switch (g_screen) {
             case LOGIN:     ScreenLogin(dl, W, H);     break;
