@@ -26,6 +26,9 @@
 // Embedded CS2 logo (PNG → C array, compiled into binary)
 #include "../assets/cs2_logo_data.h"
 
+// Embedded AC glow logo for injection overlay
+#include "../assets/ac_glow_logo_data.h"
+
 #include "resource.h"
 
 #include <cstdio>
@@ -79,6 +82,7 @@ static u32  g_fontLg   = 0;   // 24pt
 static u32  g_fontXl   = 0;   // 32pt
 
 static TextureHandle g_cs2Logo = INVALID_TEXTURE;  // CS2 logo texture
+static TextureHandle g_acGlowLogo = INVALID_TEXTURE; // AC glow logo for injection overlay
 
 static HWND g_hwnd    = nullptr;
 static bool g_running = true;
@@ -207,11 +211,13 @@ static char g_savedUser[64] = "";
 static char g_savedPass[64] = "";
 
 // Injection flow state
-enum InjectionPhase { INJ_IDLE, INJ_CLOSING_STEAM, INJ_STARTING_STEAM, INJ_WAIT_CS2, INJ_INJECTING, INJ_OVERLAY, INJ_DONE };
+enum InjectionPhase { INJ_IDLE, INJ_CLOSING_STEAM, INJ_STARTING_STEAM, INJ_WAIT_CS2, INJ_INJECTING, INJ_OVERLAY, INJ_DONE, INJ_CS2_MENU };
 static InjectionPhase g_injPhase = INJ_IDLE;
 static f32  g_injProgress = 0.0f;
 static f32  g_injTimer    = 0.0f;
 static bool g_steamWasRunning = false;
+static HWND g_cs2Hwnd = nullptr; // CS2 window handle for centering
+static DWORD g_cs2Pid = 0;       // CS2 process ID
 
 // ============================================================================
 // USER DATABASE
@@ -487,7 +493,7 @@ static void DoInject() {
 }
 
 static void UpdateInjectionFlow() {
-    if (g_injPhase == INJ_IDLE || g_injPhase == INJ_DONE) return;
+    if (g_injPhase == INJ_IDLE || g_injPhase == INJ_DONE || g_injPhase == INJ_CS2_MENU) return;
     g_injTimer += g_dt;
 
     switch (g_injPhase) {
@@ -563,11 +569,67 @@ static void UpdateInjectionFlow() {
 
         if (Inject(pid, dllPath.c_str())) {
             g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
+            g_cs2Pid = pid;
+
+            // Find CS2 window and center our loader on it
+            g_cs2Hwnd = nullptr;
+            struct EnumData { DWORD pid; HWND result; };
+            EnumData ed{pid, nullptr};
+            EnumWindows([](HWND hw, LPARAM lp) -> BOOL {
+                auto* d = (EnumData*)lp;
+                DWORD wp = 0; GetWindowThreadProcessId(hw, &wp);
+                if (wp == d->pid && IsWindowVisible(hw)) {
+                    char cls[64]; GetClassNameA(hw, cls, 64);
+                    // CS2 uses SDL window class
+                    if (strstr(cls, "SDL") || GetWindow(hw, GW_OWNER) == nullptr) {
+                        RECT r; GetWindowRect(hw, &r);
+                        if ((r.right - r.left) > 400 && (r.bottom - r.top) > 300) {
+                            d->result = hw;
+                            return FALSE; // found
+                        }
+                    }
+                }
+                return TRUE;
+            }, (LPARAM)&ed);
+            g_cs2Hwnd = ed.result;
+
+            if (g_cs2Hwnd) {
+                // Resize loader to overlay size and center on CS2
+                RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
+                int cs2w = cs2r.right - cs2r.left;
+                int cs2h = cs2r.bottom - cs2r.top;
+                int menuW = 420, menuH = 340;
+                int mx = cs2r.left + (cs2w - menuW) / 2;
+                int my = cs2r.top  + (cs2h - menuH) / 2;
+                SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
+                g_width = menuW; g_height = menuH;
+                g_backend.Resize((u32)menuW, (u32)menuH);
+                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+                SetWindowRgn(g_hwnd, rgn2, TRUE);
+                Log("CS2 menu: centered on CS2 window %dx%d at (%d,%d)", menuW, menuH, mx, my);
+            } else {
+                // Fallback: center on screen
+                int sw2 = GetSystemMetrics(SM_CXSCREEN);
+                int sh2 = GetSystemMetrics(SM_CYSCREEN);
+                int menuW = 420, menuH = 340;
+                SetWindowPos(g_hwnd, HWND_TOPMOST,
+                    (sw2 - menuW) / 2, (sh2 - menuH) / 2, menuW, menuH, SWP_SHOWWINDOW);
+                g_width = menuW; g_height = menuH;
+                g_backend.Resize((u32)menuW, (u32)menuH);
+                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+                SetWindowRgn(g_hwnd, rgn2, TRUE);
+                Log("CS2 menu: centered on screen (CS2 HWND not found)");
+            }
+
+            g_injPhase = INJ_CS2_MENU;
+            g_showPopup = false;
         } else {
             g_toastMsg = "Injection failed - k\xc3\xb8r som administrator"; g_toastCol = P::Orange;
         }
         g_toastTimer = 4;
-        g_injPhase = INJ_DONE;
+        if (g_injPhase != INJ_CS2_MENU) {
+            g_injPhase = INJ_DONE;
+        }
         g_injecting = false;
         break;
     }
@@ -582,13 +644,14 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         // Semi-transparent blurred background
         dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 180});
 
-        // CS2 logo centered
-        if (g_cs2Logo != INVALID_TEXTURE) {
+        // AC glow logo centered (or CS2 logo fallback)
+        TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
+        if (overlayLogo != INVALID_TEXTURE) {
             f32 logoSz = 96;
             f32 lx = (W - logoSz) * 0.5f;
             f32 ly = H * 0.35f - logoSz * 0.5f;
             dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
-                               g_cs2Logo, Color{255,255,255,255});
+                               overlayLogo, Color{255,255,255,255});
         }
 
         // Progress text
@@ -613,6 +676,125 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
             dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 4.0f, 8);
         }
     }
+}
+
+// ============================================================================
+// CS2 IN-GAME MENU — auto-opens after successful injection
+// Same theme as dashboard, empty for now, centered on CS2 window
+// ============================================================================
+static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
+    // Full background with dark gradient matching dashboard theme
+    dl.AddFilledRoundRect(Rect{0, 0, W, H}, P::Bg, (f32)CORNER, 12);
+
+    // Top bar with accent gradient line
+    dl.AddFilledRect(Rect{0, 0, W, 2},
+                     Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 1.5f)));
+
+    // Titlebar area
+    f32 topH = 36;
+    dl.AddFilledRect(Rect{0, 2, W, topH - 2}, Color{12, 12, 20, 255});
+
+    // AC logo (small) in titlebar
+    if (g_acGlowLogo != INVALID_TEXTURE) {
+        f32 logoSz = 22;
+        dl.AddTexturedRect(Rect{10, (topH - logoSz) * 0.5f, logoSz, logoSz},
+                           g_acGlowLogo, Color{255,255,255,255});
+    }
+
+    // Title text
+    Text(dl, 38, (topH - 14) * 0.5f, P::T1, "AC | Inventory Changer", g_font);
+
+    // Close button
+    f32 clsX = W - 26, clsY = topH * 0.5f;
+    u32 clsId = Hash("_cs2menu_cls");
+    bool clsH = Hit(clsX - 8, clsY - 8, 16, 16);
+    f32 clsA = Anim(clsId, clsH ? 1.0f : 0.0f);
+    Color xCol{160, 165, 190, (u8)(130 + 125 * clsA)};
+    f32 xs = 4.5f;
+    dl.AddLine(Vec2{clsX - xs, clsY - xs}, Vec2{clsX + xs, clsY + xs}, xCol, 1.5f);
+    dl.AddLine(Vec2{clsX + xs, clsY - xs}, Vec2{clsX - xs, clsY + xs}, xCol, 1.5f);
+    if (clsH && g_input.IsMousePressed(MouseButton::Left)) {
+        g_running = false;
+    }
+
+    // Minimize button
+    f32 minX = W - 52, minY = clsY;
+    u32 minId = Hash("_cs2menu_min");
+    bool minH = Hit(minX - 8, minY - 8, 16, 16);
+    f32 minA = Anim(minId, minH ? 1.0f : 0.0f);
+    dl.AddLine(Vec2{minX - xs, minY}, Vec2{minX + xs, minY},
+               Color{160, 165, 190, (u8)(130 + 125 * minA)}, 1.5f);
+    if (minH && g_input.IsMousePressed(MouseButton::Left))
+        ShowWindow(g_hwnd, SW_MINIMIZE);
+
+    // Content area border
+    f32 contentY = topH + 4;
+    f32 contentH = H - contentY - 4;
+    f32 margin = 14;
+    f32 innerW = W - margin * 2;
+    (void)contentH;
+
+    // Separator line
+    dl.AddFilledRect(Rect{margin, contentY, innerW, 1}, P::Border);
+    contentY += 8;
+
+    // Status card
+    {
+        f32 cardH = 52;
+        Rect cr{margin, contentY, innerW, cardH};
+        dl.AddFilledRoundRect(cr, P::Card, 8.0f, 8);
+        dl.AddRoundRect(cr, P::Border, 8.0f, 8, 1.0f);
+
+        // Status dot (green = active)
+        f32 dotR = 4;
+        f32 dotX = cr.x + 16, dotY = cr.y + cardH * 0.5f;
+        dl.AddFilledCircle(Vec2{dotX, dotY}, dotR, P::Green, 12);
+
+        Text(dl, dotX + 12, cr.y + 10, P::T1, "Active", g_fontSm);
+        Text(dl, dotX + 12, cr.y + 28, P::T3, "Inventory Changer loaded", g_fontSm);
+
+        // Version badge
+        const char* verTxt = "v3.0";
+        Vec2 vSz = Measure(verTxt, g_fontSm);
+        f32 badgeX = cr.Right() - vSz.x - 20;
+        f32 badgeY = cr.y + (cardH - 20) * 0.5f;
+        dl.AddFilledRoundRect(Rect{badgeX - 6, badgeY, vSz.x + 12, 20},
+                              Fade(P::Accent1, 0.15f), 6.0f, 8);
+        Text(dl, badgeX, badgeY + 3, P::Accent1, verTxt, g_fontSm);
+    }
+    contentY += 60;
+
+    // Empty content area with placeholder text
+    {
+        const char* emptyTitle = "Skin Changer Menu";
+        Vec2 ts = Measure(emptyTitle, g_fontMd);
+        Text(dl, (W - ts.x) * 0.5f, contentY + 20, P::T1, emptyTitle, g_fontMd);
+
+        const char* emptyDesc = "Menuen er klar \xe2\x80\x94 indhold kommer snart";
+        Vec2 ds = Measure(emptyDesc, g_fontSm);
+        Text(dl, (W - ds.x) * 0.5f, contentY + 46, P::T3, emptyDesc, g_fontSm);
+
+        // Decorative empty card placeholders (skeleton UI)
+        f32 cardY = contentY + 80;
+        for (int i = 0; i < 3; i++) {
+            Rect cr2{margin, cardY, innerW, 36};
+            dl.AddFilledRoundRect(cr2, Color{18, 18, 28, 180}, 6.0f, 8);
+            dl.AddRoundRect(cr2, Fade(P::Border, 0.5f), 6.0f, 8, 1.0f);
+
+            // Skeleton placeholder bars
+            f32 skelW = 60 + i * 30.0f;
+            dl.AddFilledRoundRect(Rect{cr2.x + 12, cr2.y + 12, skelW, 12},
+                                  Fade(P::T3, 0.2f), 4.0f, 6);
+            cardY += 44;
+        }
+    }
+
+    // Bottom border accent
+    dl.AddFilledRect(Rect{0, H - 2, W, 2},
+                     Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 2.0f)));
+
+    // Toast on top
+    DrawToast(dl, W, H);
 }
 
 // ============================================================================
@@ -645,7 +827,9 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         g_input.OnMouseDown(MouseButton::Left);
         POINT pt = {(SHORT)LOWORD(lp), (SHORT)HIWORD(lp)};
         bool canDrag = false;
-        if (g_screen == DASHBOARD) {
+        if (g_injPhase == INJ_CS2_MENU) {
+            canDrag = (pt.y < 36 && pt.x < g_width - 60);
+        } else if (g_screen == DASHBOARD) {
             canDrag = (pt.y < 40 && pt.x > 90 && pt.x < g_width - 60);
         } else {
             canDrag = (pt.y < 48 && pt.x < g_width - 90);
@@ -1288,7 +1472,6 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
     // ===== LEFT COLUMN: Info rows  |  RIGHT COLUMN: Changelog =====
     f32 leftW = cw * 0.42f;
     f32 rightX = cx + leftW + 10;
-    f32 rightW = cw - leftW - 10;
     f32 infoY = cy;
 
     // Info rows (left side)
@@ -1650,6 +1833,25 @@ static int LoaderMain(HINSTANCE hInstance) {
         }
     }
 
+    // Load embedded AC glow logo
+    {
+        int imgW = 0, imgH = 0, imgC = 0;
+        unsigned char* pixels = stbi_load_from_memory(
+            g_acGlowPng, (int)g_acGlowPngSize, &imgW, &imgH, &imgC, 4);
+        if (pixels && imgW > 0 && imgH > 0) {
+            TextureDesc td{};
+            td.width = (u32)imgW;
+            td.height = (u32)imgH;
+            td.channels = 4;
+            td.data = pixels;
+            g_acGlowLogo = g_backend.CreateTexture(td);
+            stbi_image_free(pixels);
+            Log("AC glow logo loaded: %dx%d handle=%llu", imgW, imgH, (unsigned long long)g_acGlowLogo);
+        } else {
+            Log("WARN: AC glow logo decode failed");
+        }
+    }
+
     // Load fonts — bold/heavy weights for premium feel
     auto TryFont = [](const char* paths[], int count, f32 size) -> u32 {
         for (int i = 0; i < count; i++) {
@@ -1738,10 +1940,15 @@ static int LoaderMain(HINSTANCE hInstance) {
         DrawList dl;
         f32 W = (f32)g_width, H = (f32)g_height;
 
-        switch (g_screen) {
-        case LOGIN:     ScreenLogin(dl, W, H);     break;
-        case SIGNUP:    ScreenSignup(dl, W, H);     break;
-        case DASHBOARD: ScreenDashboard(dl, W, H);  break;
+        // CS2 in-game menu takes over the entire window after injection
+        if (g_injPhase == INJ_CS2_MENU) {
+            DrawCS2Menu(dl, W, H);
+        } else {
+            switch (g_screen) {
+            case LOGIN:     ScreenLogin(dl, W, H);     break;
+            case SIGNUP:    ScreenSignup(dl, W, H);     break;
+            case DASHBOARD: ScreenDashboard(dl, W, H);  break;
+            }
         }
 
         Vec2 vp = g_backend.GetViewportSize();
