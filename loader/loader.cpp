@@ -15,6 +15,8 @@
 
 #include "../engine/ace_engine_v2.h"
 
+#include "resource.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -258,18 +260,34 @@ static bool Inject(DWORD pid, const char* dll) {
 static void DoInject() {
     g_injecting = true;
     DWORD pid = FindProc("cs2.exe");
-    if (!pid) { g_toastMsg = "CS2 not running — start game first"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
-    char ep[MAX_PATH]; GetModuleFileNameA(nullptr, ep, MAX_PATH);
-    std::string dp = ep; size_t sl = dp.find_last_of('\\');
-    if (sl != std::string::npos) dp = dp.substr(0, sl + 1);
-    dp += "skin_changer.dll";
-    if (GetFileAttributesA(dp.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        g_toastMsg = "skin_changer.dll not found"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return;
+    if (!pid) { g_toastMsg = "CS2 not running - start game first"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
+
+    // Extract embedded DLL from Windows resources
+    HRSRC hRes = FindResource(nullptr, MAKEINTRESOURCE(IDR_SKIN_DLL), RT_RCDATA);
+    if (!hRes) { g_toastMsg = "DLL resource not found"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
+    HGLOBAL hGlob = LoadResource(nullptr, hRes);
+    DWORD dwSize = SizeofResource(nullptr, hRes);
+    const void* pData = LockResource(hGlob);
+    if (!pData || dwSize == 0) { g_toastMsg = "Invalid DLL resource"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return; }
+
+    // Write to temp directory
+    char tempDir[MAX_PATH];
+    GetTempPathA(MAX_PATH, tempDir);
+    std::string dllPath = std::string(tempDir) + "skin_changer.dll";
+    HANDLE hFile = CreateFileA(dllPath.c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        g_toastMsg = "Failed to extract DLL"; g_toastCol = P::Red; g_toastTimer = 4; g_injecting = false; return;
     }
-    if (Inject(pid, dp.c_str())) {
+    DWORD written = 0;
+    WriteFile(hFile, pData, dwSize, &written, nullptr);
+    CloseHandle(hFile);
+
+    // Inject into CS2
+    if (Inject(pid, dllPath.c_str())) {
         g_toastMsg = "Injected successfully"; g_toastCol = P::Green; g_injected = true;
     } else {
-        g_toastMsg = "Injection failed — run as administrator"; g_toastCol = P::Orange;
+        g_toastMsg = "Injection failed - run as administrator"; g_toastCol = P::Orange;
     }
     g_toastTimer = 4; g_injecting = false;
 }
@@ -874,6 +892,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         WS_POPUP | WS_VISIBLE,
         (sw - g_width) / 2, (sh - g_height) / 2, g_width, g_height,
         nullptr, nullptr, hInstance, nullptr);
+
+    if (!g_hwnd) {
+        MessageBoxA(nullptr, "Failed to create window", "Error", MB_OK); return 1;
+    }
 
     HRGN rgn = CreateRoundRectRgn(0, 0, g_width+1, g_height+1, CORNER*2, CORNER*2);
     SetWindowRgn(g_hwnd, rgn, TRUE);

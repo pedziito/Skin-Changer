@@ -60,12 +60,31 @@ set_target_properties(skin_changer PROPERTIES
     SUFFIX ".dll"
 )
 
+# Copy built DLL to build dir so the resource compiler can embed it
+add_custom_command(TARGET skin_changer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:skin_changer>"
+        "${CMAKE_CURRENT_BINARY_DIR}/skin_changer.dll"
+    COMMENT "Copying DLL for embedding into loader..."
+)
+
+# Generate resource script that references the copied DLL
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/loader_embed.rc"
+    "#include \"${CMAKE_CURRENT_SOURCE_DIR}/loader/resource.h\"\n"
+    "IDR_SKIN_DLL RCDATA \"${CMAKE_CURRENT_BINARY_DIR}/skin_changer.dll\"\n"
+)
+
 # ============================================================================
 # LOADER EXECUTABLE (DX11 GUI app — subscription panel + injector)
 # Built on ACE Engine v2.0 — zero ImGui dependency.
 # ============================================================================
 add_executable(ac_loader WIN32
     loader/loader.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/loader_embed.rc
+)
+
+target_include_directories(ac_loader PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/loader
 )
 
 target_link_libraries(ac_loader PRIVATE
@@ -73,6 +92,8 @@ target_link_libraries(ac_loader PRIVATE
     advapi32
     shell32
 )
+
+add_dependencies(ac_loader skin_changer)
 
 set_target_properties(ac_loader PROPERTIES
     WIN32_EXECUTABLE TRUE
