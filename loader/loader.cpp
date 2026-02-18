@@ -72,7 +72,7 @@ static u32  g_fontXl   = 0;   // 32pt
 static HWND g_hwnd    = nullptr;
 static bool g_running = true;
 static int  g_width   = 380;
-static int  g_height  = 460;
+static int  g_height  = 500;
 static constexpr int CORNER = 16;
 
 // ============================================================================
@@ -160,6 +160,7 @@ static char g_loginPass[64]   = "";
 static char g_signupUser[64]  = "";
 static char g_signupPass[64]  = "";
 static char g_signupPass2[64] = "";
+static char g_signupKey[64]   = "";
 static std::string g_authError;
 static f32 g_authErrorTimer = 0;
 static std::string g_loggedUser;
@@ -192,22 +193,101 @@ static f32  g_popupAnim = 0.0f;
 // ============================================================================
 // USER DATABASE
 // ============================================================================
-static std::string GetLicensePath() {
+static std::string GetBasePath() {
     char p[MAX_PATH]; GetModuleFileNameA(nullptr, p, MAX_PATH);
     std::string s = p;
     size_t i = s.find_last_of('\\');
-    return (i != std::string::npos ? s.substr(0, i + 1) : "") + "licenses.dat";
+    return (i != std::string::npos ? s.substr(0, i + 1) : "");
 }
+static std::string GetLicensePath() { return GetBasePath() + "licenses.dat"; }
+static std::string GetKeysPath()    { return GetBasePath() + "license_keys.dat"; }
+
 static std::string HashPw(const std::string& pw) {
     uint32_t h = 0x811c9dc5;
     for (char c : pw) { h ^= (uint8_t)c; h *= 0x01000193; }
     char b[16]; snprintf(b, 16, "%08X", h); return b;
 }
-static std::string GenKey() {
+
+// ============================================================================
+// LICENSE KEY SYSTEM
+// ============================================================================
+struct LicenseKey { std::string key; int days; bool used; std::string usedBy; };
+static std::vector<LicenseKey> g_keys;
+static std::string g_testKey; // displayed after first-run seed
+
+static void LoadKeys() {
+    g_keys.clear();
+    std::ifstream f(GetKeysPath());
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        std::istringstream ss(line); LicenseKey k;
+        ss >> k.key >> k.days >> k.used >> k.usedBy;
+        if (!k.key.empty()) g_keys.push_back(k);
+    }
+}
+static void SaveKeys() {
+    std::ofstream f(GetKeysPath());
+    for (auto& k : g_keys)
+        f << k.key << " " << k.days << " " << k.used << " "
+          << (k.usedBy.empty() ? "-" : k.usedBy) << "\n";
+}
+
+static std::string GenerateKeyString() {
     char k[48]; snprintf(k, 48, "AC-%04X-%04X-%04X-%04X",
         rand()&0xFFFF, rand()&0xFFFF, rand()&0xFFFF, rand()&0xFFFF); return k;
 }
 
+static void SeedTestKeys() {
+    // If no keys exist, create a default test key
+    if (g_keys.empty()) {
+        LicenseKey tk;
+        tk.key  = "AC-TEST-2026-FREE-DEMO";
+        tk.days = 30;
+        tk.used = false;
+        tk.usedBy = "-";
+        g_keys.push_back(tk);
+
+        // Generate a few more random keys
+        for (int i = 0; i < 3; i++) {
+            LicenseKey rk;
+            rk.key  = GenerateKeyString();
+            rk.days = 30;
+            rk.used = false;
+            rk.usedBy = "-";
+            g_keys.push_back(rk);
+        }
+        SaveKeys();
+        g_testKey = "AC-TEST-2026-FREE-DEMO";
+        Log("Seeded test key: %s", g_testKey.c_str());
+    }
+}
+
+static bool ValidateKey(const char* inputKey, int& outDays) {
+    for (auto& k : g_keys) {
+        if (k.key == inputKey) {
+            if (k.used) return false; // already redeemed
+            outDays = k.days;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void RedeemKey(const char* inputKey, const char* user) {
+    for (auto& k : g_keys) {
+        if (k.key == inputKey) {
+            k.used = true;
+            k.usedBy = user;
+            break;
+        }
+    }
+    SaveKeys();
+}
+
+// ============================================================================
+// USER DATABASE
+// ============================================================================
 struct UserRec { std::string user, hash, key; time_t created, expiry; bool active; };
 static std::vector<UserRec> g_users;
 
@@ -229,14 +309,31 @@ static void SaveUsers() {
           << " " << u.created << " " << u.expiry << " " << u.active << "\n";
 }
 
-static bool DoSignup(const char* user, const char* pass) {
+static bool DoSignup(const char* user, const char* pass, const char* licenseKey) {
     if (strlen(user) < 3) { g_authError = "Username: min 3 chars"; g_authErrorTimer = 3; return false; }
     if (strlen(pass) < 4) { g_authError = "Password: min 4 chars"; g_authErrorTimer = 3; return false; }
+    if (strlen(licenseKey) < 4) { g_authError = "Enter a valid license key"; g_authErrorTimer = 3; return false; }
     for (auto& u : g_users)
         if (u.user == user) { g_authError = "Username taken"; g_authErrorTimer = 3; return false; }
-    UserRec u; u.user = user; u.hash = HashPw(pass); u.key = GenKey();
-    u.created = time(nullptr); u.expiry = u.created + 30*86400; u.active = true;
-    g_users.push_back(u); SaveUsers(); return true;
+
+    // Validate license key
+    int days = 0;
+    if (!ValidateKey(licenseKey, days)) {
+        g_authError = "Invalid or used license key"; g_authErrorTimer = 3; return false;
+    }
+
+    // Create user and redeem key
+    UserRec u;
+    u.user = user;
+    u.hash = HashPw(pass);
+    u.key  = licenseKey;
+    u.created = time(nullptr);
+    u.expiry  = u.created + days * 86400;
+    u.active  = true;
+    g_users.push_back(u);
+    SaveUsers();
+    RedeemKey(licenseKey, user);
+    return true;
 }
 
 static bool DoLogin(const char* user, const char* pass) {
@@ -673,7 +770,7 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
     Text(dl, caX, cy, Mix(P::T2, P::Accent1, 0.3f + 0.7f * caA), caText, g_fontSm);
     if (caH && g_input.IsMousePressed(MouseButton::Left)) {
         g_screen = SIGNUP; g_authError.clear(); g_authErrorTimer = 0;
-        memset(g_signupUser, 0, 64); memset(g_signupPass, 0, 64); memset(g_signupPass2, 0, 64);
+        memset(g_signupKey, 0, 64); memset(g_signupUser, 0, 64); memset(g_signupPass, 0, 64); memset(g_signupPass2, 0, 64);
     }
 
     // Footer
@@ -691,8 +788,8 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     DrawTitleBar(dl, W);
 
     f32 cardW = (std::min)(W - 20.0f, 356.0f);
-    f32 cardH = 380;
-    f32 cardX = (W - cardW) * 0.5f, cardY = 56;
+    f32 cardH = 420;
+    f32 cardX = (W - cardW) * 0.5f, cardY = 48;
     GlassCard(dl, Rect{cardX, cardY, cardW, cardH});
 
     f32 cx = cardX + 24, cw = cardW - 48;
@@ -702,16 +799,18 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     Text(dl, cardX + (cardW - ts.x) * 0.5f, cy, P::T1, "Create account", g_fontLg);
     cy += ts.y + 2;
 
-    Vec2 ss = Measure("Get started with a free trial", g_fontSm);
-    Text(dl, cardX + (cardW - ss.x) * 0.5f, cy, P::T2, "Get started with a free trial", g_fontSm);
-    cy += ss.y + 18;
+    Vec2 ss = Measure("Enter your license key to register", g_fontSm);
+    Text(dl, cardX + (cardW - ss.x) * 0.5f, cy, P::T2, "Enter your license key to register", g_fontSm);
+    cy += ss.y + 14;
 
+    InputField(dl, "License Key", g_signupKey, sizeof(g_signupKey), Rect{cx, cy, cw, 40});
+    cy += 46;
     InputField(dl, "Username", g_signupUser, sizeof(g_signupUser), Rect{cx, cy, cw, 40});
-    cy += 48;
+    cy += 46;
     InputField(dl, "Password", g_signupPass, sizeof(g_signupPass), Rect{cx, cy, cw, 40}, true);
-    cy += 48;
+    cy += 46;
     InputField(dl, "Confirm password", g_signupPass2, sizeof(g_signupPass2), Rect{cx, cy, cw, 40}, true);
-    cy += 48;
+    cy += 44;
 
     if (g_authErrorTimer > 0) {
         g_authErrorTimer -= g_dt;
@@ -719,21 +818,21 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
         Vec2 es = Measure(g_authError.c_str(), g_fontSm);
         Text(dl, cardX + (cardW - es.x) * 0.5f, cy, Fade(P::Red, ea), g_authError.c_str(), g_fontSm);
     }
-    cy += 18;
+    cy += 16;
 
-    if (GradientButton(dl, "CREATE ACCOUNT", Rect{cx, cy, cw, 42})) {
+    if (GradientButton(dl, "ACTIVATE & REGISTER", Rect{cx, cy, cw, 40})) {
         if (strcmp(g_signupPass, g_signupPass2) != 0) { g_authError = "Passwords don't match"; g_authErrorTimer = 3; }
-        else if (DoSignup(g_signupUser, g_signupPass)) {
+        else if (DoSignup(g_signupUser, g_signupPass, g_signupKey)) {
             if (DoLogin(g_signupUser, g_signupPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
         }
     }
     if (g_input.IsKeyPressed(Key::Enter) && strlen(g_signupUser) > 0 && strlen(g_signupPass) > 0) {
         if (strcmp(g_signupPass, g_signupPass2) != 0) { g_authError = "Passwords don't match"; g_authErrorTimer = 3; }
-        else if (DoSignup(g_signupUser, g_signupPass)) {
+        else if (DoSignup(g_signupUser, g_signupPass, g_signupKey)) {
             if (DoLogin(g_signupUser, g_signupPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
         }
     }
-    cy += 52;
+    cy += 48;
 
     // Back link
     const char* bl = "Already have an account? Sign in";
@@ -1150,7 +1249,9 @@ static int LoaderMain(HINSTANCE hInstance) {
     Log("Step 1: Init");
     srand((unsigned)time(nullptr));
     LoadUsers();
-    Log("Step 2: Users loaded (%d)", (int)g_users.size());
+    LoadKeys();
+    SeedTestKeys();
+    Log("Step 2: Users loaded (%d), Keys loaded (%d)", (int)g_users.size(), (int)g_keys.size());
 
     WNDCLASSEXA wc = {};
     wc.cbSize = sizeof(wc);
