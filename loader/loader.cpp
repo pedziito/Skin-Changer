@@ -509,10 +509,12 @@ static void UpdateInjectionFlow() {
 
     case INJ_STARTING_STEAM:
         if (g_injTimer > 3.0f) {
+            // Auto-launch CS2 via Steam
+            ShellExecuteA(nullptr, "open", "steam://rungameid/730", nullptr, nullptr, SW_SHOW);
+            Log("CS2: launching via steam://rungameid/730");
+            g_toastMsg = "Starting CS2..."; g_toastCol = P::Yellow; g_toastTimer = 5;
             g_injPhase = INJ_WAIT_CS2;
             g_injTimer = 0;
-            MessageBoxA(g_hwnd, "Start venligst CS2 manuelt.",
-                        "AC Loader", MB_OK | MB_ICONINFORMATION);
         }
         break;
 
@@ -1961,6 +1963,28 @@ static int LoaderMain(HINSTANCE hInstance) {
 
         // Update injection flow (Steam/CS2 state machine)
         UpdateInjectionFlow();
+
+        // CS2 menu visibility: only show when CS2 is the foreground window
+        if (g_injPhase == INJ_CS2_MENU && g_cs2Hwnd) {
+            HWND fg = GetForegroundWindow();
+            bool cs2Active = (fg == g_cs2Hwnd || fg == g_hwnd);
+            if (!cs2Active) {
+                // CS2 is not focused (user tabbed out) — hide our menu
+                if (IsWindowVisible(g_hwnd)) {
+                    ShowWindow(g_hwnd, SW_HIDE);
+                }
+                Sleep(50); // reduce CPU when hidden
+                g_backend.EndFrame();
+                continue;
+            } else {
+                // CS2 is focused — show our menu on top
+                if (!IsWindowVisible(g_hwnd)) {
+                    ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
+                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+        }
 
         DrawList dl;
         f32 W = (f32)g_width, H = (f32)g_height;
