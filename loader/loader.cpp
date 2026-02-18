@@ -29,6 +29,9 @@
 // Embedded AC glow logo for injection overlay
 #include "../assets/ac_glow_logo_data.h"
 
+// New AC purple sunset logo (rounded)
+#include "../assets/ac_logo_data.h"
+
 #include "resource.h"
 
 #include <cstdio>
@@ -83,6 +86,7 @@ static u32  g_fontXl   = 0;   // 32pt
 
 static TextureHandle g_cs2Logo = INVALID_TEXTURE;  // CS2 logo texture
 static TextureHandle g_acGlowLogo = INVALID_TEXTURE; // AC glow logo for injection overlay
+static TextureHandle g_acLogo = INVALID_TEXTURE;     // New purple sunset AC logo
 
 static HWND g_hwnd    = nullptr;
 static bool g_running = true;
@@ -135,18 +139,18 @@ static void TextCenter(DrawList& dl, Rect r, Color c, const char* t, u32 fid = 0
 // PALETTE — deep dark with blue/purple accents
 // ============================================================================
 namespace P {
-    // Backgrounds
-    constexpr Color Bg       {8,   8,   14,  255};
-    constexpr Color Card     {16,  16,  24,  245};
-    constexpr Color CardHi   {22,  22,  34,  255};
-    constexpr Color Surface  {20,  20,  30,  255};
-    constexpr Color Input    {14,  14,  22,  255};
-    constexpr Color InputFoc {18,  18,  28,  255};
+    // Backgrounds — deep purple/indigo from sunset image
+    constexpr Color Bg       {10,  8,   20,  255};
+    constexpr Color Card     {18,  14,  30,  245};
+    constexpr Color CardHi   {26,  20,  42,  255};
+    constexpr Color Surface  {22,  18,  36,  255};
+    constexpr Color Input    {14,  10,  24,  255};
+    constexpr Color InputFoc {20,  16,  34,  255};
 
-    // Accent gradient endpoints
-    constexpr Color Accent1  {79,  110, 255, 255};   // electric blue
-    constexpr Color Accent2  {160, 80,  255, 255};   // vivid purple
-    constexpr Color AccentDim{79,  110, 255, 60};
+    // Accent gradient endpoints — purple/lavender from sunset
+    constexpr Color Accent1  {140, 100, 220, 255};   // lavender purple
+    constexpr Color Accent2  {180, 80,  200, 255};   // pink-purple
+    constexpr Color AccentDim{140, 100, 220, 60};
 
     // Status
     constexpr Color Green    {56,  230, 130, 255};
@@ -154,14 +158,14 @@ namespace P {
     constexpr Color Yellow   {255, 210, 60,  255};
     constexpr Color Orange   {255, 150, 50,  255};
 
-    // Text
-    constexpr Color T1       {240, 240, 255, 255};
-    constexpr Color T2       {140, 145, 170, 255};
-    constexpr Color T3       {70,  72,  95,  255};
+    // Text — soft lavender/white
+    constexpr Color T1       {235, 225, 250, 255};
+    constexpr Color T2       {150, 140, 180, 255};
+    constexpr Color T3       {80,  70,  110, 255};
 
     // Borders
-    constexpr Color Border   {35,  35,  55,  255};
-    constexpr Color BorderLt {50,  50,  75,  180};
+    constexpr Color Border   {40,  30,  60,  255};
+    constexpr Color BorderLt {55,  45,  80,  180};
 }
 
 // ============================================================================
@@ -1203,7 +1207,8 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
 
         // AC logo centered — fully transparent background, no backdrop
         // Logo PNG has hard alpha edges (no semi-transparent pixels)
-        TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
+        TextureHandle overlayLogo = (g_acLogo != INVALID_TEXTURE) ? g_acLogo :
+                                   (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         if (overlayLogo != INVALID_TEXTURE) {
             f32 logoSz = 80;
             f32 lx = (W - logoSz) * 0.5f;
@@ -1218,7 +1223,7 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
         f32 ptY = 108;
-        Text(dl, ptX, ptY, Color{220, 225, 245, 255}, progText, g_fontSm);
+        Text(dl, ptX, ptY, Color{230, 220, 250, 255}, progText, g_fontSm);
 
         // Progress bar — dark-to-light blue gradient matching the AC logo
         f32 barW = W * 0.6f;
@@ -1366,7 +1371,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
     // ===== MAIN BACKGROUND =====
     dl.AddFilledRoundRect(Rect{ox, oy, sW, sH},
-        Color{12, 11, 22, ga}, 10*sc, 12);
+        Color{14, 10, 26, ga}, 10*sc, 12);
 
     // ===== LEFT SIDEBAR (LunaR-style) =====
     f32 sbW = 195.0f * sc;  // sidebar width
@@ -1376,14 +1381,15 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
     // Sidebar background (slightly lighter than main)
     dl.AddFilledRoundRect(Rect{sbX, sbY, sbW, sbH},
-        Color{16, 14, 28, ga}, 10*sc, 12);
+        Color{20, 14, 35, ga}, 10*sc, 12);
     // Right edge separator
     dl.AddFilledRect(Rect{sbX + sbW - 1, sbY + 10*sc, 1, sbH - 20*sc},
-        Color{35, 32, 55, (u8)(ga * 0.5f)});
+        Color{50, 35, 75, (u8)(ga * 0.5f)});
 
     // --- Logo at top ---
     {
-        TextureHandle logo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
+        TextureHandle logo = (g_acLogo != INVALID_TEXTURE) ? g_acLogo :
+                              (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         f32 logoSz = 32.0f * sc;
         f32 logoX = sbX + 14*sc;
         f32 logoY = sbY + 14*sc;
@@ -1392,7 +1398,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         }
         // App name next to logo
         Text(dl, logoX + logoSz + 8*sc, logoY + (logoSz - Measure("AC", g_fontMd).y)*0.5f,
-             Color{220, 225, 255, ga}, "AC", g_fontMd);
+             Color{230, 220, 250, ga}, "AC", g_fontMd);
     }
 
     // --- Navigation Items ---
@@ -1426,7 +1432,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
         if (ni.isHeader) {
             // Section header (small dimmed text)
-            Text(dl, sbX + 16*sc, ny + 2*sc, Color{80, 78, 110, ga}, ni.label, g_fontSm);
+            Text(dl, sbX + 16*sc, ny + 2*sc, Color{90, 70, 130, ga}, ni.label, g_fontSm);
             ny += 20*sc;
             continue;
         }
@@ -1440,25 +1446,25 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         // Active/hover background
         if (nAnim > 0.01f) {
             dl.AddFilledRoundRect(Rect{sbX + 6*sc, ny, sbW - 12*sc, navItemH},
-                Color{60, 100, 255, (u8)(18 * nAnim * a)}, 6*sc, 8);
+                Color{140, 80, 200, (u8)(18 * nAnim * a)}, 6*sc, 8);
         }
 
         // Active left indicator bar
         if (active) {
             dl.AddFilledRoundRect(Rect{sbX + 2*sc, ny + 6*sc, 3*sc, navItemH - 12*sc},
-                Color{100, 140, 255, ga}, 1.5f, 4);
+                Color{160, 110, 220, ga}, 1.5f, 4);
         }
 
         // Icon
-        Color ic = active ? Color{120, 170, 255, ga}
-                          : Color{100, 102, 130, (u8)(ga * (0.6f + 0.4f*nAnim))};
+        Color ic = active ? Color{180, 140, 240, ga}
+                          : Color{110, 90, 145, (u8)(ga * (0.6f + 0.4f*nAnim))};
         if (ni.drawIcon) {
             ni.drawIcon(dl, sbX + 28*sc, ny + navItemH * 0.5f, 16*sc, ic);
         }
 
         // Label
-        Color lc = active ? Color{220, 230, 255, ga}
-                          : Color{130, 132, 160, (u8)(ga * (0.6f + 0.4f*nAnim))};
+        Color lc = active ? Color{230, 220, 250, ga}
+                          : Color{140, 125, 170, (u8)(ga * (0.6f + 0.4f*nAnim))};
         Vec2 ls = Measure(ni.label, g_font);
         Text(dl, sbX + 46*sc, ny + (navItemH - ls.y)*0.5f, lc, ni.label, g_font);
 
@@ -1493,22 +1499,22 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
         // Avatar background circle
         dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
-            Color{40, 60, 120, ga}, avSz*0.5f, 10);
+            Color{60, 30, 100, ga}, avSz*0.5f, 10);
         DrawProfileIcon(dl, avX + avSz*0.5f, avY + avSz*0.5f, avSz*0.7f,
-            Color{140, 170, 220, ga});
+            Color{160, 130, 220, ga});
 
         // Username
         const char* uname = (strlen(g_loginUser) > 0) ? g_loginUser : "User";
         char truncName[16];
         strncpy(truncName, uname, 14); truncName[14] = '\0';
         Text(dl, avX + avSz + 8*sc, profY + 4*sc,
-             Color{190, 195, 220, ga}, truncName, g_fontSm);
+             Color{200, 185, 230, ga}, truncName, g_fontSm);
 
         // UID line
         char uidBuf[24];
         snprintf(uidBuf, 24, "UID: %04d", (int)(Hash(uname) & 0xFFFF));
         Text(dl, avX + avSz + 8*sc, profY + 18*sc,
-             Color{90, 92, 120, ga}, uidBuf, g_fontSm);
+             Color{100, 85, 130, ga}, uidBuf, g_fontSm);
     }
 
     // ===== CONTENT AREA (right of sidebar) =====
@@ -1535,16 +1541,16 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
             // Plus button card
             dl.AddFilledRoundRect(Rect{plusX, plusY, plusW, plusH},
-                Color{22, 20, 38, ga}, 8*sc, 10);
+                Color{26, 18, 44, ga}, 8*sc, 10);
             // Border
-            Color plusBorderC = Color{50, 60, 120, (u8)(ga * (0.4f + 0.4f*plusAnim))};
+            Color plusBorderC = Color{70, 40, 110, (u8)(ga * (0.4f + 0.4f*plusAnim))};
             dl.AddFilledRoundRect(Rect{plusX-1, plusY-1, plusW+2, plusH+2}, plusBorderC, 9*sc, 10);
             dl.AddFilledRoundRect(Rect{plusX, plusY, plusW, plusH},
-                Color{22, 20, 38, ga}, 8*sc, 10);
+                Color{26, 18, 44, ga}, 8*sc, 10);
 
             // "+" symbol
             DrawPlusIcon(dl, plusX + plusW*0.5f, plusY + plusH*0.5f, 28*sc,
-                Color{70, 100, 200, (u8)(ga * (0.5f + 0.5f*plusAnim))});
+                Color{120, 80, 200, (u8)(ga * (0.5f + 0.5f*plusAnim))});
 
             if (plusHov && g_input.IsMousePressed(MouseButton::Left)) {
                 g_invView = INV_VIEW_CATEGORIES;
@@ -1601,7 +1607,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 // Weapon + skin name at bottom
                 Vec2 wns = Measure(wpn.name, g_fontSm);
                 Text(dl, ix + (cardW-wns.x)*0.5f, iy + cardH - 22*sc,
-                     Color{190, 195, 220, ga}, wpn.name, g_fontSm);
+                     Color{200, 185, 230, ga}, wpn.name, g_fontSm);
                 Vec2 sns = Measure(sk.name, g_fontSm);
                 Text(dl, ix + (cardW-sns.x)*0.5f, iy + cardH - 10*sc,
                      Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
@@ -1645,10 +1651,10 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
                     Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
                 DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
-                    Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))});
+                    Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
                 Vec2 bs = Measure("BACK", g_fontSm);
                 Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
-                     Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
+                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
                 if (bHov && g_input.IsMousePressed(MouseButton::Left))
                     g_invView = INV_VIEW_MAIN;
             }
@@ -1677,12 +1683,12 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // Card background
                 dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                    Color{22, 20, 38, ga}, 8*sc, 10);
+                    Color{26, 18, 44, ga}, 8*sc, 10);
 
                 // Hover glow
                 if (cAnim > 0.01f) {
                     dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{60,100,255,(u8)(10*cAnim*a)}, 8*sc, 10);
+                        Color{140,80,200,(u8)(10*cAnim*a)}, 8*sc, 10);
                 }
 
                 // Category label at bottom
@@ -1729,10 +1735,10 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
                     Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
                 DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
-                    Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))});
+                    Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
                 Vec2 bs = Measure("BACK", g_fontSm);
                 Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
-                     Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
+                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
                 if (bHov && g_input.IsMousePressed(MouseButton::Left))
                     g_invView = INV_VIEW_CATEGORIES;
             }
@@ -1772,10 +1778,10 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // Card
                 dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                    Color{22, 20, 38, ga}, 8*sc, 10);
+                    Color{26, 18, 44, ga}, 8*sc, 10);
                 if (wAnim > 0.01f) {
                     dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{60,100,255,(u8)(10*wAnim*a)}, 8*sc, 10);
+                        Color{140,80,200,(u8)(10*wAnim*a)}, 8*sc, 10);
                 }
 
                 // Try loading first skin image as preview
@@ -1829,10 +1835,10 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 dl.AddFilledRoundRect(Rect{bx, by, bw, bh},
                     Color{255,255,255,(u8)(5*a + 10*ba*a)}, 4*sc, 6);
                 DrawBackArrow(dl, bx + 14*sc, by + bh*0.5f, 12*sc,
-                    Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))});
+                    Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))});
                 Vec2 bs = Measure("BACK", g_fontSm);
                 Text(dl, bx + 28*sc, by + (bh-bs.y)*0.5f,
-                     Color{160,170,210,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
+                     Color{175,150,220,(u8)(ga*(0.6f+0.4f*ba))}, "BACK", g_fontSm);
                 if (bHov && g_input.IsMousePressed(MouseButton::Left))
                     g_invView = INV_VIEW_WEAPONS;
             }
@@ -1870,7 +1876,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 // Card with rarity tint
                 Color cardBg = isSel
                     ? Color{(u8)(rc.r/5), (u8)(rc.g/5), (u8)(rc.b/5), ga}
-                    : Color{22, 20, 38, ga};
+                    : Color{26, 18, 44, ga};
                 dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH}, cardBg, 6*sc, 8);
 
                 // Selected border
@@ -1883,7 +1889,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 // Hover glow
                 if (sAnim > 0.01f && !isSel) {
                     dl.AddFilledRoundRect(Rect{cx2, cy2, cellW, cellH},
-                        Color{60,100,255,(u8)(8*sAnim*a)}, 6*sc, 8);
+                        Color{140,80,200,(u8)(8*sAnim*a)}, 6*sc, 8);
                 }
 
                 // Skin image
@@ -1903,7 +1909,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 Vec2 wns = Measure(fullName, g_fontSm);
                 f32 textY = cy2 + cellH - 20*sc;
                 if (cellH > 80*sc) {
-                    Text(dl, cx2 + 4*sc, textY, Color{170,175,200,ga}, fullName, g_fontSm);
+                    Text(dl, cx2 + 4*sc, textY, Color{180,165,215,ga}, fullName, g_fontSm);
                     Text(dl, cx2 + 4*sc, textY + 10*sc, Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
                 } else {
                     Text(dl, cx2 + 4*sc, textY + 5*sc, Color{rc.r, rc.g, rc.b, ga}, sk.name, g_fontSm);
@@ -1931,7 +1937,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
             // Panel background
             dl.AddFilledRoundRect(Rect{dpX, dpY, dpW, dpH},
-                Color{18, 16, 32, ga}, 8*sc, 10);
+                Color{22, 16, 38, ga}, 8*sc, 10);
 
             if (g_selectedSkin >= 0 && g_selectedSkin < wpn.skinCount) {
                 const auto& sk = wpn.skins[g_selectedSkin];
@@ -1964,11 +1970,11 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // --- Wear slider ---
                 {
-                    Text(dl, dpX + 10*sc, infoY, Color{150,155,180,ga}, "Wear", g_fontSm);
+                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "Wear", g_fontSm);
                     char wearBuf[16];
                     snprintf(wearBuf, 16, "%.0f%%", g_detailWear * 100.0f);
                     Vec2 ws = Measure(wearBuf, g_fontSm);
-                    Text(dl, dpX + dpW - ws.x - 10*sc, infoY, Color{150,155,180,ga}, wearBuf, g_fontSm);
+                    Text(dl, dpX + dpW - ws.x - 10*sc, infoY, Color{160,145,190,ga}, wearBuf, g_fontSm);
                     infoY += 14*sc;
 
                     // Slider track
@@ -1976,16 +1982,16 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                     f32 slW = dpW - 20*sc;
                     f32 slH = 6*sc;
                     dl.AddFilledRoundRect(Rect{slX, infoY, slW, slH},
-                        Color{30, 28, 52, ga}, 3*sc, 6);
+                        Color{38, 28, 58, ga}, 3*sc, 6);
                     // Filled portion
                     f32 fillW = slW * g_detailWear;
                     if (fillW > 1) {
                         dl.AddFilledRoundRect(Rect{slX, infoY, fillW, slH},
-                            Color{80, 140, 255, ga}, 3*sc, 6);
+                            Color{160, 110, 220, ga}, 3*sc, 6);
                     }
                     // Handle
                     dl.AddCircle(Vec2{slX + fillW, infoY + slH*0.5f}, 5*sc,
-                        Color{120, 180, 255, ga}, 10);
+                        Color{180, 140, 240, ga}, 10);
 
                     // Drag interaction
                     if (Hit(slX, infoY - 4*sc, slW, slH + 8*sc) && g_input.IsMousePressed(MouseButton::Left)) {
@@ -1999,7 +2005,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // --- StatTrak toggle ---
                 {
-                    Text(dl, dpX + 10*sc, infoY, Color{150,155,180,ga}, "StatTrak", g_fontSm);
+                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "StatTrak", g_fontSm);
 
                     // Toggle switch
                     f32 tX = dpX + dpW - 40*sc;
@@ -2007,16 +2013,16 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                     u32 tid = Hash("_stattrak_tog");
                     bool tHov = Hit(tX, infoY - 2*sc, tW, tH + 4*sc);
 
-                    Color togBg = g_detailStatTrak ? Color{50, 140, 80, ga} : Color{40, 38, 60, ga};
+                    Color togBg = g_detailStatTrak ? Color{90, 50, 140, ga} : Color{45, 35, 65, ga};
                     dl.AddFilledRoundRect(Rect{tX, infoY, tW, tH}, togBg, tH*0.5f, 10);
                     // Knob
                     f32 knobX = g_detailStatTrak ? tX + tW - tH + 2*sc : tX + 2*sc;
                     dl.AddFilledRoundRect(Rect{knobX, infoY + 2*sc, tH - 4*sc, tH - 4*sc},
-                        Color{220, 225, 245, ga}, (tH-4*sc)*0.5f, 10);
+                        Color{230, 220, 250, ga}, (tH-4*sc)*0.5f, 10);
 
                     // Gear icon next to StatTrak
                     DrawConfigIcon(dl, dpX + dpW - 50*sc, infoY + tH*0.5f, 10*sc,
-                        Color{100, 105, 130, ga});
+                        Color{110, 95, 140, ga});
 
                     if (tHov && g_input.IsMousePressed(MouseButton::Left))
                         g_detailStatTrak = !g_detailStatTrak;
@@ -2026,23 +2032,23 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
 
                 // --- Custom Name input ---
                 {
-                    Text(dl, dpX + 10*sc, infoY, Color{150,155,180,ga}, "Custom Name", g_fontSm);
+                    Text(dl, dpX + 10*sc, infoY, Color{160,145,190,ga}, "Custom Name", g_fontSm);
                     infoY += 14*sc;
 
                     f32 inputX = dpX + 8*sc;
                     f32 inputW = dpW - 16*sc;
                     f32 inputH = 24*sc;
                     dl.AddFilledRoundRect(Rect{inputX, infoY, inputW, inputH},
-                        Color{14, 12, 26, ga}, 4*sc, 6);
+                        Color{18, 12, 32, ga}, 4*sc, 6);
                     dl.AddFilledRoundRect(Rect{inputX, infoY, inputW, inputH},
-                        Color{35, 33, 55, ga}, 4*sc, 6);
+                        Color{45, 32, 65, ga}, 4*sc, 6);
 
                     const char* dispName = strlen(g_detailCustomName) > 0
                         ? g_detailCustomName : "";
                     if (strlen(dispName) > 0) {
                         Vec2 ns = Measure(dispName, g_fontSm);
                         Text(dl, inputX + 6*sc, infoY + (inputH-ns.y)*0.5f,
-                             Color{190,195,220,ga}, dispName, g_fontSm);
+                             Color{200,185,230,ga}, dispName, g_fontSm);
                     }
                     infoY += inputH + 14*sc;
                 }
@@ -2059,9 +2065,9 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                     f32 addA = Anim(addId, addHov ? 1.0f : 0.0f);
 
                     dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
-                        Color{50, 130, 180, (u8)((50 + 30*addA)*a)}, 6*sc, 8);
+                        Color{120, 70, 180, (u8)((50 + 30*addA)*a)}, 6*sc, 8);
                     TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
-                        Color{180, 220, 255, ga}, "Add To Inventory", g_fontSm);
+                        Color{200, 180, 240, ga}, "Add To Inventory", g_fontSm);
 
                     if (addHov && g_input.IsMousePressed(MouseButton::Left)) {
                         // Add item to inventory
@@ -2099,9 +2105,9 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                     f32 applyA = Anim(applyId, applyHov ? 1.0f : 0.0f);
 
                     dl.AddFilledRoundRect(Rect{btnX, btnY, btnW, btnH},
-                        Color{100, 120, 160, (u8)((35 + 25*applyA)*a)}, 6*sc, 8);
+                        Color{130, 90, 180, (u8)((35 + 25*applyA)*a)}, 6*sc, 8);
                     TextCenter(dl, Rect{btnX, btnY, btnW, btnH},
-                        Color{160, 180, 220, ga}, "Instant Apply", g_fontSm);
+                        Color{180, 160, 230, ga}, "Instant Apply", g_fontSm);
 
                     if (applyHov && g_input.IsMousePressed(MouseButton::Left)) {
                         // Add + mark as applied
@@ -2129,7 +2135,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
                 // No skin selected — prompt
                 Vec2 ps = Measure("Select a skin", g_font);
                 Text(dl, dpX + (dpW-ps.x)*0.5f, dpY + dpH*0.4f,
-                     Color{100, 105, 130, ga}, "Select a skin", g_font);
+                     Color{110, 95, 140, ga}, "Select a skin", g_font);
             }
         }
 
@@ -2144,7 +2150,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         f32 listX = cX + (cW - listW) * 0.5f;
 
         Vec2 hdrSz = Measure("Configuration Slots", g_fontMd);
-        Text(dl, listX, listY, Color{200,210,240,ga}, "Configuration Slots", g_fontMd);
+        Text(dl, listX, listY, Color{210,195,240,ga}, "Configuration Slots", g_fontMd);
         listY += hdrSz.y + 10*sc;
 
         for (int i = 0; i < 5; i++) {
@@ -2154,21 +2160,21 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             bool cfgHov = Hit(listX, iy, listW, itemH);
             f32 cfgA = Anim(cfgId, isSel ? 1.0f : (cfgHov ? 0.5f : 0.0f));
 
-            Color slotBg = isSel ? Color{60,100,255,(u8)(25*a)}
+            Color slotBg = isSel ? Color{140,80,200,(u8)(25*a)}
                                  : Color{255,255,255,(u8)(4*cfgA*a)};
             dl.AddFilledRoundRect(Rect{listX, iy, listW, itemH}, slotBg, 6*sc, 8);
 
             if (isSel) {
                 dl.AddFilledRoundRect(Rect{listX, iy+4*sc, 3*sc, itemH-8*sc},
-                    Color{80,140,255,ga}, 1.5f, 4);
+                    Color{160,110,220,ga}, 1.5f, 4);
             }
 
-            Color slotNameC = isSel ? Color{220,230,255,ga}
-                                    : Color{160,165,190,(u8)(ga*(0.65f+0.35f*cfgA))};
+            Color slotNameC = isSel ? Color{230,220,250,ga}
+                                    : Color{170,155,200,(u8)(ga*(0.65f+0.35f*cfgA))};
             Text(dl, listX+14*sc, iy+(itemH*0.5f-6*sc), slotNameC, g_configSlots[i], g_font);
 
             const char* status = g_configSaved[i] ? "Saved" : "Empty";
-            Color stC = g_configSaved[i] ? Color{120,220,160,ga} : Color{120,125,150,ga};
+            Color stC = g_configSaved[i] ? Color{160,130,220,ga} : Color{130,115,160,ga};
             Vec2 stSz = Measure(status, g_fontSm);
             Text(dl, listX+listW-stSz.x-12*sc, iy+(itemH-stSz.y)*0.5f, stC, status, g_fontSm);
 
@@ -2188,8 +2194,8 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             u32 id = Hash("cfg_save");
             bool hov = Hit(r.x, r.y, r.w, r.h);
             f32 ba = Anim(id, hov ? 1.0f : 0.0f);
-            dl.AddFilledRoundRect(r, Color{40,120,80,(u8)((30+25*ba)*a)}, 6, 8);
-            TextCenter(dl, r, Color{140,230,170,ga}, "Save", g_font);
+            dl.AddFilledRoundRect(r, Color{100,60,160,(u8)((30+25*ba)*a)}, 6, 8);
+            TextCenter(dl, r, Color{180,160,230,ga}, "Save", g_font);
             if (hov && g_input.IsMousePressed(MouseButton::Left))
                 g_configSaved[g_configSelected] = true;
         }
@@ -2201,8 +2207,8 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             f32 ba = Anim(id, hov ? 1.0f : 0.0f);
             bool can = g_configSaved[g_configSelected];
             dl.AddFilledRoundRect(r, can ? Color{40,80,160,(u8)((30+25*ba)*a)}
-                                        : Color{40,42,55,(u8)(20*a)}, 6, 8);
-            TextCenter(dl, r, can ? Color{140,180,255,ga} : Color{100,105,130,ga}, "Load", g_font);
+                                        : Color{45,38,60,(u8)(20*a)}, 6, 8);
+            TextCenter(dl, r, can ? Color{170,150,230,ga} : Color{110,95,140,ga}, "Load", g_font);
         }
         // Delete
         {
@@ -2212,8 +2218,8 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
             f32 ba = Anim(id, hov ? 1.0f : 0.0f);
             bool can = g_configSaved[g_configSelected];
             dl.AddFilledRoundRect(r, can ? Color{160,50,50,(u8)((30+25*ba)*a)}
-                                        : Color{40,42,55,(u8)(20*a)}, 6, 8);
-            TextCenter(dl, r, can ? Color{255,140,140,ga} : Color{100,105,130,ga}, "Delete", g_font);
+                                        : Color{45,38,60,(u8)(20*a)}, 6, 8);
+            TextCenter(dl, r, can ? Color{255,140,140,ga} : Color{110,95,140,ga}, "Delete", g_font);
             if (hov && g_input.IsMousePressed(MouseButton::Left) && can)
                 g_configSaved[g_configSelected] = false;
         }
@@ -2233,10 +2239,10 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         }
         Vec2 ps = Measure(pageName, g_fontLg);
         Text(dl, cX + (cW-ps.x)*0.5f, cY + cH*0.35f,
-             Color{80, 85, 120, ga}, pageName, g_fontLg);
+             Color{95, 80, 135, ga}, pageName, g_fontLg);
         Vec2 cs = Measure("Coming Soon", g_font);
         Text(dl, cX + (cW-cs.x)*0.5f, cY + cH*0.35f + ps.y + 10*sc,
-             Color{60, 62, 90, ga}, "Coming Soon", g_font);
+             Color{75, 60, 105, ga}, "Coming Soon", g_font);
     }
 }
 
@@ -2353,7 +2359,7 @@ static void DrawBg(DrawList& dl, f32 W, f32 H) {
         f32 r = orbR * (f32)i / 3.0f;
         u8 a = (u8)(4.0f * (7 - i));
         dl.AddFilledRoundRect(Rect{orbX1 - r, orbY1 - r, r*2, r*2},
-                              Color{79, 110, 255, a}, r, 24);
+                              Color{140, 80, 220, a}, r, 24);
         dl.AddFilledRoundRect(Rect{orbX2 - r, orbY2 - r, r*2, r*2},
                               Color{160, 80, 255, a}, r, 24);
     }
@@ -2363,8 +2369,8 @@ static void DrawBg(DrawList& dl, f32 W, f32 H) {
 static void DrawTitleBar(DrawList& dl, f32 W) {
     // Subtle top bar bg
     dl.AddGradientRect(Rect{0, 0, W, 48},
-        Color{12, 12, 20, 220}, Color{12, 12, 20, 220},
-        Color{12, 12, 20, 120}, Color{12, 12, 20, 120});
+        Color{14, 10, 24, 220}, Color{14, 10, 24, 220},
+        Color{14, 10, 24, 120}, Color{14, 10, 24, 120});
 
     // AC branding
     Vec2 ls = Measure("AC", g_fontMd);
@@ -2381,7 +2387,7 @@ static void DrawTitleBar(DrawList& dl, f32 W) {
     dl.AddFilledRoundRect(Rect{minX - 8, btnY - 8, btnSz + 16, btnSz + 16},
                           Fade(Color{255,255,255,255}, 0.04f * minA), 6, 8);
     dl.AddLine(Vec2{minX, btnY + btnSz*0.5f}, Vec2{minX + btnSz, btnY + btnSz*0.5f},
-               Color{160, 165, 190, (u8)(150 + 105 * minA)}, 1.5f);
+               Color{170, 155, 200, (u8)(150 + 105 * minA)}, 1.5f);
     if (minH && g_input.IsMousePressed(MouseButton::Left)) ShowWindow(g_hwnd, SW_MINIMIZE);
 
     // Close button
@@ -2399,7 +2405,7 @@ static void DrawTitleBar(DrawList& dl, f32 W) {
 
     // Bottom separator — accent gradient line
     dl.AddGradientRect(Rect{0, 47, W, 1},
-        Color{79, 110, 255, 0},  Color{79, 110, 255, 40},
+        Color{140, 80, 220, 0},  Color{140, 80, 220, 40},
         Color{160, 80, 255, 40}, Color{160, 80, 255, 0});
 }
 
@@ -2748,10 +2754,10 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
     // Divider
     f32 divY = cy;
     dl.AddGradientRect(Rect{cx, divY, cw * 0.42f, 1},
-        Color{35,35,55,0}, Color{35,35,55,0}, P::Border, P::Border);
+        Color{45,35,65,0}, Color{45,35,65,0}, P::Border, P::Border);
     Text(dl, cx + cw * 0.42f + 8, divY - 6, P::T3, "or", g_fontSm);
     dl.AddGradientRect(Rect{cx + cw * 0.58f, divY, cw * 0.42f, 1},
-        P::Border, P::Border, Color{35,35,55,0}, Color{35,35,55,0});
+        P::Border, P::Border, Color{45,35,65,0}, Color{45,35,65,0});
 
     cy += 18;
 
@@ -2902,7 +2908,7 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
         bool xbH = Hit(xbX - 6, xbY - 6, 24, 24);
         f32 xbA = Anim(xbId, xbH ? 1.0f : 0.0f);
         f32 s = 5.0f;
-        Color xcc = Fade(Color{160, 165, 190, (u8)(140 + 115 * xbA)}, a);
+        Color xcc = Fade(Color{170, 155, 200, (u8)(140 + 115 * xbA)}, a);
         dl.AddLine(Vec2{xbX, xbY}, Vec2{xbX + s*2, xbY + s*2}, xcc, 1.5f);
         dl.AddLine(Vec2{xbX + s*2, xbY}, Vec2{xbX, xbY + s*2}, xcc, 1.5f);
         if (xbH && g_input.IsMousePressed(MouseButton::Left)) g_showPopup = false;
@@ -2986,7 +2992,7 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
 
     // ===== SIDEBAR (left 90px) =====
     f32 sideW = 90;
-    dl.AddFilledRect(Rect{0, 0, sideW, H}, Color{12, 12, 20, 240});
+    dl.AddFilledRect(Rect{0, 0, sideW, H}, Color{14, 10, 24, 240});
     dl.AddFilledRect(Rect{sideW - 1, 0, 1, H}, P::Border);
 
     // Logo — "AC" with 3D shadow
@@ -3048,7 +3054,7 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         f32 avY = H - 64;
         // Avatar circle
         dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
-                              Color{45, 48, 65, 255}, avSz * 0.5f, 16);
+                              Color{55, 40, 80, 255}, avSz * 0.5f, 16);
         if (!g_loggedUser.empty()) {
             char ini[2] = {(char)toupper(g_loggedUser[0]), '\0'};
             Vec2 iSz = Measure(ini, g_font);
@@ -3087,7 +3093,7 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         bool minH = Hit(minX - 4, btnY - 4, btnSz + 8, btnSz + 8);
         f32 minA = Anim(minId, minH ? 1.0f : 0.0f);
         dl.AddLine(Vec2{minX, btnY + btnSz*0.5f}, Vec2{minX + btnSz, btnY + btnSz*0.5f},
-                   Color{160, 165, 190, (u8)(130 + 125 * minA)}, 1.5f);
+                   Color{170, 155, 200, (u8)(130 + 125 * minA)}, 1.5f);
         if (minH && g_input.IsMousePressed(MouseButton::Left)) ShowWindow(g_hwnd, SW_MINIMIZE);
 
         f32 clsX = W - 30;
@@ -3169,7 +3175,7 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         struct StatusItem { const char* label; const char* value; Color color; };
         StatusItem items[] = {
             {"Status",       "Undetected",  Color{80, 200, 120, 255}},
-            {"Game Version", "Latest",      Color{100, 160, 255, 255}},
+            {"Game Version", "Latest",      Color{160, 120, 230, 255}},
             {"Last Updated", __DATE__,       P::T2},
         };
         for (auto& item : items) {
@@ -3295,6 +3301,25 @@ static int LoaderMain(HINSTANCE hInstance) {
             Log("AC glow logo loaded: %dx%d handle=%llu", imgW, imgH, (unsigned long long)g_acGlowLogo);
         } else {
             Log("WARN: AC glow logo decode failed");
+        }
+    }
+
+    // Load new purple sunset AC logo (rounded)
+    {
+        int imgW = 0, imgH = 0, imgC = 0;
+        unsigned char* pixels = stbi_load_from_memory(
+            g_acLogoPng, (int)g_acLogoPngSize, &imgW, &imgH, &imgC, 4);
+        if (pixels && imgW > 0 && imgH > 0) {
+            TextureDesc td{};
+            td.width = (u32)imgW;
+            td.height = (u32)imgH;
+            td.channels = 4;
+            td.data = pixels;
+            g_acLogo = g_backend.CreateTexture(td);
+            stbi_image_free(pixels);
+            Log("AC logo loaded: %dx%d handle=%llu", imgW, imgH, (unsigned long long)g_acLogo);
+        } else {
+            Log("WARN: AC logo decode failed");
         }
     }
 
