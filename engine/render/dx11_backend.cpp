@@ -384,7 +384,7 @@ TextureHandle DX11Backend::GetRenderTargetTexture(RenderTargetHandle handle) {
 // ============================================================================
 bool DX11Backend::CreateDeviceAndSwapChain(HWND hwnd, u32 w, u32 h) {
     DXGI_SWAP_CHAIN_DESC scd{};
-    scd.BufferCount = 2;
+    scd.BufferCount = 1;
     scd.BufferDesc.Width = w;
     scd.BufferDesc.Height = h;
     scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -394,7 +394,8 @@ bool DX11Backend::CreateDeviceAndSwapChain(HWND hwnd, u32 w, u32 h) {
     scd.OutputWindow = hwnd;
     scd.SampleDesc.Count = 1;
     scd.Windowed = TRUE;
-    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    // Use DISCARD (not FLIP_DISCARD) — required for LWA_COLORKEY transparency
+    scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
     D3D_FEATURE_LEVEL featureLevel;
     UINT flags = 0;
@@ -410,10 +411,10 @@ bool DX11Backend::CreateDeviceAndSwapChain(HWND hwnd, u32 w, u32 h) {
         _context.GetAddressOf()
     );
 
-    // Fallback: FLIP_DISCARD requires Win10+, try DISCARD for older systems
+    // Fallback: try FLIP_DISCARD (Win10+, better perf but no colorkey)
     if (FAILED(hr)) {
-        scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-        scd.BufferCount = 1;
+        scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        scd.BufferCount = 2;
         hr = D3D11CreateDeviceAndSwapChain(
             nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
             nullptr, 0, D3D11_SDK_VERSION,

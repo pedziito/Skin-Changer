@@ -230,6 +230,7 @@ static HWND g_cs2Hwnd = nullptr; // CS2 window handle for centering
 static DWORD g_cs2Pid = 0;       // CS2 process ID
 static RECT g_origWindowRect = {}; // Original loader window position before fullscreen overlay
 static bool g_cs2MenuVisible = false; // Toggle with Insert key
+static bool g_hasInjected = false;   // True after first injection — overlay never shows again
 
 // ============================================================================
 // USER DATABASE
@@ -595,6 +596,7 @@ static void UpdateInjectionFlow() {
             SetForegroundWindow(g_hwnd);
             Log("Overlay: transparent %dx%d centered on CS2", panelW, panelH);
 
+            g_hasInjected = true; // Mark: injection overlay is done forever
             g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
             g_injProgress = 0;
