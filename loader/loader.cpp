@@ -12,6 +12,7 @@
 #include <Windows.h>
 #include <TlHelp32.h>
 #include <Shlobj.h>
+#include <shellapi.h>
 #endif
 
 #include "../engine/ace_engine_v2.h"
@@ -341,21 +342,22 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOUSEMOVE: {
         f32 x = (f32)(short)LOWORD(lp), y = (f32)(short)HIWORD(lp);
         g_input.OnMouseMove(x, y);
-        // Drag: title bar on login/signup, top area on dashboard (right of sidebar)
+        if (g_dragging) {
+            POINT pt; GetCursorPos(&pt);
+            SetWindowPos(hw, nullptr, pt.x - g_dragPt.x, pt.y - g_dragPt.y, 0, 0, SWP_NOSIZE|SWP_NOZORDER);
+        }
+        return 0;
+    }
+    case WM_LBUTTONDOWN: {
+        g_input.OnMouseDown(MouseButton::Left);
+        POINT pt = {(SHORT)LOWORD(lp), (SHORT)HIWORD(lp)};
         bool canDrag = false;
         if (g_screen == DASHBOARD) {
             canDrag = (pt.y < 40 && pt.x > 90 && pt.x < g_width - 60);
         } else {
             canDrag = (pt.y < 48 && pt.x < g_width - 90);
         }
-        if (canDragrPos(&pt);
-            SetWindowPos(hw, nullptr, pt.x - g_dragPt.x, pt.y - g_dragPt.y, 0, 0, SWP_NOSIZE|SWP_NOZORDER); }
-        return 0;
-    }
-    case WM_LBUTTONDOWN: {
-        g_input.OnMouseDown(MouseButton::Left);
-        POINT pt = {(SHORT)LOWORD(lp), (SHORT)HIWORD(lp)};
-        if (pt.y < 48 && pt.x < g_width - 90) { g_dragging = true; g_dragPt = pt; SetCapture(hw); }
+        if (canDrag) { g_dragging = true; g_dragPt = pt; SetCapture(hw); }
         return 0;
     }
     case WM_LBUTTONUP:   g_input.OnMouseUp(MouseButton::Left); if (g_dragging) { g_dragging = false; ReleaseCapture(); } return 0;
