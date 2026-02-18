@@ -712,11 +712,25 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         // NO background — clear color (1,0,1) is the transparency key
 
         // AC glow logo centered
+        // Draw a soft dark circular backdrop behind the logo to eliminate
+        // the black outline caused by semi-transparent PNG edge pixels
+        // blending with the magenta color key
         TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         if (overlayLogo != INVALID_TEXTURE) {
             f32 logoSz = 80;
             f32 lx = (W - logoSz) * 0.5f;
             f32 ly = 16;
+
+            // Soft glow circle behind logo — prevents color-key fringe
+            f32 cx = lx + logoSz * 0.5f;
+            f32 cy = ly + logoSz * 0.5f;
+            for (int i = 4; i >= 1; i--) {
+                f32 r = logoSz * 0.5f + (f32)i * 4.0f;
+                u8 a = (u8)(30 * (5 - i));
+                dl.AddFilledRoundRect(Rect{cx - r, cy - r, r * 2, r * 2},
+                                      Color{10, 30, 80, a}, r, 24);
+            }
+
             dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
                                overlayLogo, Color{255,255,255,255});
         }
