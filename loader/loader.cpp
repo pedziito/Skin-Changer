@@ -568,8 +568,8 @@ static void UpdateInjectionFlow() {
 
         bool windowReady = (ed.result != nullptr);
 
-        // Need CS2 window AND at least 15 seconds for main menu to load
-        if (windowReady && g_injTimer > 15.0f) {
+        // Need CS2 window AND at least 20 seconds (15s load + 5s extra buffer)
+        if (windowReady && g_injTimer > 20.0f) {
             g_cs2Hwnd = ed.result;
 
             // Save original loader position
@@ -604,6 +604,10 @@ static void UpdateInjectionFlow() {
     }
 
     case INJ_OVERLAY:
+        // Play beep when overlay starts (once)
+        if (g_injProgress == 0.0f && g_injTimer < 0.1f) {
+            Beep(800, 200);  // 800Hz for 200ms
+        }
         // Animate progress 0% → 100% over ~3 seconds
         g_injProgress += g_dt * 33.0f; // ~3s to 100%
         if (g_injProgress >= 100.0f) {
@@ -642,36 +646,51 @@ static void UpdateInjectionFlow() {
 
         if (Inject(pid, dllPath.c_str())) {
             g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
+            g_toastTimer = 4;
             Log("Injection successful into PID %lu", pid);
+            Beep(1200, 150); // Success beep
+
+            // Transition to CS2 menu (resize from fullscreen to 1260x1020 centered)
+            {
+                int menuW = 1260, menuH = 1020;
+                int mx, my;
+                if (g_cs2Hwnd) {
+                    RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
+                    int cs2w = cs2r.right - cs2r.left;
+                    int cs2h = cs2r.bottom - cs2r.top;
+                    mx = cs2r.left + (cs2w - menuW) / 2;
+                    my = cs2r.top  + (cs2h - menuH) / 2;
+                } else {
+                    mx = (GetSystemMetrics(SM_CXSCREEN) - menuW) / 2;
+                    my = (GetSystemMetrics(SM_CYSCREEN) - menuH) / 2;
+                }
+                SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
+                g_width = menuW; g_height = menuH;
+                g_backend.Resize((u32)menuW, (u32)menuH);
+                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+                SetWindowRgn(g_hwnd, rgn2, TRUE);
+                Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
+            }
+            g_injPhase = INJ_CS2_MENU;
+            g_showPopup = false;
         } else {
             g_toastMsg = "Injection fejlede"; g_toastCol = P::Orange;
+            g_toastTimer = 4;
             Log("Injection FAILED into PID %lu (GetLastError=%lu)", pid, GetLastError());
-        }
-        g_toastTimer = 4;
+            Beep(400, 300); // Error beep
 
-        // Always transition to CS2 menu (resize from fullscreen to centered menu)
-        {
-            int menuW = 420, menuH = 340;
-            int mx, my;
-            if (g_cs2Hwnd) {
-                RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
-                int cs2w = cs2r.right - cs2r.left;
-                int cs2h = cs2r.bottom - cs2r.top;
-                mx = cs2r.left + (cs2w - menuW) / 2;
-                my = cs2r.top  + (cs2h - menuH) / 2;
-            } else {
-                mx = (GetSystemMetrics(SM_CXSCREEN) - menuW) / 2;
-                my = (GetSystemMetrics(SM_CYSCREEN) - menuH) / 2;
-            }
-            SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
-            g_width = menuW; g_height = menuH;
-            g_backend.Resize((u32)menuW, (u32)menuH);
-            HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+            // Restore loader to original position (go back to dashboard)
+            SetWindowPos(g_hwnd, HWND_NOTOPMOST,
+                g_origWindowRect.left, g_origWindowRect.top,
+                g_origWindowRect.right - g_origWindowRect.left,
+                g_origWindowRect.bottom - g_origWindowRect.top, SWP_SHOWWINDOW);
+            g_width = g_origWindowRect.right - g_origWindowRect.left;
+            g_height = g_origWindowRect.bottom - g_origWindowRect.top;
+            g_backend.Resize((u32)g_width, (u32)g_height);
+            HRGN rgn2 = CreateRoundRectRgn(0, 0, g_width+1, g_height+1, CORNER*2, CORNER*2);
             SetWindowRgn(g_hwnd, rgn2, TRUE);
-            Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
+            g_injPhase = INJ_IDLE;
         }
-        g_injPhase = INJ_CS2_MENU;
-        g_showPopup = false;
         g_injecting = false;
         break;
     }
@@ -681,19 +700,20 @@ static void UpdateInjectionFlow() {
 }
 
 // --- Draw injection overlay ---
+// Transparent overlay — CS2's own menu is visible behind (no black background)
 static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
     if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
-        // Semi-transparent blurred background
-        dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 180});
+        // Light frosted/dim overlay — CS2 menu shows through
+        dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 80});
 
         // AC glow logo centered (or CS2 logo fallback)
         TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         if (overlayLogo != INVALID_TEXTURE) {
-            f32 logoSz = 96;
+            f32 logoSz = 128;
             f32 lx = (W - logoSz) * 0.5f;
-            f32 ly = H * 0.35f - logoSz * 0.5f;
+            f32 ly = H * 0.32f - logoSz * 0.5f;
             dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
-                               overlayLogo, Color{255,255,255,255});
+                               overlayLogo, Color{255,255,255,230});
         }
 
         // Progress text
@@ -702,20 +722,22 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
         f32 ptY = H * 0.55f;
+        // Text shadow for readability over CS2
+        Text(dl, ptX + 1, ptY + 1, Color{0,0,0,180}, progText, g_fontSm);
         Text(dl, ptX, ptY, P::T1, progText, g_fontSm);
 
         // Progress bar
-        f32 barW = W * 0.6f;
-        f32 barH = 8;
+        f32 barW = W * 0.5f;
+        f32 barH = 10;
         f32 barX = (W - barW) * 0.5f;
-        f32 barY = ptY + 24;
-        // Background
-        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{30, 30, 50, 200}, 4.0f, 8);
+        f32 barY = ptY + 28;
+        // Background (semi-transparent so CS2 shows through)
+        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{20, 20, 40, 120}, 5.0f, 8);
         // Fill
         f32 fillW = barW * (g_injProgress / 100.0f);
         if (fillW > 1.0f) {
             Color c1 = Mix(P::Accent1, P::Accent2, g_injProgress / 100.0f);
-            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 4.0f, 8);
+            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 5.0f, 8);
         }
     }
 }
@@ -725,117 +747,55 @@ static void DrawToast(DrawList& dl, f32 W, f32 H);
 
 // ============================================================================
 // CS2 IN-GAME MENU — auto-opens after successful injection
-// Same theme as dashboard, empty for now, centered on CS2 window
+// Dashboard style, 3x size (1260x1020), completely empty
 // ============================================================================
 static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
-    // Full background with dark gradient matching dashboard theme
+    // Full background
     dl.AddFilledRoundRect(Rect{0, 0, W, H}, P::Bg, (f32)CORNER, 12);
 
     // Top bar with accent gradient line
-    dl.AddFilledRect(Rect{0, 0, W, 2},
+    dl.AddFilledRect(Rect{0, 0, W, 3},
                      Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 1.5f)));
 
     // Titlebar area
-    f32 topH = 36;
-    dl.AddFilledRect(Rect{0, 2, W, topH - 2}, Color{12, 12, 20, 255});
+    f32 topH = 48;
+    dl.AddFilledRect(Rect{0, 3, W, topH - 3}, Color{12, 12, 20, 255});
 
     // AC logo (small) in titlebar
     if (g_acGlowLogo != INVALID_TEXTURE) {
-        f32 logoSz = 22;
-        dl.AddTexturedRect(Rect{10, (topH - logoSz) * 0.5f, logoSz, logoSz},
+        f32 logoSz = 28;
+        dl.AddTexturedRect(Rect{14, (topH - logoSz) * 0.5f, logoSz, logoSz},
                            g_acGlowLogo, Color{255,255,255,255});
     }
 
     // Title text
-    Text(dl, 38, (topH - 14) * 0.5f, P::T1, "AC | Inventory Changer", g_font);
+    Text(dl, 50, (topH - 14) * 0.5f, P::T1, "AC | Inventory Changer", g_fontMd);
 
     // Close button
-    f32 clsX = W - 26, clsY = topH * 0.5f;
+    f32 clsX = W - 30, clsY = topH * 0.5f;
     u32 clsId = Hash("_cs2menu_cls");
-    bool clsH = Hit(clsX - 8, clsY - 8, 16, 16);
+    bool clsH = Hit(clsX - 10, clsY - 10, 20, 20);
     f32 clsA = Anim(clsId, clsH ? 1.0f : 0.0f);
     Color xCol{160, 165, 190, (u8)(130 + 125 * clsA)};
-    f32 xs = 4.5f;
-    dl.AddLine(Vec2{clsX - xs, clsY - xs}, Vec2{clsX + xs, clsY + xs}, xCol, 1.5f);
-    dl.AddLine(Vec2{clsX + xs, clsY - xs}, Vec2{clsX - xs, clsY + xs}, xCol, 1.5f);
+    f32 xs = 6.0f;
+    dl.AddLine(Vec2{clsX - xs, clsY - xs}, Vec2{clsX + xs, clsY + xs}, xCol, 2.0f);
+    dl.AddLine(Vec2{clsX + xs, clsY - xs}, Vec2{clsX - xs, clsY + xs}, xCol, 2.0f);
     if (clsH && g_input.IsMousePressed(MouseButton::Left)) {
         g_running = false;
     }
 
     // Minimize button
-    f32 minX = W - 52, minY = clsY;
+    f32 minX = W - 64, minY = clsY;
     u32 minId = Hash("_cs2menu_min");
-    bool minH = Hit(minX - 8, minY - 8, 16, 16);
+    bool minH = Hit(minX - 10, minY - 10, 20, 20);
     f32 minA = Anim(minId, minH ? 1.0f : 0.0f);
     dl.AddLine(Vec2{minX - xs, minY}, Vec2{minX + xs, minY},
-               Color{160, 165, 190, (u8)(130 + 125 * minA)}, 1.5f);
+               Color{160, 165, 190, (u8)(130 + 125 * minA)}, 2.0f);
     if (minH && g_input.IsMousePressed(MouseButton::Left))
         ShowWindow(g_hwnd, SW_MINIMIZE);
 
-    // Content area border
-    f32 contentY = topH + 4;
-    f32 contentH = H - contentY - 4;
-    f32 margin = 14;
-    f32 innerW = W - margin * 2;
-    (void)contentH;
-
-    // Separator line
-    dl.AddFilledRect(Rect{margin, contentY, innerW, 1}, P::Border);
-    contentY += 8;
-
-    // Status card
-    {
-        f32 cardH = 52;
-        Rect cr{margin, contentY, innerW, cardH};
-        dl.AddFilledRoundRect(cr, P::Card, 8.0f, 8);
-        dl.AddRect(cr, P::Border);
-
-        // Status dot (green = active)
-        f32 dotR = 4;
-        f32 dotX = cr.x + 16, dotY = cr.y + cardH * 0.5f;
-        dl.AddCircle(Vec2{dotX, dotY}, dotR, P::Green, 12);
-
-        Text(dl, dotX + 12, cr.y + 10, P::T1, "Active", g_fontSm);
-        Text(dl, dotX + 12, cr.y + 28, P::T3, "Inventory Changer loaded", g_fontSm);
-
-        // Version badge
-        const char* verTxt = "v3.0";
-        Vec2 vSz = Measure(verTxt, g_fontSm);
-        f32 badgeX = cr.Right() - vSz.x - 20;
-        f32 badgeY = cr.y + (cardH - 20) * 0.5f;
-        dl.AddFilledRoundRect(Rect{badgeX - 6, badgeY, vSz.x + 12, 20},
-                              Fade(P::Accent1, 0.15f), 6.0f, 8);
-        Text(dl, badgeX, badgeY + 3, P::Accent1, verTxt, g_fontSm);
-    }
-    contentY += 60;
-
-    // Empty content area with placeholder text
-    {
-        const char* emptyTitle = "Skin Changer Menu";
-        Vec2 ts = Measure(emptyTitle, g_fontMd);
-        Text(dl, (W - ts.x) * 0.5f, contentY + 20, P::T1, emptyTitle, g_fontMd);
-
-        const char* emptyDesc = "Menuen er klar \xe2\x80\x94 indhold kommer snart";
-        Vec2 ds = Measure(emptyDesc, g_fontSm);
-        Text(dl, (W - ds.x) * 0.5f, contentY + 46, P::T3, emptyDesc, g_fontSm);
-
-        // Decorative empty card placeholders (skeleton UI)
-        f32 cardY = contentY + 80;
-        for (int i = 0; i < 3; i++) {
-            Rect cr2{margin, cardY, innerW, 36};
-            dl.AddFilledRoundRect(cr2, Color{18, 18, 28, 180}, 6.0f, 8);
-            dl.AddRect(cr2, Fade(P::Border, 0.5f));
-
-            // Skeleton placeholder bars
-            f32 skelW = 60 + i * 30.0f;
-            dl.AddFilledRoundRect(Rect{cr2.x + 12, cr2.y + 12, skelW, 12},
-                                  Fade(P::T3, 0.2f), 4.0f, 6);
-            cardY += 44;
-        }
-    }
-
     // Bottom border accent
-    dl.AddFilledRect(Rect{0, H - 2, W, 2},
+    dl.AddFilledRect(Rect{0, H - 3, W, 3},
                      Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 2.0f)));
 
     // Toast on top
