@@ -229,6 +229,7 @@ static bool g_steamWasRunning = false;
 static HWND g_cs2Hwnd = nullptr; // CS2 window handle for centering
 static DWORD g_cs2Pid = 0;       // CS2 process ID
 static RECT g_origWindowRect = {}; // Original loader window position before fullscreen overlay
+static bool g_cs2MenuVisible = false; // Toggle with Insert key
 
 // ============================================================================
 // USER DATABASE
@@ -568,8 +569,8 @@ static void UpdateInjectionFlow() {
 
         bool windowReady = (ed.result != nullptr);
 
-        // Need CS2 window AND at least 20 seconds (15s load + 5s extra buffer)
-        if (windowReady && g_injTimer > 20.0f) {
+        // Need CS2 window AND at least 25 seconds (15s load + 10s extra buffer)
+        if (windowReady && g_injTimer > 25.0f) {
             g_cs2Hwnd = ed.result;
 
             // Save original loader position
@@ -585,11 +586,15 @@ static void UpdateInjectionFlow() {
             scrH = cr.bottom - cr.top;
 
             SetWindowRgn(g_hwnd, nullptr, TRUE);
+            // Make window transparent using color key (pure black = transparent)
+            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
+            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
+            SetLayeredWindowAttributes(g_hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
             SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, scrW, scrH, SWP_SHOWWINDOW);
             g_width = scrW; g_height = scrH;
             g_backend.Resize((u32)scrW, (u32)scrH);
             SetForegroundWindow(g_hwnd);
-            Log("Overlay: fullscreen %dx%d on CS2", scrW, scrH);
+            Log("Overlay: transparent fullscreen %dx%d on CS2", scrW, scrH);
 
             g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
@@ -606,10 +611,10 @@ static void UpdateInjectionFlow() {
     case INJ_OVERLAY:
         // Play beep when overlay starts (once)
         if (g_injProgress == 0.0f && g_injTimer < 0.1f) {
-            Beep(800, 200);  // 800Hz for 200ms
+            Beep(800, 200);  // 800Hz beep — injection starting
         }
-        // Animate progress 0% → 100% over ~3 seconds
-        g_injProgress += g_dt * 33.0f; // ~3s to 100%
+        // Animate progress 0% → 100% over ~4 seconds
+        g_injProgress += g_dt * 25.0f; // ~4s to 100%
         if (g_injProgress >= 100.0f) {
             g_injProgress = 100.0f;
             g_injPhase = INJ_INJECTING;
@@ -646,51 +651,46 @@ static void UpdateInjectionFlow() {
 
         if (Inject(pid, dllPath.c_str())) {
             g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
-            g_toastTimer = 4;
             Log("Injection successful into PID %lu", pid);
             Beep(1200, 150); // Success beep
-
-            // Transition to CS2 menu (resize from fullscreen to 1260x1020 centered)
-            {
-                int menuW = 1260, menuH = 1020;
-                int mx, my;
-                if (g_cs2Hwnd) {
-                    RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
-                    int cs2w = cs2r.right - cs2r.left;
-                    int cs2h = cs2r.bottom - cs2r.top;
-                    mx = cs2r.left + (cs2w - menuW) / 2;
-                    my = cs2r.top  + (cs2h - menuH) / 2;
-                } else {
-                    mx = (GetSystemMetrics(SM_CXSCREEN) - menuW) / 2;
-                    my = (GetSystemMetrics(SM_CYSCREEN) - menuH) / 2;
-                }
-                SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
-                g_width = menuW; g_height = menuH;
-                g_backend.Resize((u32)menuW, (u32)menuH);
-                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
-                SetWindowRgn(g_hwnd, rgn2, TRUE);
-                Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
-            }
-            g_injPhase = INJ_CS2_MENU;
-            g_showPopup = false;
         } else {
             g_toastMsg = "Injection fejlede"; g_toastCol = P::Orange;
-            g_toastTimer = 4;
             Log("Injection FAILED into PID %lu (GetLastError=%lu)", pid, GetLastError());
             Beep(400, 300); // Error beep
-
-            // Restore loader to original position (go back to dashboard)
-            SetWindowPos(g_hwnd, HWND_NOTOPMOST,
-                g_origWindowRect.left, g_origWindowRect.top,
-                g_origWindowRect.right - g_origWindowRect.left,
-                g_origWindowRect.bottom - g_origWindowRect.top, SWP_SHOWWINDOW);
-            g_width = g_origWindowRect.right - g_origWindowRect.left;
-            g_height = g_origWindowRect.bottom - g_origWindowRect.top;
-            g_backend.Resize((u32)g_width, (u32)g_height);
-            HRGN rgn2 = CreateRoundRectRgn(0, 0, g_width+1, g_height+1, CORNER*2, CORNER*2);
-            SetWindowRgn(g_hwnd, rgn2, TRUE);
-            g_injPhase = INJ_IDLE;
         }
+        g_toastTimer = 4;
+
+        // Remove WS_EX_LAYERED (no longer transparent)
+        {
+            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
+            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_LAYERED);
+        }
+
+        // Always transition to CS2 menu (1260x1020, starts hidden — toggle with Insert)
+        {
+            int menuW = 1260, menuH = 1020;
+            int mx, my;
+            if (g_cs2Hwnd) {
+                RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
+                int cs2w = cs2r.right - cs2r.left;
+                int cs2h = cs2r.bottom - cs2r.top;
+                mx = cs2r.left + (cs2w - menuW) / 2;
+                my = cs2r.top  + (cs2h - menuH) / 2;
+            } else {
+                mx = (GetSystemMetrics(SM_CXSCREEN) - menuW) / 2;
+                my = (GetSystemMetrics(SM_CYSCREEN) - menuH) / 2;
+            }
+            SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
+            g_width = menuW; g_height = menuH;
+            g_backend.Resize((u32)menuW, (u32)menuH);
+            HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+            SetWindowRgn(g_hwnd, rgn2, TRUE);
+            Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
+        }
+        g_cs2MenuVisible = false;
+        ShowWindow(g_hwnd, SW_HIDE); // Start hidden — press Insert to show
+        g_injPhase = INJ_CS2_MENU;
+        g_showPopup = false;
         g_injecting = false;
         break;
     }
@@ -700,13 +700,14 @@ static void UpdateInjectionFlow() {
 }
 
 // --- Draw injection overlay ---
-// Transparent overlay — CS2's own menu is visible behind (no black background)
+// Truly transparent overlay via WS_EX_LAYERED + LWA_COLORKEY
+// Pure black pixels become transparent → CS2's own menu is visible behind
 static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
     if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
-        // Light frosted/dim overlay — CS2 menu shows through
-        dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 80});
+        // NO background fill — window is color-keyed transparent (black = invisible)
+        // CS2's menu is fully visible behind this overlay
 
-        // AC glow logo centered (or CS2 logo fallback)
+        // AC glow logo centered
         TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         if (overlayLogo != INVALID_TEXTURE) {
             f32 logoSz = 128;
@@ -722,21 +723,23 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
         f32 ptY = H * 0.55f;
-        // Text shadow for readability over CS2
-        Text(dl, ptX + 1, ptY + 1, Color{0,0,0,180}, progText, g_fontSm);
-        Text(dl, ptX, ptY, P::T1, progText, g_fontSm);
+        // Text shadow (non-black so it doesn't become transparent)
+        Text(dl, ptX + 1, ptY + 1, Color{20, 20, 30, 200}, progText, g_fontSm);
+        Text(dl, ptX, ptY, Color{220, 225, 240, 255}, progText, g_fontSm);
 
-        // Progress bar
-        f32 barW = W * 0.5f;
+        // Progress bar — Blue → Light blue gradient, half screen width
+        f32 barW = W * 0.25f;
         f32 barH = 10;
         f32 barX = (W - barW) * 0.5f;
         f32 barY = ptY + 28;
-        // Background (semi-transparent so CS2 shows through)
-        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{20, 20, 40, 120}, 5.0f, 8);
-        // Fill
+        // Bar background (dark but NOT pure black)
+        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{15, 20, 40, 180}, 5.0f, 8);
+        // Fill — Blue to Light blue gradient
         f32 fillW = barW * (g_injProgress / 100.0f);
         if (fillW > 1.0f) {
-            Color c1 = Mix(P::Accent1, P::Accent2, g_injProgress / 100.0f);
+            Color blue{60, 120, 255, 255};
+            Color lightBlue{100, 210, 255, 255};
+            Color c1 = Mix(blue, lightBlue, g_injProgress / 100.0f);
             dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 5.0f, 8);
         }
     }
@@ -746,60 +749,12 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
 static void DrawToast(DrawList& dl, f32 W, f32 H);
 
 // ============================================================================
-// CS2 IN-GAME MENU — auto-opens after successful injection
-// Dashboard style, 3x size (1260x1020), completely empty
+// CS2 IN-GAME MENU — opens after injection with Insert key
+// Dashboard background only, 1260x1020, completely empty
 // ============================================================================
 static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
-    // Full background
+    // Just the dashboard background — completely empty
     dl.AddFilledRoundRect(Rect{0, 0, W, H}, P::Bg, (f32)CORNER, 12);
-
-    // Top bar with accent gradient line
-    dl.AddFilledRect(Rect{0, 0, W, 3},
-                     Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 1.5f)));
-
-    // Titlebar area
-    f32 topH = 48;
-    dl.AddFilledRect(Rect{0, 3, W, topH - 3}, Color{12, 12, 20, 255});
-
-    // AC logo (small) in titlebar
-    if (g_acGlowLogo != INVALID_TEXTURE) {
-        f32 logoSz = 28;
-        dl.AddTexturedRect(Rect{14, (topH - logoSz) * 0.5f, logoSz, logoSz},
-                           g_acGlowLogo, Color{255,255,255,255});
-    }
-
-    // Title text
-    Text(dl, 50, (topH - 14) * 0.5f, P::T1, "AC | Inventory Changer", g_fontMd);
-
-    // Close button
-    f32 clsX = W - 30, clsY = topH * 0.5f;
-    u32 clsId = Hash("_cs2menu_cls");
-    bool clsH = Hit(clsX - 10, clsY - 10, 20, 20);
-    f32 clsA = Anim(clsId, clsH ? 1.0f : 0.0f);
-    Color xCol{160, 165, 190, (u8)(130 + 125 * clsA)};
-    f32 xs = 6.0f;
-    dl.AddLine(Vec2{clsX - xs, clsY - xs}, Vec2{clsX + xs, clsY + xs}, xCol, 2.0f);
-    dl.AddLine(Vec2{clsX + xs, clsY - xs}, Vec2{clsX - xs, clsY + xs}, xCol, 2.0f);
-    if (clsH && g_input.IsMousePressed(MouseButton::Left)) {
-        g_running = false;
-    }
-
-    // Minimize button
-    f32 minX = W - 64, minY = clsY;
-    u32 minId = Hash("_cs2menu_min");
-    bool minH = Hit(minX - 10, minY - 10, 20, 20);
-    f32 minA = Anim(minId, minH ? 1.0f : 0.0f);
-    dl.AddLine(Vec2{minX - xs, minY}, Vec2{minX + xs, minY},
-               Color{160, 165, 190, (u8)(130 + 125 * minA)}, 2.0f);
-    if (minH && g_input.IsMousePressed(MouseButton::Left))
-        ShowWindow(g_hwnd, SW_MINIMIZE);
-
-    // Bottom border accent
-    dl.AddFilledRect(Rect{0, H - 3, W, 3},
-                     Mix(P::Accent1, P::Accent2, 0.5f + 0.5f * sinf(g_time * 2.0f)));
-
-    // Toast on top
-    DrawToast(dl, W, H);
 }
 
 // ============================================================================
@@ -864,6 +819,17 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         else if (vk == VK_END)    k = Key::End;
         else if (vk == VK_SHIFT)  k = Key::LeftShift;
         else if (vk == VK_CONTROL) k = Key::LeftCtrl;
+        else if (vk == VK_INSERT) {
+            // Toggle CS2 menu visibility with Insert key
+            if (g_injPhase == INJ_CS2_MENU) {
+                g_cs2MenuVisible = !g_cs2MenuVisible;
+                ShowWindow(g_hwnd, g_cs2MenuVisible ? SW_SHOWNOACTIVATE : SW_HIDE);
+                if (g_cs2MenuVisible) {
+                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+            }
+        }
         else k = (Key)vk;
         g_input.OnKeyDown(k);
         return 0;
@@ -1939,26 +1905,49 @@ static int LoaderMain(HINSTANCE hInstance) {
         last = now;
 
         g_backend.BeginFrame();
-        g_backend.SetClearColor(P::Bg);
+        // During overlay: clear to black (black = transparent via LWA_COLORKEY)
+        if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING)
+            g_backend.SetClearColor(Color{0, 0, 0, 255});
+        else
+            g_backend.SetClearColor(P::Bg);
 
         // Update injection flow (Steam/CS2 state machine)
         UpdateInjectionFlow();
 
-        // CS2 menu visibility: only show when CS2 is the foreground window
-        if (g_injPhase == INJ_CS2_MENU && g_cs2Hwnd) {
-            HWND fg = GetForegroundWindow();
-            bool cs2Active = (fg == g_cs2Hwnd || fg == g_hwnd);
-            if (!cs2Active) {
-                // CS2 is not focused (user tabbed out) — hide our menu
-                if (IsWindowVisible(g_hwnd)) {
+        // CS2 menu visibility: toggle with Insert key, hide when CS2 not focused
+        if (g_injPhase == INJ_CS2_MENU) {
+            // Poll Insert key globally (WM_KEYDOWN won't fire when window is hidden)
+            static bool s_insertWasDown = false;
+            bool insertDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
+            if (insertDown && !s_insertWasDown) {
+                g_cs2MenuVisible = !g_cs2MenuVisible;
+                if (g_cs2MenuVisible) {
+                    ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
+                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                } else {
                     ShowWindow(g_hwnd, SW_HIDE);
                 }
-                Sleep(50); // reduce CPU when hidden
+            }
+            s_insertWasDown = insertDown;
+
+            if (!g_cs2MenuVisible) {
+                // Menu hidden (Insert to show)
+                if (IsWindowVisible(g_hwnd)) ShowWindow(g_hwnd, SW_HIDE);
+                Sleep(50);
                 g_backend.EndFrame();
                 continue;
-            } else {
-                // CS2 is focused — show our menu on top
-                if (!IsWindowVisible(g_hwnd)) {
+            }
+            // Menu visible — check CS2 focus
+            if (g_cs2Hwnd) {
+                HWND fg = GetForegroundWindow();
+                bool cs2Active = (fg == g_cs2Hwnd || fg == g_hwnd);
+                if (!cs2Active) {
+                    if (IsWindowVisible(g_hwnd)) ShowWindow(g_hwnd, SW_HIDE);
+                    Sleep(50);
+                    g_backend.EndFrame();
+                    continue;
+                } else if (!IsWindowVisible(g_hwnd)) {
                     ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
                     SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
