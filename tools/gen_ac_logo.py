@@ -100,6 +100,17 @@ def generate_logo():
     # Downsample with high-quality LANCZOS
     result = result.resize((OUT_SIZE, OUT_SIZE), Image.LANCZOS)
 
+    # Threshold alpha: remove all semi-transparent pixels
+    # This prevents magenta color-key fringe in the overlay
+    pixels = result.load()
+    for y in range(OUT_SIZE):
+        for x in range(OUT_SIZE):
+            r, g, b, a = pixels[x, y]
+            if a < 128:
+                pixels[x, y] = (0, 0, 0, 0)       # Fully transparent
+            else:
+                pixels[x, y] = (r, g, b, 255)      # Fully opaque
+
     return result
 
 def save_header(img, header_path):
