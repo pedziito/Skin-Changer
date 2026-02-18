@@ -218,6 +218,7 @@ static f32  g_injTimer    = 0.0f;
 static bool g_steamWasRunning = false;
 static HWND g_cs2Hwnd = nullptr; // CS2 window handle for centering
 static DWORD g_cs2Pid = 0;       // CS2 process ID
+static RECT g_origWindowRect = {}; // Original loader window position before fullscreen overlay
 
 // ============================================================================
 // USER DATABASE
@@ -518,6 +519,50 @@ static void UpdateInjectionFlow() {
     case INJ_WAIT_CS2: {
         DWORD pid = FindProc("cs2.exe");
         if (pid != 0) {
+            g_cs2Pid = pid;
+
+            // Save original loader position
+            GetWindowRect(g_hwnd, &g_origWindowRect);
+
+            // Find CS2 window to get its monitor/position
+            g_cs2Hwnd = nullptr;
+            struct EnumData { DWORD pid; HWND result; };
+            EnumData ed{pid, nullptr};
+            EnumWindows([](HWND hw, LPARAM lp) -> BOOL {
+                auto* d = (EnumData*)lp;
+                DWORD wp = 0; GetWindowThreadProcessId(hw, &wp);
+                if (wp == d->pid && IsWindowVisible(hw)) {
+                    char cls[64]; GetClassNameA(hw, cls, 64);
+                    if (strstr(cls, "SDL") || GetWindow(hw, GW_OWNER) == nullptr) {
+                        RECT r; GetWindowRect(hw, &r);
+                        if ((r.right - r.left) > 400 && (r.bottom - r.top) > 300) {
+                            d->result = hw;
+                            return FALSE;
+                        }
+                    }
+                }
+                return TRUE;
+            }, (LPARAM)&ed);
+            g_cs2Hwnd = ed.result;
+
+            // Make loader fullscreen on top of CS2
+            int scrW = GetSystemMetrics(SM_CXSCREEN);
+            int scrH = GetSystemMetrics(SM_CYSCREEN);
+            int ovX = 0, ovY = 0;
+            if (g_cs2Hwnd) {
+                RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
+                ovX = cr.left; ovY = cr.top;
+                scrW = cr.right - cr.left;
+                scrH = cr.bottom - cr.top;
+            }
+            // Remove rounded region so we truly cover full screen
+            SetWindowRgn(g_hwnd, nullptr, TRUE);
+            SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, scrW, scrH, SWP_SHOWWINDOW);
+            g_width = scrW; g_height = scrH;
+            g_backend.Resize((u32)scrW, (u32)scrH);
+            Log("Overlay: fullscreen %dx%d at (%d,%d)", scrW, scrH, ovX, ovY);
+            SetForegroundWindow(g_hwnd);
+
             g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
             g_injProgress = 0;
@@ -569,32 +614,10 @@ static void UpdateInjectionFlow() {
 
         if (Inject(pid, dllPath.c_str())) {
             g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
-            g_cs2Pid = pid;
 
-            // Find CS2 window and center our loader on it
-            g_cs2Hwnd = nullptr;
-            struct EnumData { DWORD pid; HWND result; };
-            EnumData ed{pid, nullptr};
-            EnumWindows([](HWND hw, LPARAM lp) -> BOOL {
-                auto* d = (EnumData*)lp;
-                DWORD wp = 0; GetWindowThreadProcessId(hw, &wp);
-                if (wp == d->pid && IsWindowVisible(hw)) {
-                    char cls[64]; GetClassNameA(hw, cls, 64);
-                    // CS2 uses SDL window class
-                    if (strstr(cls, "SDL") || GetWindow(hw, GW_OWNER) == nullptr) {
-                        RECT r; GetWindowRect(hw, &r);
-                        if ((r.right - r.left) > 400 && (r.bottom - r.top) > 300) {
-                            d->result = hw;
-                            return FALSE; // found
-                        }
-                    }
-                }
-                return TRUE;
-            }, (LPARAM)&ed);
-            g_cs2Hwnd = ed.result;
-
+            // CS2 window already found in INJ_WAIT_CS2 phase
+            // Resize loader down from fullscreen overlay to CS2 menu size
             if (g_cs2Hwnd) {
-                // Resize loader to overlay size and center on CS2
                 RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
                 int cs2w = cs2r.right - cs2r.left;
                 int cs2h = cs2r.bottom - cs2r.top;
@@ -608,7 +631,6 @@ static void UpdateInjectionFlow() {
                 SetWindowRgn(g_hwnd, rgn2, TRUE);
                 Log("CS2 menu: centered on CS2 window %dx%d at (%d,%d)", menuW, menuH, mx, my);
             } else {
-                // Fallback: center on screen
                 int sw2 = GetSystemMetrics(SM_CXSCREEN);
                 int sh2 = GetSystemMetrics(SM_CYSCREEN);
                 int menuW = 420, menuH = 340;
@@ -640,7 +662,7 @@ static void UpdateInjectionFlow() {
 
 // --- Draw injection overlay ---
 static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
-    if (g_injPhase == INJ_OVERLAY || (g_injPhase == INJ_WAIT_CS2 && FindProc("cs2.exe"))) {
+    if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
         // Semi-transparent blurred background
         dl.AddFilledRect(Rect{0, 0, W, H}, Color{0, 0, 0, 180});
 
@@ -1946,6 +1968,10 @@ static int LoaderMain(HINSTANCE hInstance) {
         // CS2 in-game menu takes over the entire window after injection
         if (g_injPhase == INJ_CS2_MENU) {
             DrawCS2Menu(dl, W, H);
+        } else if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
+            // Fullscreen overlay phase — draw ONLY the overlay, no dashboard
+            DrawInjectionOverlay(dl, W, H);
+            DrawToast(dl, W, H);
         } else {
             switch (g_screen) {
             case LOGIN:     ScreenLogin(dl, W, H);     break;
