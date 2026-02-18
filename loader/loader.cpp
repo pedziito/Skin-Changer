@@ -571,22 +571,37 @@ static void UpdateInjectionFlow() {
 
         bool windowReady = (ed.result != nullptr);
 
-        // Need CS2 window AND at least 25 seconds (15s load + 10s extra buffer)
-        if (windowReady && g_injTimer > 25.0f) {
+        // Need CS2 window AND at least 10 seconds after process start
+        if (windowReady && g_injTimer > 10.0f) {
             g_cs2Hwnd = ed.result;
 
             // Save original loader position
             GetWindowRect(g_hwnd, &g_origWindowRect);
 
-            // Skip overlay — inject directly for a clean experience
-            // Hide the loader window during injection to avoid visual noise
-            ShowWindow(g_hwnd, SW_HIDE);
-            Log("CS2 ready — injecting directly (no overlay)");
+            // Show transparent overlay centered on CS2 — no background,
+            // only the AC logo, progress bar & text float on top of CS2
+            int panelW = 400, panelH = 180;
+            RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
+            int cs2w = cr.right - cr.left;
+            int cs2h = cr.bottom - cr.top;
+            int ovX = cr.left + (cs2w - panelW) / 2;
+            int ovY = cr.top  + (cs2h - panelH) / 2;
+
+            // Make window transparent: magenta (1,0,1) = invisible via LWA_COLORKEY
+            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
+            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+            SetLayeredWindowAttributes(g_hwnd, RGB(1, 0, 1), 0, LWA_COLORKEY);
+            SetWindowRgn(g_hwnd, nullptr, TRUE); // Remove rounded region for overlay
+            SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, panelW, panelH, SWP_SHOWWINDOW);
+            g_width = panelW; g_height = panelH;
+            g_backend.Resize((u32)panelW, (u32)panelH);
+            SetForegroundWindow(g_hwnd);
+            Log("Overlay: transparent %dx%d centered on CS2", panelW, panelH);
 
             g_hasInjected = true;
-            g_injPhase = INJ_INJECTING;
+            g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
-            g_injProgress = 100.0f; // Skip progress animation
+            g_injProgress = 0;
         } else if (g_injTimer > 90.0f) {
             // Timeout waiting for CS2 window
             g_toastMsg = "Timeout: CS2 hovedmenu ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
@@ -597,11 +612,14 @@ static void UpdateInjectionFlow() {
     }
 
     case INJ_OVERLAY:
-        // Overlay phase disabled — injection now happens directly
-        // Kept as fallback; immediately transition to INJ_INJECTING
-        g_injProgress = 100.0f;
-        g_injPhase = INJ_INJECTING;
-        g_injTimer = 0;
+        // Transparent overlay: AC logo + progress bar floating on CS2
+        // Animate progress 0% → 100% over ~4 seconds, then inject
+        g_injProgress += g_dt * 25.0f; // ~4s to 100%
+        if (g_injProgress >= 100.0f) {
+            g_injProgress = 100.0f;
+            g_injPhase = INJ_INJECTING;
+            g_injTimer = 0;
+        }
         break;
 
     case INJ_INJECTING: {
@@ -1455,12 +1473,11 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
 
     // ===== HEADER: Icon + Title + Close =====
     {
-        // AC brand icon (logo image)
+        // CS2 icon (real logo image, rounded)
         f32 iconSz = 36;
-        TextureHandle popupIcon = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
-        if (popupIcon != INVALID_TEXTURE) {
+        if (g_cs2Logo != INVALID_TEXTURE) {
             dl.AddTexturedRect(Rect{cx, cy, iconSz, iconSz},
-                               popupIcon, Fade(Color{255,255,255,255}, a));
+                               g_cs2Logo, Fade(Color{255,255,255,255}, a));
         } else {
             dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
                                   Fade(Color{220, 160, 40, 255}, a), 8.0f, 10);
@@ -1715,14 +1732,13 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         snprintf(expStr, 48, "Expires in %d days", g_sub.daysLeft);
         Text(dl, txX, cardR.y + 34, P::T3, expStr, g_fontSm);
 
-        // Icon — right side (AC brand logo)
+        // Icon — right side (CS2 logo image, rounded)
         f32 icoSz = 36;
         f32 icoX = cardR.Right() - icoSz - 10;
         f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
-        TextureHandle cardIcon = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
-        if (cardIcon != INVALID_TEXTURE) {
+        if (g_cs2Logo != INVALID_TEXTURE) {
             dl.AddTexturedRect(Rect{icoX, icoY, icoSz, icoSz},
-                               cardIcon, Color{255,255,255,255});
+                               g_cs2Logo, Color{255,255,255,255});
         } else {
             dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
                                   Color{220, 160, 40, 255}, 8.0f, 10);
@@ -1953,8 +1969,11 @@ static int LoaderMain(HINSTANCE hInstance) {
         g_time += g_dt;
         last = now;
 
-        // Set clear color — overlay removed, always use normal background
-        g_backend.SetClearColor(P::Bg);
+        // Set clear color — magenta key during overlay (transparent), normal bg otherwise
+        if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING)
+            g_backend.SetClearColor(Color{1, 0, 1, 0}); // Magenta = transparent via LWA_COLORKEY
+        else
+            g_backend.SetClearColor(P::Bg);
 
         g_backend.BeginFrame();
 
@@ -2030,9 +2049,9 @@ static int LoaderMain(HINSTANCE hInstance) {
                 if (g_menuOpenAnim > 1.0f) g_menuOpenAnim = 1.0f;
             }
             DrawCS2Menu(dl, W, H);
-        } else if (g_injPhase == INJ_INJECTING) {
-            // Injection in progress — loader is hidden, just run the state machine
-            // No visual overlay needed
+        } else if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
+            // Transparent overlay phase — AC logo + progress bar floating on CS2
+            DrawInjectionOverlay(dl, W, H);
             DrawToast(dl, W, H);
         } else {
             switch (g_screen) {
