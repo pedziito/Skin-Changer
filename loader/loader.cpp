@@ -1039,8 +1039,6 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
         // CS2 icon (real logo image, rounded)
         f32 iconSz = 36;
         if (g_cs2Logo != INVALID_TEXTURE) {
-            dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
-                                  Fade(Color{30, 32, 48, 255}, a), 8.0f, 10);
             dl.AddTexturedRect(Rect{cx, cy, iconSz, iconSz},
                                g_cs2Logo, Fade(Color{255,255,255,255}, a));
         } else {
@@ -1145,9 +1143,15 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     dl.AddFilledRect(Rect{0, 0, sideW, H}, Color{12, 12, 20, 240});
     dl.AddFilledRect(Rect{sideW - 1, 0, 1, H}, P::Border);
 
-    // Logo — "AC"
+    // Logo — "AC" with 3D shadow
     Vec2 logoSz = Measure("AC", g_fontLg);
-    Text(dl, (sideW - logoSz.x) * 0.5f, 18, P::Accent1, "AC", g_fontLg);
+    f32 logoX = (sideW - logoSz.x) * 0.5f;
+    f32 logoY = 18;
+    // Shadow layers for 3D depth
+    Text(dl, logoX + 2, logoY + 3, Color{0, 0, 0, 80}, "AC", g_fontLg);
+    Text(dl, logoX + 1, logoY + 2, Color{40, 20, 80, 120}, "AC", g_fontLg);
+    Text(dl, logoX + 0.5f, logoY + 1, Color{80, 50, 140, 160}, "AC", g_fontLg);
+    Text(dl, logoX, logoY, P::Accent1, "AC", g_fontLg);
 
     // Navigation items with icons
     f32 navY = 76;
@@ -1191,11 +1195,28 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
             ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
     }
 
-    // User avatar + name + logout — all inside sidebar
+    // Logout — centered in sidebar nav area
+    {
+        u32 loId = Hash("_sidebar_logout");
+        Vec2 loSz = Measure("Logout", g_fontSm);
+        f32 loX = (sideW - loSz.x) * 0.5f;
+        f32 loY = H * 0.5f + 40;
+        bool loH = Hit(loX - 4, loY - 4, loSz.x + 8, loSz.y + 8);
+        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
+        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
+        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
+            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
+            g_injected = false; g_injecting = false;
+            g_showPopup = false;
+            memset(g_loginPass, 0, 64);
+        }
+    }
+
+    // User avatar + name — bottom of sidebar
     {
         f32 avSz = 30;
         f32 avX = 10;
-        f32 avY = H - 64;
+        f32 avY = H - 44;
         // Avatar circle
         dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
                               Color{45, 48, 65, 255}, avSz * 0.5f, 16);
@@ -1205,23 +1226,8 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
             Text(dl, avX + (avSz - iSz.x) * 0.5f, avY + (avSz - iSz.y) * 0.5f,
                  P::T1, ini, g_font);
         }
-        // Username — next to avatar, clipped to sidebar width
+        // Username — next to avatar
         Text(dl, avX + avSz + 6, avY + (avSz - 12) * 0.5f, P::T2, g_loggedUser.c_str(), g_fontSm);
-
-        // Logout — below avatar
-        u32 loId = Hash("_sidebar_logout");
-        f32 loY = avY + avSz + 4;
-        Vec2 loSz = Measure("Logout", g_fontSm);
-        f32 loX = avX;
-        bool loH = Hit(loX - 2, loY - 2, loSz.x + 8, loSz.y + 4);
-        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
-        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
-        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
-            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
-            g_injected = false; g_injecting = false;
-            g_showPopup = false;
-            memset(g_loginPass, 0, 64);
-        }
     }
 
     // ===== CONTENT AREA (right side) =====
@@ -1294,9 +1300,6 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         f32 icoX = cardR.Right() - icoSz - 10;
         f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
         if (g_cs2Logo != INVALID_TEXTURE) {
-            // Rounded background behind logo
-            dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
-                                  Color{30, 32, 48, 255}, 8.0f, 10);
             dl.AddTexturedRect(Rect{icoX, icoY, icoSz, icoSz},
                                g_cs2Logo, Color{255,255,255,255});
         } else {
