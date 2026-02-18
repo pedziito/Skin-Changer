@@ -678,6 +678,9 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
     }
 }
 
+// Forward declaration for DrawToast (used in DrawCS2Menu)
+static void DrawToast(DrawList& dl, f32 W, f32 H);
+
 // ============================================================================
 // CS2 IN-GAME MENU — auto-opens after successful injection
 // Same theme as dashboard, empty for now, centered on CS2 window
@@ -743,12 +746,12 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         f32 cardH = 52;
         Rect cr{margin, contentY, innerW, cardH};
         dl.AddFilledRoundRect(cr, P::Card, 8.0f, 8);
-        dl.AddRoundRect(cr, P::Border, 8.0f, 8, 1.0f);
+        dl.AddRect(cr, P::Border);
 
         // Status dot (green = active)
         f32 dotR = 4;
         f32 dotX = cr.x + 16, dotY = cr.y + cardH * 0.5f;
-        dl.AddFilledCircle(Vec2{dotX, dotY}, dotR, P::Green, 12);
+        dl.AddCircle(Vec2{dotX, dotY}, dotR, P::Green, 12);
 
         Text(dl, dotX + 12, cr.y + 10, P::T1, "Active", g_fontSm);
         Text(dl, dotX + 12, cr.y + 28, P::T3, "Inventory Changer loaded", g_fontSm);
@@ -779,7 +782,7 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         for (int i = 0; i < 3; i++) {
             Rect cr2{margin, cardY, innerW, 36};
             dl.AddFilledRoundRect(cr2, Color{18, 18, 28, 180}, 6.0f, 8);
-            dl.AddRoundRect(cr2, Fade(P::Border, 0.5f), 6.0f, 8, 1.0f);
+            dl.AddRect(cr2, Fade(P::Border, 0.5f));
 
             // Skeleton placeholder bars
             f32 skelW = 60 + i * 30.0f;
