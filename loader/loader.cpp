@@ -6,6 +6,17 @@
  *         blue-purple accent, vertical dashboard layout.
  */
 
+// Disable deprecation warnings for C runtime (fopen/strncpy etc.)
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#ifdef _MSC_VER
+#pragma warning(disable:4100) // unreferenced parameter
+#pragma warning(disable:4189) // local variable initialized but not referenced
+#pragma warning(disable:4996) // deprecated functions (fopen, strncpy, etc.)
+#endif
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -1512,6 +1523,8 @@ static void DrawBg(DrawList& dl, f32 W, f32 H);
 static void DrawIconGlobe(DrawList& dl, f32 cx, f32 cy, f32 r, Color c);
 static void DrawIconCart(DrawList& dl, f32 x, f32 y, f32 sz, Color c);
 static void DrawIconSupport(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c);
+static void DrawIconSkins(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c);
+static void DrawIconServer(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c);
 static bool GradientButton(DrawList& dl, const char* label, Rect r, bool enabled = true);
 
 // ============================================================================
