@@ -231,6 +231,7 @@ static DWORD g_cs2Pid = 0;       // CS2 process ID
 static RECT g_origWindowRect = {}; // Original loader window position before fullscreen overlay
 static bool g_cs2MenuVisible = false; // Toggle with Insert key
 static bool g_hasInjected = false;   // True after first injection — overlay never shows again
+static f32  g_menuOpenAnim = 0.0f;   // 0→1 scale+opacity animation for CS2 menu (Insert toggle)
 
 // ============================================================================
 // USER DATABASE
@@ -717,34 +718,25 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
                                overlayLogo, Color{255,255,255,255});
         }
 
-        // Progress text — outline glow for readability (no dark shadow boxes)
+        // Progress text — flat, clean, no shadow/outline
         char progText[64];
         snprintf(progText, 64, "Injecterer Inventory Changer (%.0f%%)", g_injProgress);
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
         f32 ptY = 108;
-        // Multi-direction outline (2px) for readability without dark box — all offsets use non-key colors
-        Color outline{20, 15, 40, 180};
-        for (int ox = -1; ox <= 1; ox++)
-            for (int oy = -1; oy <= 1; oy++)
-                if (ox || oy)
-                    Text(dl, ptX + ox, ptY + oy, outline, progText, g_fontSm);
         Text(dl, ptX, ptY, Color{220, 225, 245, 255}, progText, g_fontSm);
 
-        // Progress bar — floating (no background container)
+        // Progress bar — no outline, no background, just the fill
         f32 barW = W * 0.6f;
-        f32 barH = 8;
+        f32 barH = 6;
         f32 barX = (W - barW) * 0.5f;
         f32 barY = ptY + 22;
-        // Thin outline instead of solid background — non-key color
-        dl.AddRect(Rect{barX - 1, barY - 1, barW + 2, barH + 2}, Color{80, 100, 180, 120});
-        // Fill
         f32 fillW = barW * (g_injProgress / 100.0f);
         if (fillW > 1.0f) {
             Color blue{60, 120, 255, 255};
             Color lightBlue{100, 210, 255, 255};
             Color c1 = Mix(blue, lightBlue, g_injProgress / 100.0f);
-            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 4.0f, 8);
+            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 3.0f, 8);
         }
     }
 }
@@ -757,30 +749,62 @@ static void DrawToast(DrawList& dl, f32 W, f32 H);
 // Dark purple gradient with concentric circle rings (like subscription panel)
 // ============================================================================
 static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
+    // --- Scale + opacity animation (Ease-Out) ---
+    // g_menuOpenAnim drives 0→1; menu scales from 80%→100% and fades in
+    f32 a = g_menuOpenAnim; // 0..1
+    if (a < 0.001f) return; // Don't draw anything at alpha 0 (no ghost frame)
+    u8 globalAlpha = (u8)(a * 255.0f);
+
+    // Ease-out curve: 1 - (1-t)^2
+    f32 ease = 1.0f - (1.0f - a) * (1.0f - a);
+    f32 scale = 0.8f + 0.2f * ease; // 80% → 100%
+
+    // Compute scaled/centered offset
+    f32 sW = W * scale, sH = H * scale;
+    f32 ox = (W - sW) * 0.5f;
+    f32 oy = (H - sH) * 0.5f;
+
     // Dark gradient background
-    Color bgTop{18, 14, 32, 255};
-    Color bgBot{12, 10, 28, 255};
-    dl.AddGradientRect(Rect{0, 0, W, H}, bgTop, bgTop, bgBot, bgBot);
+    Color bgTop{18, 14, 32, globalAlpha};
+    Color bgBot{12, 10, 28, globalAlpha};
+    dl.AddGradientRect(Rect{ox, oy, sW, sH}, bgTop, bgTop, bgBot, bgBot);
 
-    // Concentric circle rings (purple/violet glow, bottom-right area)
-    f32 cx = W * 0.75f, cy = H * 0.65f;
-    for (int i = 8; i >= 1; i--) {
-        f32 r = 40.0f + i * 45.0f;
-        u8 alpha = (u8)(12 + i * 6);
-        Color ringCol{100, 50, 180, alpha};
-        dl.AddCircle(Vec2{cx, cy}, r, ringCol, 64);
-        // Second thicker ring
-        dl.AddCircle(Vec2{cx, cy}, r + 1.0f, Color{80, 40, 160, (u8)(alpha / 2)}, 64);
-    }
-    // Inner glow
-    for (int i = 4; i >= 1; i--) {
-        f32 r = 20.0f + i * 25.0f;
-        u8 alpha = (u8)(20 + i * 10);
-        dl.AddCircle(Vec2{cx, cy}, r, Color{120, 60, 200, alpha}, 48);
-    }
+    // --- Animated orbital blue circles (matching loader theme) ---
+    // Two orbital sets: blue and light-blue, smooth sinusoidal motion
+    f32 t = g_time; // independent of game framerate — driven by QueryPerformanceCounter
 
-    // Rounded border
-    dl.AddRect(Rect{0, 0, W, H}, Color{60, 40, 100, 80});
+    // Orbital center positions (animated)
+    f32 orb1X = ox + sW * 0.25f + sinf(t * 0.5f) * sW * 0.08f;
+    f32 orb1Y = oy + sH * 0.35f + cosf(t * 0.35f) * sH * 0.06f;
+    f32 orb2X = ox + sW * 0.78f + cosf(t * 0.4f) * sW * 0.07f;
+    f32 orb2Y = oy + sH * 0.68f + sinf(t * 0.55f) * sH * 0.05f;
+    f32 orb3X = ox + sW * 0.55f + sinf(t * 0.6f + 2.0f) * sW * 0.06f;
+    f32 orb3Y = oy + sH * 0.2f  + cosf(t * 0.45f + 1.0f) * sH * 0.04f;
+
+    // Layered glow circles — blue/light-blue gradient
+    auto drawOrb = [&](f32 cx, f32 cy, Color base, f32 maxR) {
+        for (int i = 6; i >= 1; i--) {
+            f32 r = maxR * (f32)i / 3.0f;
+            u8 ca = (u8)((f32)(4 * (7 - i)) * a);
+            dl.AddFilledRoundRect(Rect{cx - r, cy - r, r * 2, r * 2},
+                                  Color{base.r, base.g, base.b, ca}, r, 24);
+        }
+    };
+    drawOrb(orb1X, orb1Y, Color{60, 120, 255, 255}, 100.0f * scale);  // Blue
+    drawOrb(orb2X, orb2Y, Color{100, 180, 255, 255}, 90.0f * scale);  // Light blue
+    drawOrb(orb3X, orb3Y, Color{80, 140, 255, 255}, 70.0f * scale);   // Mid blue
+
+    // Pulsing ring accents (orbital motion)
+    for (int i = 0; i < 3; i++) {
+        f32 angle = t * (0.3f + i * 0.15f) + i * 2.094f; // 120° apart
+        f32 ringR = 60.0f + i * 40.0f;
+        f32 rcx = ox + sW * 0.5f + cosf(angle) * ringR * scale;
+        f32 rcy = oy + sH * 0.5f + sinf(angle) * ringR * scale;
+        f32 pulse = 30.0f + 10.0f * sinf(t * 2.0f + i);
+        u8 ringAlpha = (u8)(18.0f * a);
+        dl.AddCircle(Vec2{rcx, rcy}, pulse * scale, Color{80, 160, 255, ringAlpha}, 48);
+        dl.AddCircle(Vec2{rcx, rcy}, pulse * scale * 0.6f, Color{120, 200, 255, (u8)(ringAlpha / 2)}, 36);
+    }
 }
 
 // ============================================================================
@@ -1952,10 +1976,12 @@ static int LoaderMain(HINSTANCE hInstance) {
                     g_cs2MenuVisible = !g_cs2MenuVisible;
                     s_lastToggleTime = now2;
                     if (!g_cs2MenuVisible) {
-                        // Hiding: immediate
+                        // Hiding: immediate, reset animation
+                        g_menuOpenAnim = 0.0f;
                         ShowWindow(g_hwnd, SW_HIDE);
                     } else {
-                        // Showing: defer until frame is drawn (prevents ghost frame)
+                        // Showing: reset anim to 0, defer show until frame drawn
+                        g_menuOpenAnim = 0.0f;
                         s_pendingShow = true;
                     }
                 }
@@ -1990,6 +2016,11 @@ static int LoaderMain(HINSTANCE hInstance) {
 
         // CS2 in-game menu takes over the entire window after injection
         if (g_injPhase == INJ_CS2_MENU) {
+            // Drive scale+opacity animation: 0→1 over ~200ms (ease-out)
+            if (g_cs2MenuVisible) {
+                g_menuOpenAnim += g_dt * 5.0f; // ~200ms to reach 1.0
+                if (g_menuOpenAnim > 1.0f) g_menuOpenAnim = 1.0f;
+            }
             DrawCS2Menu(dl, W, H);
         } else if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
             // Fullscreen overlay phase — draw ONLY the overlay, no dashboard
