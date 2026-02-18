@@ -954,30 +954,50 @@ static int LoaderMain(HINSTANCE hInstance) {
     }
     Log("Step 6: DX11 OK");
 
-    // Load fonts — try multiple paths
-    const char* fontFiles[] = {
-        "C:\\Windows\\Fonts\\segoeui.ttf",
+    // Load fonts — bold/heavy weights for premium feel
+    auto TryFont = [](const char* paths[], int count, f32 size) -> u32 {
+        for (int i = 0; i < count; i++) {
+            u32 id = g_fontAtlas.AddFont(paths[i], size, &g_backend);
+            if (id != 0) return id;
+        }
+        return 0;
+    };
+
+    // Heavy weight for headings (Black > Bold > Regular fallback)
+    const char* heavyFonts[] = {
+        "C:\\Windows\\Fonts\\seguibl.ttf",   // Segoe UI Black
+        "C:\\Windows\\Fonts\\segoeuib.ttf",  // Segoe UI Bold
+        "C:\\Windows\\Fonts\\arialbd.ttf",   // Arial Bold
+        "C:\\Windows\\Fonts\\arial.ttf",
+    };
+    // Bold for body/buttons
+    const char* boldFonts[] = {
+        "C:\\Windows\\Fonts\\segoeuib.ttf",  // Segoe UI Bold
+        "C:\\Windows\\Fonts\\seguisb.ttf",   // Segoe UI Semibold
+        "C:\\Windows\\Fonts\\arialbd.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf",
+    };
+    // Semibold for small/body text
+    const char* bodyFonts[] = {
+        "C:\\Windows\\Fonts\\seguisb.ttf",   // Segoe UI Semibold
+        "C:\\Windows\\Fonts\\segoeui.ttf",   // Segoe UI Regular
         "C:\\Windows\\Fonts\\arial.ttf",
         "C:\\Windows\\Fonts\\tahoma.ttf",
     };
-    bool loaded = false;
-    for (auto* fp : fontFiles) {
-        g_fontSm = g_fontAtlas.AddFont(fp, 12.0f, &g_backend);
-        if (g_fontSm != 0) {
-            g_font   = g_fontAtlas.AddFont(fp, 14.0f, &g_backend);
-            g_fontMd = g_fontAtlas.AddFont(fp, 17.0f, &g_backend);
-            g_fontLg = g_fontAtlas.AddFont(fp, 24.0f, &g_backend);
-            g_fontXl = g_fontAtlas.AddFont(fp, 32.0f, &g_backend);
-            loaded = true;
-            break;
-        }
-    }
+
+    g_fontSm = TryFont(bodyFonts,  4, 13.0f);
+    g_font   = TryFont(boldFonts,  4, 15.0f);
+    g_fontMd = TryFont(boldFonts,  4, 18.0f);
+    g_fontLg = TryFont(heavyFonts, 4, 26.0f);
+    g_fontXl = TryFont(heavyFonts, 4, 34.0f);
+
+    bool loaded = (g_fontSm && g_font && g_fontMd && g_fontLg && g_fontXl);
     if (!loaded) {
         Log("FAIL: No system font found");
         MessageBoxA(nullptr, "No system font found.\nCheck ac_loader.log", "Error", MB_OK);
         g_backend.Shutdown(); return 1;
     }
-    Log("Step 7: Fonts loaded");
+    Log("Step 7: Fonts loaded (bold/heavy weights)");
 
     ShowWindow(g_hwnd, SW_SHOWDEFAULT);
     UpdateWindow(g_hwnd);

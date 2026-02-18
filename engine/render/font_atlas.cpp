@@ -163,7 +163,10 @@ u32 FontAtlas::BuildAtlas(const u8* fontData, size_t dataSize, const std::string
         g.texCoordMin = {f32(pc.x0) / atlasW, f32(pc.y0) / atlasH};
         g.texCoordMax = {f32(pc.x1) / atlasW, f32(pc.y1) / atlasH};
         g.offset = {pc.xoff, pc.yoff + inst.ascent};
-        g.size = {f32(pc.x1 - pc.x0), f32(pc.y1 - pc.y0)};
+        // Use screen-space dimensions (xoff2-xoff), NOT atlas pixels (x1-x0).
+        // With 2x oversampling, atlas glyphs are 2x screen size — using atlas
+        // coords would render each glyph at double width, causing overlap.
+        g.size = {pc.xoff2 - pc.xoff, pc.yoff2 - pc.yoff};
         g.advanceX = pc.xadvance;
 
         inst.glyphs[cp] = g;
