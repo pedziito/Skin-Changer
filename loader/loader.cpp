@@ -1938,7 +1938,12 @@ static int LoaderMain(HINSTANCE hInstance) {
         UpdateInjectionFlow();
 
         // CS2 menu visibility: toggle with Insert key, hide when CS2 not focused
+        // Also close loader if CS2 has exited
         if (g_injPhase == INJ_CS2_MENU) {
+            if (FindProc("cs2.exe") == 0) {
+                g_running = false;
+                break;
+            }
             // Poll Insert key globally (WM_KEYDOWN won't fire when window is hidden)
             static bool s_insertWasDown = false;
             bool insertDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
