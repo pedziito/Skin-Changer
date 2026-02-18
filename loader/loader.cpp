@@ -1012,12 +1012,19 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
 
     // ===== HEADER: Icon + Title + Close =====
     {
-        // CS2 icon (gold square)
+        // CS2 icon (real logo image, rounded)
         f32 iconSz = 36;
-        dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
-                              Fade(Color{220, 160, 40, 255}, a), 8.0f, 10);
-        TextCenter(dl, Rect{cx, cy, iconSz, iconSz},
-                   Fade(Color{255,255,255,240}, a), "CS2", g_fontSm);
+        if (g_cs2Logo != INVALID_TEXTURE) {
+            dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
+                                  Fade(Color{30, 32, 48, 255}, a), 8.0f, 10);
+            dl.AddTexturedRect(Rect{cx, cy, iconSz, iconSz},
+                               g_cs2Logo, Fade(Color{255,255,255,255}, a));
+        } else {
+            dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
+                                  Fade(Color{220, 160, 40, 255}, a), 8.0f, 10);
+            TextCenter(dl, Rect{cx, cy, iconSz, iconSz},
+                       Fade(Color{255,255,255,240}, a), "CS2", g_fontSm);
+        }
 
         // Title
         Text(dl, cx + iconSz + 10, cy + 4, Fade(P::T1, a), "Counter-Strike 2", g_fontMd);
@@ -1055,7 +1062,7 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
         {"Version",  "1"},
     };
     for (auto& row : rows) {
-        Text(dl, cx + 4, infoY, Fade(P::Accent1, a), ":", g_fontSm);
+        Text(dl, cx + 4, infoY, Fade(P::Accent1, a), "|", g_fontSm);
         Text(dl, cx + 14, infoY, Fade(P::T2, a), row.label, g_fontSm);
         Vec2 vs = Measure(row.value, g_fontSm);
         Text(dl, cx + leftW - vs.x, infoY, Fade(P::T1, a), row.value, g_fontSm);
@@ -1065,13 +1072,7 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
     // Changelog (right side)
     f32 clY = cy;
     const char* changelog[] = {
-        "- Fixed the double tap behavior",
-        "  with grenades",
-        "- Fixed the anti-aim behavior",
-        "  when an enemy is visible",
-        "  to the aimbot",
-        "- Fixed the aimbot",
-        "  over-predicting players",
+        "- Inventory Changer til CS2",
     };
     for (auto* entry : changelog) {
         Text(dl, rightX, clY, Fade(P::T2, a), entry, g_fontSm);
@@ -1264,15 +1265,17 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         snprintf(expStr, 48, "Expires in %d days", g_sub.daysLeft);
         Text(dl, txX, cardR.y + 34, P::T3, expStr, g_fontSm);
 
-        // Icon — right side (CS2 logo image)
+        // Icon — right side (CS2 logo image, rounded)
         f32 icoSz = 36;
         f32 icoX = cardR.Right() - icoSz - 10;
         f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
         if (g_cs2Logo != INVALID_TEXTURE) {
+            // Rounded background behind logo
+            dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
+                                  Color{30, 32, 48, 255}, 8.0f, 10);
             dl.AddTexturedRect(Rect{icoX, icoY, icoSz, icoSz},
                                g_cs2Logo, Color{255,255,255,255});
         } else {
-            // Fallback: gold square with text
             dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
                                   Color{220, 160, 40, 255}, 8.0f, 10);
             TextCenter(dl, Rect{icoX, icoY, icoSz, icoSz},
@@ -1287,29 +1290,22 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     }
 
     // ============================================================
-    // Additional blurred/placeholder cards (like reference)
+    // STATUS INFO — Detection status, game version etc.
     // ============================================================
-    for (int c = 0; c < 2; c++) {
-        f32 cardH = 52;
-        Rect cardR{cX, y, cW, cardH};
-        dl.AddFilledRoundRect(Rect{cardR.x - 1, cardR.y - 1, cardR.w + 2, cardR.h + 2},
-                              P::Border, 11.0f, 10);
-        dl.AddFilledRoundRect(cardR, P::Card, 10.0f, 10);
-
-        // Blurred text placeholder bars
-        dl.AddFilledRoundRect(Rect{cardR.x + 14, cardR.y + 14, 100, 10},
-                              Color{30, 32, 45, 200}, 4.0f, 6);
-        dl.AddFilledRoundRect(Rect{cardR.x + 14, cardR.y + 30, 60, 8},
-                              Color{25, 27, 38, 180}, 3.0f, 6);
-
-        // Placeholder icon right
-        f32 icoSz = 30;
-        f32 icoX = cardR.Right() - icoSz - 10;
-        f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
-        Color icoC = (c == 0) ? Color{180, 140, 40, 180} : Color{200, 60, 80, 180};
-        dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
-                              icoC, 6.0f, 8);
-        y += cardH + 8;
+    {
+        y += 4;
+        struct StatusItem { const char* label; const char* value; Color color; };
+        StatusItem items[] = {
+            {"Status",       "Undetected",  Color{80, 200, 120, 255}},
+            {"Game Version", "Latest",      Color{100, 160, 255, 255}},
+            {"Last Updated", "27.03.2023",  P::T2},
+        };
+        for (auto& item : items) {
+            Text(dl, cX, y, P::T3, item.label, g_fontSm);
+            Vec2 vSz = Measure(item.value, g_fontSm);
+            Text(dl, cX + cW - vSz.x, y, item.color, item.value, g_fontSm);
+            y += 18;
+        }
     }
 
     // ============================================================
