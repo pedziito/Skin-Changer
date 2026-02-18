@@ -1371,7 +1371,7 @@ static f32 UISectionHeader(DrawList& dl, const char* title, f32 x, f32 y, f32 w,
 }
 
 // Int slider: renders slider, returns new value
-static int UISlider(DrawList& dl, u32 uid, f32 x, f32 y, f32 w, f32 sc, u8 ga,
+static int UISlider(DrawList& dl, u32 /*uid*/, f32 x, f32 y, f32 w, f32 sc, u8 ga,
                     int value, int minV, int maxV) {
     f32 slH = 6*sc;
     f32 norm = (f32)(value - minV) / (f32)(maxV - minV);
@@ -1415,6 +1415,13 @@ static int UIDropdown(DrawList& dl, u32 uid, f32 x, f32 y, f32 w, f32 h, f32 sc,
         return (selected + 1) % count;
     return selected;
 }
+
+// Forward declarations (defined after DrawCS2Menu)
+static void DrawBg(DrawList& dl, f32 W, f32 H);
+static void DrawIconGlobe(DrawList& dl, f32 cx, f32 cy, f32 r, Color c);
+static void DrawIconCart(DrawList& dl, f32 x, f32 y, f32 sz, Color c);
+static void DrawIconSupport(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c);
+static bool GradientButton(DrawList& dl, const char* label, Rect r, bool enabled = true);
 
 // ============================================================================
 // DRAW CS2 MENU — Loader-style dashboard with skin changer content
