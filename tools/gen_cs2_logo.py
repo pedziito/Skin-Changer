@@ -1,173 +1,129 @@
 #!/usr/bin/env python3
 """
-Generate a CS2-style logo as a PNG and convert to C header.
-The logo: orange/blue split background with a simplified soldier silhouette.
+Generate a pixel-accurate CS (Counter-Strike) logo at 64x64.
+Classic design: orange left half, blue right half, white soldier silhouette.
+Renders at 4x then downscales with LANCZOS for smooth anti-aliased edges.
 Output: assets/cs2_logo_data.h with embedded PNG bytes.
 """
-import struct, zlib, os, math
+import os, io
 
-W, H = 48, 48
+from PIL import Image, ImageDraw
 
-# Colors
-ORANGE = (234, 168, 0, 255)
-BLUE   = (36, 59, 128, 255)
-WHITE  = (255, 255, 255, 255)
-TRANS  = (0, 0, 0, 0)
+# Render at 4x for anti-aliasing
+SCALE = 4
+W_HI, H_HI = 64 * SCALE, 64 * SCALE
+W_OUT, H_OUT = 64, 64
 
-# Create pixel buffer
-pixels = [[TRANS for _ in range(W)] for _ in range(H)]
+# --- Create high-res image ---
+img = Image.new('RGBA', (W_HI, H_HI), (0, 0, 0, 0))
+draw = ImageDraw.Draw(img)
 
-# Background: left half orange, right half blue
-for y in range(H):
-    for x in range(W):
-        if x < W // 2:
-            pixels[y][x] = ORANGE
-        else:
-            pixels[y][x] = BLUE
+# Background: left orange, right blue
+ORANGE = (234, 170, 0, 255)
+BLUE   = (36, 55, 120, 255)
+draw.rectangle([0, 0, W_HI // 2, H_HI], fill=ORANGE)
+draw.rectangle([W_HI // 2, 0, W_HI, H_HI], fill=BLUE)
 
-# Simplified soldier silhouette - drawn as white polygon
-# The classic CS logo soldier is facing right, holding a gun
-# We'll approximate with geometric shapes
+WHITE = (255, 255, 255, 255)
 
-def fill_rect(x1, y1, x2, y2, color):
-    for y in range(max(0, y1), min(H, y2)):
-        for x in range(max(0, x1), min(W, x2)):
-            pixels[y][x] = color
+# --- Soldier silhouette ---
+# Classic CS logo: soldier facing right, holding rifle, dynamic stance
+# All coords in 0-256 space (will be used directly at 4x scale = 256px)
 
-def fill_circle(cx, cy, r, color):
-    for y in range(max(0, int(cy-r-1)), min(H, int(cy+r+2))):
-        for x in range(max(0, int(cx-r-1)), min(W, int(cx+r+2))):
-            dx, dy = x - cx, y - cy
-            if dx*dx + dy*dy <= r*r:
-                pixels[y][x] = color
+# Head (circle)
+hcx, hcy, hr = 125, 28, 16
+draw.ellipse([hcx - hr, hcy - hr, hcx + hr, hcy + hr], fill=WHITE)
 
-def fill_polygon(points, color):
-    """Simple scanline polygon fill"""
-    min_y = max(0, int(min(p[1] for p in points)))
-    max_y = min(H-1, int(max(p[1] for p in points)))
-    for y in range(min_y, max_y + 1):
-        intersections = []
-        n = len(points)
-        for i in range(n):
-            x1, y1 = points[i]
-            x2, y2 = points[(i+1) % n]
-            if y1 == y2:
-                continue
-            if y < min(y1, y2) or y >= max(y1, y2):
-                continue
-            x_intersect = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
-            intersections.append(x_intersect)
-        intersections.sort()
-        for i in range(0, len(intersections) - 1, 2):
-            x_start = max(0, int(intersections[i]))
-            x_end = min(W, int(intersections[i+1]) + 1)
-            for x in range(x_start, x_end):
-                pixels[y][x] = color
+# Main body polygon — carefully traced from the classic CS logo
+body = [
+    # Neck to right shoulder
+    (124, 44), (130, 46), (136, 44),
+    # Right arm extends forward-right holding gun
+    (142, 40), (150, 36), (158, 34), (166, 32),
+    (174, 30), (182, 28), (190, 26),
+    # Gun barrel
+    (200, 24), (210, 22), (220, 20), (230, 18),
+    # Barrel tip (top)
+    (234, 22),
+    # Gun underside back
+    (228, 26), (218, 28), (208, 30),
+    (198, 32), (188, 36), (178, 40),
+    # Right forearm / hand / trigger guard
+    (170, 46), (166, 52), (162, 56),
+    # Magazine / stock area
+    (156, 52), (152, 46), (148, 44),
+    (150, 56), (152, 64),
+    # Right torso
+    (150, 76), (148, 88), (146, 100),
+    (148, 112), (150, 120),
+    # Right hip
+    (152, 126),
+    # Right leg (extends back-right)
+    (156, 134), (162, 148), (168, 160),
+    (174, 172), (180, 184), (186, 196),
+    (192, 208), (196, 218), (200, 226),
+    (204, 234), (208, 240), (212, 246),
+    # Right foot
+    (216, 250), (220, 254), (222, 256),
+    # Right foot sole
+    (214, 256), (208, 252),
+    (200, 244), (194, 234), (188, 222),
+    (182, 210), (176, 198), (170, 186),
+    (164, 174), (158, 162), (152, 150),
+    (148, 140), (144, 132),
+    # Crotch
+    (136, 128), (130, 126), (126, 130),
+    # Left leg (extends forward-left)
+    (122, 138), (118, 148), (114, 158),
+    (108, 170), (102, 182), (96, 192),
+    (88, 204), (80, 214), (72, 224),
+    (64, 232), (56, 238), (48, 242),
+    # Left foot
+    (40, 246), (34, 250), (30, 254), (28, 256),
+    # Left foot sole
+    (38, 256), (48, 252), (56, 246),
+    (64, 238), (72, 228), (80, 218),
+    (88, 208), (96, 196), (104, 184),
+    (110, 172), (114, 162), (118, 150),
+    (120, 140), (120, 132),
+    # Left hip up torso
+    (118, 120), (114, 108), (110, 96),
+    (106, 84), (102, 72), (100, 64),
+    # Left shoulder area
+    (98, 58), (96, 54),
+    # Left arm (tucked, gripping)
+    (90, 50), (84, 48), (78, 50),
+    (74, 56), (72, 62), (74, 66),
+    (78, 64), (84, 58), (90, 54),
+    (96, 52),
+    # Back to neck
+    (100, 50), (106, 48), (112, 46), (118, 44),
+]
 
-# Draw the soldier silhouette (simplified, centered)
-# Head
-fill_circle(24, 8, 4, WHITE)
+draw.polygon(body, fill=WHITE)
 
-# Neck
-fill_rect(22, 12, 26, 15, WHITE)
+# --- Downscale with high-quality anti-aliasing ---
+img_out = img.resize((W_OUT, H_OUT), Image.LANCZOS)
 
-# Torso (slightly angled, leaning forward)
-fill_polygon([
-    (18, 15), (30, 15),
-    (31, 30), (16, 32)
-], WHITE)
-
-# Left arm (holding gun forward) - extends right
-fill_polygon([
-    (30, 16), (38, 14),
-    (40, 16), (30, 20)
-], WHITE)
-
-# Gun (extending from right hand)
-fill_polygon([
-    (36, 12), (44, 10),
-    (45, 13), (38, 15)
-], WHITE)
-# Gun barrel
-fill_rect(42, 10, 47, 12, WHITE)
-
-# Right arm (back)
-fill_polygon([
-    (18, 16), (14, 22),
-    (16, 24), (20, 18)
-], WHITE)
-
-# Left leg (forward stride)
-fill_polygon([
-    (18, 30), (24, 30),
-    (16, 44), (10, 44)
-], WHITE)
-
-# Left foot
-fill_polygon([
-    (8, 43), (17, 43),
-    (17, 47), (6, 47)
-], WHITE)
-
-# Right leg (back stride)
-fill_polygon([
-    (24, 30), (31, 30),
-    (38, 44), (32, 44)
-], WHITE)
-
-# Right foot
-fill_polygon([
-    (31, 43), (40, 43),
-    (42, 47), (30, 47)
-], WHITE)
-
-
-# --- Encode as PNG ---
-def make_png(width, height, pixels):
-    def chunk(chunk_type, data):
-        c = chunk_type + data
-        crc = struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-        return struct.pack('>I', len(data)) + c + crc
-
-    # Signature
-    sig = b'\x89PNG\r\n\x1a\n'
-
-    # IHDR
-    ihdr_data = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)  # 8-bit RGBA
-    ihdr = chunk(b'IHDR', ihdr_data)
-
-    # IDAT
-    raw = b''
-    for y in range(height):
-        raw += b'\x00'  # filter: none
-        for x in range(width):
-            r, g, b, a = pixels[y][x]
-            raw += struct.pack('BBBB', r, g, b, a)
-    compressed = zlib.compress(raw, 9)
-    idat = chunk(b'IDAT', compressed)
-
-    # IEND
-    iend = chunk(b'IEND', b'')
-
-    return sig + ihdr + idat + iend
-
-png_data = make_png(W, H, pixels)
-
-# Save PNG for preview
+# --- Save PNG ---
 os.makedirs('/workspaces/Skin-Changer/assets', exist_ok=True)
-with open('/workspaces/Skin-Changer/assets/cs2_logo.png', 'wb') as f:
-    f.write(png_data)
+img_out.save('/workspaces/Skin-Changer/assets/cs2_logo.png')
 
-# Generate C header
+# --- Get PNG bytes ---
+buf = io.BytesIO()
+img_out.save(buf, format='PNG', optimize=True)
+png_data = buf.getvalue()
+
+# --- Generate C header ---
 lines = []
-lines.append('// Auto-generated CS2 logo PNG data (48x48 RGBA)')
-lines.append('// Embedded in binary — works on all machines')
+lines.append('// CS logo — 64x64 RGBA PNG embedded as C array')
+lines.append('// Classic orange/blue split with soldier silhouette')
+lines.append('// Compiled into binary — works on all machines')
 lines.append('#pragma once')
 lines.append('')
 lines.append(f'static const unsigned int g_cs2LogoPngSize = {len(png_data)};')
 lines.append(f'static const unsigned char g_cs2LogoPng[{len(png_data)}] = {{')
 
-# Format as hex bytes, 16 per line
 for i in range(0, len(png_data), 16):
     chunk_bytes = png_data[i:i+16]
     hex_str = ', '.join(f'0x{b:02x}' for b in chunk_bytes)
@@ -182,6 +138,6 @@ header_path = '/workspaces/Skin-Changer/assets/cs2_logo_data.h'
 with open(header_path, 'w') as f:
     f.write('\n'.join(lines))
 
-print(f'PNG: {len(png_data)} bytes')
+print(f'PNG: {len(png_data)} bytes ({W_OUT}x{H_OUT})')
 print(f'Header: {header_path}')
 print('Done!')
