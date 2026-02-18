@@ -55,6 +55,9 @@ target_link_libraries(skin_changer PRIVATE
 # Enable SEH for __try/__except in inventory.cpp
 if(MSVC)
     target_compile_options(skin_changer PRIVATE /EHa)
+    # Suppress noisy warnings and disable deprecated CRT warnings for MSVC builds
+    target_compile_definitions(skin_changer PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(skin_changer PRIVATE /wd4100 /wd4189 /wd4996)
 else()
     target_compile_definitions(skin_changer PRIVATE _WIN32_WINNT=0x0A00)
 endif()
@@ -113,6 +116,8 @@ set_target_properties(ac_loader PROPERTIES
 
 if(MSVC)
     target_compile_options(ac_loader PRIVATE /W4 /permissive- /Zc:preprocessor /EHa)
+    target_compile_definitions(ac_loader PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(ac_loader PRIVATE /wd4100 /wd4189 /wd4996)
     # Require UAC elevation (admin) — uses built-in linker flag to avoid manifest merge conflicts
     target_link_options(ac_loader PRIVATE
         "/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
@@ -215,6 +220,11 @@ target_include_directories(ace_engine_v2 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor
 )
+
+if(MSVC)
+    target_compile_definitions(ace_engine_v2 PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(ace_engine_v2 PRIVATE /wd4100 /wd4189 /wd4996)
+endif()
 
 set_target_properties(ace_engine_v2 PROPERTIES
     CXX_STANDARD 20
