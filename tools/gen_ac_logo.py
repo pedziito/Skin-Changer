@@ -2,17 +2,16 @@
 """
 Generate the AC logo matching the brand reference:
   - Letters "AC" in bold
-  - Blue gradient: dark navy (#1a2980 / #0d47a1) → bright cyan (#26d0ce / #2196f3)
-  - Transparent background
-  - The 'A' is darker blue, the 'C' transitions to lighter cyan
+  - Diagonal gradient: dark navy (top-left) → bright cyan (bottom-right)
+  - Transparent background, hard alpha edges (no semi-transparent pixels)
   - Output: 128x128 RGBA PNG + embedded C header
 """
 
 from PIL import Image, ImageDraw, ImageFont
 import struct, io, os, sys
 
-SIZE = 256        # render at 256x256 for quality
-OUT_SIZE = 128    # downsample to 128x128 for embedding
+SIZE = 512        # render at high-res for quality
+OUT_SIZE = 128    # final size for embedding
 
 def find_bold_font():
     """Find a suitable bold font on the system."""
@@ -44,22 +43,21 @@ def generate_logo():
         print("ERROR: No bold font found on system")
         sys.exit(1)
 
-    # Determine font size to fill ~80% of canvas width
-    font_size = 140
+    # Determine font size to fill ~75% of canvas
+    font_size = 280
     font = ImageFont.truetype(font_path, font_size)
     text = "AC"
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    # Adjust font size to fit
-    while tw > SIZE * 0.85 and font_size > 20:
-        font_size -= 2
+    while tw > SIZE * 0.82 and font_size > 20:
+        font_size -= 4
         font = ImageFont.truetype(font_path, font_size)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    while tw < SIZE * 0.7 and font_size < 200:
-        font_size += 2
+    while tw < SIZE * 0.65 and font_size < 400:
+        font_size += 4
         font = ImageFont.truetype(font_path, font_size)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -73,43 +71,44 @@ def generate_logo():
     mask_draw = ImageDraw.Draw(mask_img)
     mask_draw.text((tx, ty), text, fill=255, font=font)
 
-    # Step 2: Create gradient image (left=dark navy, right=bright cyan)
+    # Step 2: Create DIAGONAL gradient (top-left=dark navy, bottom-right=bright cyan)
     gradient = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
-    
-    # Color stops matching the reference image:
-    # Left edge: dark navy blue (#0d2b6b)
-    # Center: medium blue (#1565c0)
-    # Right edge: bright cyan (#1db8d4)
-    c_left  = (13, 43, 107, 255)   # Dark navy
-    c_mid   = (21, 101, 192, 255)  # Medium blue
-    c_right = (29, 184, 212, 255)  # Bright cyan
 
-    for x in range(SIZE):
-        t = x / (SIZE - 1)
-        if t < 0.5:
-            c = lerp_color(c_left, c_mid, t * 2)
-        else:
-            c = lerp_color(c_mid, c_right, (t - 0.5) * 2)
-        for y in range(SIZE):
+    # Color stops matching the reference:
+    # Top-left:  dark navy (#0a1e5e)
+    # Center:    medium blue (#1565c0)  
+    # Bottom-right: bright cyan (#29b8d4)
+    c_dark  = (10, 30, 94, 255)    # Dark navy
+    c_mid   = (21, 101, 192, 255)  # Medium blue
+    c_light = (41, 184, 212, 255)  # Bright cyan
+
+    for y in range(SIZE):
+        for x in range(SIZE):
+            # Diagonal parameter: 0 at top-left, 1 at bottom-right
+            t = (x + y) / (2.0 * (SIZE - 1))
+            if t < 0.45:
+                c = lerp_color(c_dark, c_mid, t / 0.45)
+            else:
+                c = lerp_color(c_mid, c_light, (t - 0.45) / 0.55)
             gradient.putpixel((x, y), c)
 
     # Step 3: Apply text mask to gradient
     result = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
     result.paste(gradient, mask=mask_img)
 
-    # Downsample with high-quality LANCZOS
+    # Downsample with LANCZOS
     result = result.resize((OUT_SIZE, OUT_SIZE), Image.LANCZOS)
 
-    # Threshold alpha: remove all semi-transparent pixels
-    # This prevents magenta color-key fringe in the overlay
+    # Hard threshold alpha — no semi-transparent pixels
+    # This prevents any color-key fringe in the overlay
     pixels = result.load()
     for y in range(OUT_SIZE):
         for x in range(OUT_SIZE):
             r, g, b, a = pixels[x, y]
-            if a < 128:
-                pixels[x, y] = (0, 0, 0, 0)       # Fully transparent
+            if a < 100:
+                pixels[x, y] = (0, 0, 0, 0)
             else:
-                pixels[x, y] = (r, g, b, 255)      # Fully opaque
+                pixels[x, y] = (r, g, b, 255)
 
     return result
 

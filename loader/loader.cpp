@@ -233,6 +233,29 @@ static bool g_cs2MenuVisible = false; // Toggle with Insert key
 static bool g_hasInjected = false;   // True after first injection — overlay never shows again
 static f32  g_menuOpenAnim = 0.0f;   // 0→1 scale+opacity animation for CS2 menu (Insert toggle)
 
+// CS2 Menu — tab navigation
+enum CS2Tab { TAB_SKINS = 0, TAB_CONFIGS = 1 };
+static int g_cs2Tab = TAB_SKINS;
+
+// CS2 Menu — Skins tab state
+static int g_skinCategory = 0;       // 0=Rifles, 1=Pistols, 2=SMGs, 3=Heavy, 4=Knives, 5=Gloves
+static int g_skinSelected[6] = {};   // Selected skin index per category
+static const char* g_skinCatNames[] = {"Rifles", "Pistols", "SMGs", "Heavy", "Knives", "Gloves"};
+static const char* g_skinNames[][6] = {
+    {"Dragon Lore", "Asiimov", "Hyper Beast", "Fade", "Neon Rider", "Printstream"},   // Rifles
+    {"Kill Confirmed", "Neo-Noir", "Mecha Industries", "Moonrise", "Whiteout", "Oxide Blaze"}, // Pistols
+    {"Buzzkill", "Neon Rider", "Bloodsport", "Cortex", "Bullet Rain", "Djinn"},       // SMGs
+    {"Asiimov", "Hyper Beast", "Daimyo", "Roll Cage", "System Lock", "Antique"},       // Heavy
+    {"Fade", "Doppler", "Tiger Tooth", "Marble Fade", "Crimson Web", "Ultraviolet"},   // Knives
+    {"Crimson Kimono", "Emerald Web", "Sport Gloves", "Moto Gloves", "Bloodhound", "Hydra"} // Gloves
+};
+
+// CS2 Menu — Configs tab state
+static int g_configSelected = 0;
+static char g_configName[64] = "";
+static const char* g_configSlots[] = {"Config 1", "Config 2", "Config 3", "Config 4", "Config 5"};
+static bool g_configSaved[5] = {false, false, false, false, false};
+
 // ============================================================================
 // USER DATABASE
 // ============================================================================
@@ -751,21 +774,70 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
 static void DrawToast(DrawList& dl, f32 W, f32 H);
 
 // ============================================================================
+// ICON DRAWING HELPERS — procedural SVG-style icons via DrawList primitives
+// ============================================================================
+
+// Knife / paintbrush icon for "Skins" tab
+static void DrawKnifeIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
+    f32 h = sz * 0.5f;
+    // Blade — angled thick line (top-left to center)
+    dl.AddLine(Vec2{cx - h * 0.65f, cy - h * 0.55f},
+               Vec2{cx + h * 0.2f, cy + h * 0.1f}, c, 2.5f);
+    // Blade edge — parallel line for width
+    dl.AddLine(Vec2{cx - h * 0.5f, cy - h * 0.7f},
+               Vec2{cx + h * 0.35f, cy - h * 0.05f}, c, 1.5f);
+    // Blade tip connector
+    dl.AddLine(Vec2{cx - h * 0.65f, cy - h * 0.55f},
+               Vec2{cx - h * 0.5f, cy - h * 0.7f}, c, 1.5f);
+    // Handle — thicker line from center downward
+    dl.AddLine(Vec2{cx + h * 0.2f, cy + h * 0.1f},
+               Vec2{cx + h * 0.6f, cy + h * 0.55f}, c, 3.0f);
+    // Guard — small crossbar
+    dl.AddLine(Vec2{cx + h * 0.05f, cy + h * 0.25f},
+               Vec2{cx + h * 0.4f, cy - h * 0.05f}, c, 2.0f);
+}
+
+// Server / config icon for "Configs" tab
+static void DrawServerIcon(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
+    f32 h = sz * 0.5f;
+    f32 bw = h * 1.1f;  // box half-width
+    f32 bh = h * 0.28f; // box half-height
+
+    // Three stacked server boxes
+    for (int i = 0; i < 3; i++) {
+        f32 by = cy - h * 0.55f + i * (bh * 2.0f + 2.0f);
+        Rect box{cx - bw, by, bw * 2.0f, bh * 2.0f};
+        dl.AddFilledRoundRect(box, Color{c.r, c.g, c.b, (u8)(c.a / 4)}, 2.0f, 4);
+        dl.AddFilledRoundRect(Rect{box.x, box.y, box.w, box.h}, Color{0,0,0,0}, 2.0f, 4);
+        // border
+        dl.AddLine(Vec2{box.x, box.y}, Vec2{box.x + box.w, box.y}, c, 1.0f);
+        dl.AddLine(Vec2{box.x + box.w, box.y}, Vec2{box.x + box.w, box.y + box.h}, c, 1.0f);
+        dl.AddLine(Vec2{box.x + box.w, box.y + box.h}, Vec2{box.x, box.y + box.h}, c, 1.0f);
+        dl.AddLine(Vec2{box.x, box.y + box.h}, Vec2{box.x, box.y}, c, 1.0f);
+        // LED dot (left)
+        f32 dotR = 2.0f;
+        f32 dotX = box.x + 6.0f;
+        f32 dotY = by + bh;
+        dl.AddCircle(Vec2{dotX, dotY}, dotR, c, 8);
+        // Right-side line (activity indicator)
+        dl.AddLine(Vec2{box.x + box.w - 10.0f, dotY},
+                   Vec2{box.x + box.w - 4.0f, dotY}, c, 1.0f);
+    }
+}
+
+// ============================================================================
 // CS2 IN-GAME MENU — opens after injection with Insert key
-// Dark purple gradient with concentric circle rings (like subscription panel)
+// Top navigation with Skins and Configs tabs
 // ============================================================================
 static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
     // --- Scale + opacity animation (Ease-Out) ---
-    // g_menuOpenAnim drives 0→1; menu scales from 80%→100% and fades in
-    f32 a = g_menuOpenAnim; // 0..1
-    if (a < 0.001f) return; // Don't draw anything at alpha 0 (no ghost frame)
+    f32 a = g_menuOpenAnim;
+    if (a < 0.001f) return;
     u8 globalAlpha = (u8)(a * 255.0f);
 
-    // Ease-out curve: 1 - (1-t)^2
     f32 ease = 1.0f - (1.0f - a) * (1.0f - a);
-    f32 scale = 0.8f + 0.2f * ease; // 80% → 100%
+    f32 scale = 0.8f + 0.2f * ease;
 
-    // Compute scaled/centered offset
     f32 sW = W * scale, sH = H * scale;
     f32 ox = (W - sW) * 0.5f;
     f32 oy = (H - sH) * 0.5f;
@@ -775,51 +847,303 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
     Color bgBot{12, 10, 28, globalAlpha};
     dl.AddGradientRect(Rect{ox, oy, sW, sH}, bgTop, bgTop, bgBot, bgBot);
 
-    // --- Animated orbital blue circles (matching loader theme) ---
-    // Two orbital sets: blue and light-blue, smooth sinusoidal motion
-    f32 t = g_time; // independent of game framerate — driven by QueryPerformanceCounter
+    // --- Subtle animated orbital blue circles ---
+    f32 t = g_time;
+    f32 orb1X = ox + sW * 0.25f + sinf(t * 0.5f) * sW * 0.06f;
+    f32 orb1Y = oy + sH * 0.40f + cosf(t * 0.35f) * sH * 0.05f;
+    f32 orb2X = ox + sW * 0.78f + cosf(t * 0.4f) * sW * 0.05f;
+    f32 orb2Y = oy + sH * 0.65f + sinf(t * 0.55f) * sH * 0.04f;
 
-    // Orbital center positions (animated)
-    f32 orb1X = ox + sW * 0.25f + sinf(t * 0.5f) * sW * 0.08f;
-    f32 orb1Y = oy + sH * 0.35f + cosf(t * 0.35f) * sH * 0.06f;
-    f32 orb2X = ox + sW * 0.78f + cosf(t * 0.4f) * sW * 0.07f;
-    f32 orb2Y = oy + sH * 0.68f + sinf(t * 0.55f) * sH * 0.05f;
-    f32 orb3X = ox + sW * 0.55f + sinf(t * 0.6f + 2.0f) * sW * 0.06f;
-    f32 orb3Y = oy + sH * 0.2f  + cosf(t * 0.45f + 1.0f) * sH * 0.04f;
-
-    // Layered glow circles — blue/light-blue gradient
     auto drawOrb = [&](f32 cx, f32 cy, Color base, f32 maxR) {
-        for (int i = 6; i >= 1; i--) {
+        for (int i = 5; i >= 1; i--) {
             f32 r = maxR * (f32)i / 3.0f;
-            u8 ca = (u8)((f32)(4 * (7 - i)) * a);
+            u8 ca = (u8)((f32)(3 * (6 - i)) * a);
             dl.AddFilledRoundRect(Rect{cx - r, cy - r, r * 2, r * 2},
                                   Color{base.r, base.g, base.b, ca}, r, 24);
         }
     };
-    drawOrb(orb1X, orb1Y, Color{60, 120, 255, 255}, 100.0f * scale);  // Blue
-    drawOrb(orb2X, orb2Y, Color{100, 180, 255, 255}, 90.0f * scale);  // Light blue
-    drawOrb(orb3X, orb3Y, Color{80, 140, 255, 255}, 70.0f * scale);   // Mid blue
+    drawOrb(orb1X, orb1Y, Color{60, 120, 255, 255}, 80.0f * scale);
+    drawOrb(orb2X, orb2Y, Color{100, 180, 255, 255}, 70.0f * scale);
 
-    // Pulsing ring accents (orbital motion)
-    for (int i = 0; i < 3; i++) {
-        f32 angle = t * (0.3f + i * 0.15f) + i * 2.094f; // 120° apart
-        f32 ringR = 60.0f + i * 40.0f;
-        f32 rcx = ox + sW * 0.5f + cosf(angle) * ringR * scale;
-        f32 rcy = oy + sH * 0.5f + sinf(angle) * ringR * scale;
-        f32 pulse = 30.0f + 10.0f * sinf(t * 2.0f + i);
-        u8 ringAlpha = (u8)(18.0f * a);
-        dl.AddCircle(Vec2{rcx, rcy}, pulse * scale, Color{80, 160, 255, ringAlpha}, 48);
-        dl.AddCircle(Vec2{rcx, rcy}, pulse * scale * 0.6f, Color{120, 200, 255, (u8)(ringAlpha / 2)}, 36);
-    }
+    // ===== TOP NAVIGATION BAR =====
+    f32 navH = 44.0f * scale;
+    f32 navY = oy;
 
-    // --- AC Brand Logo (centered, top area) ---
+    // Nav bar background (slightly lighter)
+    dl.AddGradientRect(Rect{ox, navY, sW, navH},
+        Color{22, 18, 38, globalAlpha}, Color{22, 18, 38, globalAlpha},
+        Color{18, 14, 32, globalAlpha}, Color{18, 14, 32, globalAlpha});
+
+    // Bottom separator line
+    dl.AddGradientRect(Rect{ox, navY + navH - 1.0f, sW, 1.0f},
+        Color{60, 100, 255, (u8)(30 * a)}, Color{60, 100, 255, (u8)(50 * a)},
+        Color{120, 80, 255, (u8)(50 * a)}, Color{120, 80, 255, (u8)(30 * a)});
+
+    // --- AC logo (small, left side of nav) ---
     TextureHandle menuLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
     if (menuLogo != INVALID_TEXTURE) {
-        f32 logoSz = 48.0f * scale;
-        f32 logoX = ox + (sW - logoSz) * 0.5f;
-        f32 logoY = oy + 16.0f * scale;
+        f32 logoSz = 28.0f * scale;
+        f32 logoX = ox + 12.0f * scale;
+        f32 logoY = navY + (navH - logoSz) * 0.5f;
         dl.AddTexturedRect(Rect{logoX, logoY, logoSz, logoSz},
                            menuLogo, Color{255, 255, 255, globalAlpha});
+    }
+
+    // --- Tab buttons ---
+    struct TabDef { const char* label; int id; };
+    TabDef tabs[] = { {"Skins", TAB_SKINS}, {"Configs", TAB_CONFIGS} };
+
+    f32 tabStartX = ox + 54.0f * scale;  // After logo
+    f32 tabW = 110.0f * scale;
+    f32 tabPad = 4.0f * scale;
+
+    for (int i = 0; i < 2; i++) {
+        f32 tx = tabStartX + i * (tabW + tabPad);
+        f32 ty = navY + 4.0f * scale;
+        f32 th = navH - 8.0f * scale;
+        bool isActive = (g_cs2Tab == tabs[i].id);
+
+        u32 tabId = Hash(tabs[i].label) + 9000;
+        bool tabHov = Hit(tx, ty, tabW, th);
+        f32 tabA = Anim(tabId, isActive ? 1.0f : (tabHov ? 0.4f : 0.0f));
+
+        // Active/hover background
+        if (tabA > 0.01f) {
+            Color tabBg{60, 100, 255, (u8)(25 * tabA * a)};
+            dl.AddFilledRoundRect(Rect{tx, ty, tabW, th}, tabBg, 6.0f * scale, 8);
+        }
+
+        // Active bottom indicator line
+        if (isActive) {
+            f32 indW = tabW * 0.6f;
+            f32 indX = tx + (tabW - indW) * 0.5f;
+            dl.AddFilledRoundRect(Rect{indX, navY + navH - 3.0f * scale, indW, 2.5f * scale},
+                                  Color{80, 140, 255, globalAlpha}, 1.0f, 4);
+        }
+
+        // Icon
+        f32 iconSz = 16.0f * scale;
+        f32 iconCX = tx + 20.0f * scale;
+        f32 iconCY = ty + th * 0.5f;
+        Color iconC = isActive ? Color{120, 170, 255, globalAlpha}
+                               : Color{140, 145, 170, (u8)(globalAlpha * (0.6f + 0.4f * tabA))};
+
+        if (tabs[i].id == TAB_SKINS) {
+            DrawKnifeIcon(dl, iconCX, iconCY, iconSz, iconC);
+        } else {
+            DrawServerIcon(dl, iconCX, iconCY, iconSz, iconC);
+        }
+
+        // Label
+        Color labelC = isActive ? Color{220, 230, 255, globalAlpha}
+                                : Color{140, 145, 170, (u8)(globalAlpha * (0.6f + 0.4f * tabA))};
+        Vec2 labelSz = Measure(tabs[i].label, g_font);
+        Text(dl, tx + 36.0f * scale, ty + (th - labelSz.y) * 0.5f, labelC, tabs[i].label, g_font);
+
+        // Click handler
+        if (tabHov && g_input.IsMousePressed(MouseButton::Left)) {
+            g_cs2Tab = tabs[i].id;
+        }
+    }
+
+    // ===== CONTENT AREA =====
+    f32 contentY = navY + navH + 8.0f * scale;
+    f32 contentH = sH - navH - 16.0f * scale;
+    f32 contentX = ox + 10.0f * scale;
+    f32 contentW = sW - 20.0f * scale;
+
+    if (g_cs2Tab == TAB_SKINS) {
+        // ===== SKINS TAB =====
+        // Category selector (horizontal pills)
+        f32 catY = contentY;
+        f32 catH = 28.0f * scale;
+        f32 catPad = 3.0f * scale;
+        f32 totalCatW = 0;
+        f32 catWidths[6];
+        for (int i = 0; i < 6; i++) {
+            Vec2 sz = Measure(g_skinCatNames[i], g_fontSm);
+            catWidths[i] = sz.x + 16.0f * scale;
+            totalCatW += catWidths[i] + catPad;
+        }
+        f32 catStartX = contentX + (contentW - totalCatW) * 0.5f;
+        f32 cx = catStartX;
+
+        for (int i = 0; i < 6; i++) {
+            bool isCatActive = (g_skinCategory == i);
+            u32 catId = Hash(g_skinCatNames[i]) + 5000;
+            bool catHov = Hit(cx, catY, catWidths[i], catH);
+            f32 catA = Anim(catId, isCatActive ? 1.0f : (catHov ? 0.4f : 0.0f));
+
+            // Pill background
+            Color pillBg = isCatActive ? Color{60, 100, 255, (u8)(40 * a)}
+                                       : Color{255, 255, 255, (u8)(6 * catA * a)};
+            dl.AddFilledRoundRect(Rect{cx, catY, catWidths[i], catH}, pillBg, 4.0f * scale, 6);
+
+            // Pill text
+            Vec2 sz = Measure(g_skinCatNames[i], g_fontSm);
+            Color tc = isCatActive ? Color{180, 210, 255, globalAlpha}
+                                   : Color{130, 135, 160, (u8)(globalAlpha * (0.6f + 0.4f * catA))};
+            Text(dl, cx + (catWidths[i] - sz.x) * 0.5f, catY + (catH - sz.y) * 0.5f,
+                 tc, g_skinCatNames[i], g_fontSm);
+
+            if (catHov && g_input.IsMousePressed(MouseButton::Left))
+                g_skinCategory = i;
+
+            cx += catWidths[i] + catPad;
+        }
+
+        // Skin list for selected category
+        f32 listY = catY + catH + 10.0f * scale;
+        f32 itemH = 36.0f * scale;
+        f32 itemPad = 3.0f * scale;
+        f32 listW = contentW * 0.85f;
+        f32 listX = contentX + (contentW - listW) * 0.5f;
+
+        for (int i = 0; i < 6; i++) {
+            f32 iy = listY + i * (itemH + itemPad);
+            if (iy + itemH > oy + sH - 8.0f * scale) break; // clip
+
+            bool isSel = (g_skinSelected[g_skinCategory] == i);
+            u32 itemId = Hash(g_skinNames[g_skinCategory][i]) + 7000 + g_skinCategory * 100;
+            bool itemHov = Hit(listX, iy, listW, itemH);
+            f32 itemA = Anim(itemId, isSel ? 1.0f : (itemHov ? 0.5f : 0.0f));
+
+            // Item background
+            Color itemBg = isSel ? Color{60, 100, 255, (u8)(30 * a)}
+                                 : Color{255, 255, 255, (u8)(4 * itemA * a)};
+            dl.AddFilledRoundRect(Rect{listX, iy, listW, itemH}, itemBg, 6.0f * scale, 8);
+
+            // Left accent bar for selected
+            if (isSel) {
+                dl.AddFilledRoundRect(Rect{listX, iy + 4.0f * scale, 3.0f * scale, itemH - 8.0f * scale},
+                                      Color{80, 140, 255, globalAlpha}, 1.5f, 4);
+            }
+
+            // Skin name
+            Color nameC = isSel ? Color{220, 230, 255, globalAlpha}
+                                : Color{160, 165, 190, (u8)(globalAlpha * (0.65f + 0.35f * itemA))};
+            Vec2 nameSz = Measure(g_skinNames[g_skinCategory][i], g_font);
+            Text(dl, listX + 14.0f * scale, iy + (itemH - nameSz.y) * 0.5f,
+                 nameC, g_skinNames[g_skinCategory][i], g_font);
+
+            // "Applied" badge for selected
+            if (isSel) {
+                const char* badge = "APPLIED";
+                Vec2 badgeSz = Measure(badge, g_fontSm);
+                f32 badgeX = listX + listW - badgeSz.x - 12.0f * scale;
+                f32 badgeY = iy + (itemH - badgeSz.y) * 0.5f;
+                dl.AddFilledRoundRect(Rect{badgeX - 6.0f * scale, badgeY - 2.0f * scale,
+                                           badgeSz.x + 12.0f * scale, badgeSz.y + 4.0f * scale},
+                                      Color{60, 180, 120, (u8)(40 * a)}, 4.0f, 6);
+                Text(dl, badgeX, badgeY, Color{120, 220, 160, globalAlpha}, badge, g_fontSm);
+            }
+
+            // Click to select
+            if (itemHov && g_input.IsMousePressed(MouseButton::Left))
+                g_skinSelected[g_skinCategory] = i;
+        }
+
+    } else if (g_cs2Tab == TAB_CONFIGS) {
+        // ===== CONFIGS TAB =====
+        f32 listY = contentY + 4.0f * scale;
+        f32 itemH = 40.0f * scale;
+        f32 itemPad = 4.0f * scale;
+        f32 listW = contentW * 0.85f;
+        f32 listX = contentX + (contentW - listW) * 0.5f;
+
+        // Header
+        Vec2 hdrSz = Measure("Configuration Slots", g_fontMd);
+        Text(dl, listX, listY, Color{200, 210, 240, globalAlpha}, "Configuration Slots", g_fontMd);
+        listY += hdrSz.y + 10.0f * scale;
+
+        // Config slot list
+        for (int i = 0; i < 5; i++) {
+            f32 iy = listY + i * (itemH + itemPad);
+            bool isSel = (g_configSelected == i);
+            u32 cfgId = Hash(g_configSlots[i]) + 8000;
+            bool cfgHov = Hit(listX, iy, listW, itemH);
+            f32 cfgA = Anim(cfgId, isSel ? 1.0f : (cfgHov ? 0.5f : 0.0f));
+
+            // Slot background
+            Color slotBg = isSel ? Color{60, 100, 255, (u8)(25 * a)}
+                                 : Color{255, 255, 255, (u8)(4 * cfgA * a)};
+            dl.AddFilledRoundRect(Rect{listX, iy, listW, itemH}, slotBg, 6.0f * scale, 8);
+
+            // Left accent
+            if (isSel) {
+                dl.AddFilledRoundRect(Rect{listX, iy + 4.0f * scale, 3.0f * scale, itemH - 8.0f * scale},
+                                      Color{80, 140, 255, globalAlpha}, 1.5f, 4);
+            }
+
+            // Slot name
+            Color slotNameC = isSel ? Color{220, 230, 255, globalAlpha}
+                                    : Color{160, 165, 190, (u8)(globalAlpha * (0.65f + 0.35f * cfgA))};
+            Text(dl, listX + 14.0f * scale, iy + (itemH * 0.5f - 6.0f * scale),
+                 slotNameC, g_configSlots[i], g_font);
+
+            // Status label
+            const char* status = g_configSaved[i] ? "Saved" : "Empty";
+            Color stC = g_configSaved[i] ? Color{120, 220, 160, globalAlpha}
+                                         : Color{120, 125, 150, globalAlpha};
+            Vec2 stSz = Measure(status, g_fontSm);
+            Text(dl, listX + listW - stSz.x - 12.0f * scale,
+                 iy + (itemH - stSz.y) * 0.5f, stC, status, g_fontSm);
+
+            if (cfgHov && g_input.IsMousePressed(MouseButton::Left))
+                g_configSelected = i;
+        }
+
+        // Action buttons row
+        f32 btnY = listY + 5 * (itemH + itemPad) + 10.0f * scale;
+        f32 btnW = 90.0f * scale;
+        f32 btnH = 32.0f * scale;
+        f32 btnPad = 8.0f * scale;
+        f32 btnRowW = btnW * 3 + btnPad * 2;
+        f32 btnStartX = listX + (listW - btnRowW) * 0.5f;
+
+        // SAVE button
+        {
+            Rect r{btnStartX, btnY, btnW, btnH};
+            u32 id = Hash("cfg_save");
+            bool hov = Hit(r.x, r.y, r.w, r.h);
+            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
+            Color bg = Color{40, 120, 80, (u8)((30 + 25 * ba) * a)};
+            dl.AddFilledRoundRect(r, bg, 6.0f, 8);
+            Color tc = Color{140, 230, 170, globalAlpha};
+            TextCenter(dl, r, tc, "Save", g_font);
+            if (hov && g_input.IsMousePressed(MouseButton::Left))
+                g_configSaved[g_configSelected] = true;
+        }
+        // LOAD button
+        {
+            Rect r{btnStartX + btnW + btnPad, btnY, btnW, btnH};
+            u32 id = Hash("cfg_load");
+            bool hov = Hit(r.x, r.y, r.w, r.h);
+            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
+            bool canLoad = g_configSaved[g_configSelected];
+            Color bg = canLoad ? Color{40, 80, 160, (u8)((30 + 25 * ba) * a)}
+                               : Color{40, 42, 55, (u8)(20 * a)};
+            dl.AddFilledRoundRect(r, bg, 6.0f, 8);
+            Color tc = canLoad ? Color{140, 180, 255, globalAlpha}
+                               : Color{100, 105, 130, globalAlpha};
+            TextCenter(dl, r, tc, "Load", g_font);
+        }
+        // DELETE button
+        {
+            Rect r{btnStartX + 2 * (btnW + btnPad), btnY, btnW, btnH};
+            u32 id = Hash("cfg_del");
+            bool hov = Hit(r.x, r.y, r.w, r.h);
+            f32 ba = Anim(id, hov ? 1.0f : 0.0f);
+            bool canDel = g_configSaved[g_configSelected];
+            Color bg = canDel ? Color{160, 50, 50, (u8)((30 + 25 * ba) * a)}
+                              : Color{40, 42, 55, (u8)(20 * a)};
+            dl.AddFilledRoundRect(r, bg, 6.0f, 8);
+            Color tc = canDel ? Color{255, 140, 140, globalAlpha}
+                              : Color{100, 105, 130, globalAlpha};
+            TextCenter(dl, r, tc, "Delete", g_font);
+            if (hov && g_input.IsMousePressed(MouseButton::Left) && canDel)
+                g_configSaved[g_configSelected] = false;
+        }
     }
 }
 
