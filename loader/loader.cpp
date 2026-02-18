@@ -576,25 +576,21 @@ static void UpdateInjectionFlow() {
             // Save original loader position
             GetWindowRect(g_hwnd, &g_origWindowRect);
 
-            // Go fullscreen on top of CS2 for the overlay
-            int scrW = GetSystemMetrics(SM_CXSCREEN);
-            int scrH = GetSystemMetrics(SM_CYSCREEN);
-            int ovX = 0, ovY = 0;
+            // Show compact overlay panel centered on CS2 (CS2 visible around it)
+            int panelW = 400, panelH = 220;
             RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
-            ovX = cr.left; ovY = cr.top;
-            scrW = cr.right - cr.left;
-            scrH = cr.bottom - cr.top;
+            int cs2w = cr.right - cr.left;
+            int cs2h = cr.bottom - cr.top;
+            int ovX = cr.left + (cs2w - panelW) / 2;
+            int ovY = cr.top  + (cs2h - panelH) / 2;
 
-            SetWindowRgn(g_hwnd, nullptr, TRUE);
-            // Make window transparent using color key (pure black = transparent)
-            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
-            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
-            SetLayeredWindowAttributes(g_hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
-            SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, scrW, scrH, SWP_SHOWWINDOW);
-            g_width = scrW; g_height = scrH;
-            g_backend.Resize((u32)scrW, (u32)scrH);
+            HRGN rgn = CreateRoundRectRgn(0, 0, panelW+1, panelH+1, CORNER*2, CORNER*2);
+            SetWindowRgn(g_hwnd, rgn, TRUE);
+            SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, panelW, panelH, SWP_SHOWWINDOW);
+            g_width = panelW; g_height = panelH;
+            g_backend.Resize((u32)panelW, (u32)panelH);
             SetForegroundWindow(g_hwnd);
-            Log("Overlay: transparent fullscreen %dx%d on CS2", scrW, scrH);
+            Log("Overlay: panel %dx%d centered on CS2", panelW, panelH);
 
             g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
@@ -660,15 +656,9 @@ static void UpdateInjectionFlow() {
         }
         g_toastTimer = 4;
 
-        // Remove WS_EX_LAYERED (no longer transparent)
+        // Always transition to CS2 menu (630x510, starts hidden — toggle with Insert)
         {
-            LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
-            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_LAYERED);
-        }
-
-        // Always transition to CS2 menu (1260x1020, starts hidden — toggle with Insert)
-        {
-            int menuW = 1260, menuH = 1020;
+            int menuW = 630, menuH = 510;
             int mx, my;
             if (g_cs2Hwnd) {
                 RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
@@ -700,19 +690,23 @@ static void UpdateInjectionFlow() {
 }
 
 // --- Draw injection overlay ---
-// Truly transparent overlay via WS_EX_LAYERED + LWA_COLORKEY
-// Pure black pixels become transparent → CS2's own menu is visible behind
+// Compact floating panel on top of CS2 — CS2 is visible around the panel
 static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
     if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING) {
-        // NO background fill — window is color-keyed transparent (black = invisible)
-        // CS2's menu is fully visible behind this overlay
+        // Panel background (same as dashboard)
+        dl.AddFilledRoundRect(Rect{0, 0, W, H}, P::Bg, (f32)CORNER, 12);
 
-        // AC glow logo centered
+        // Top accent line
+        dl.AddFilledRect(Rect{0, 0, W, 2},
+                         Mix(Color{60,120,255,255}, Color{100,210,255,255},
+                             0.5f + 0.5f * sinf(g_time * 2.0f)));
+
+        // AC glow logo centered in top half
         TextureHandle overlayLogo = (g_acGlowLogo != INVALID_TEXTURE) ? g_acGlowLogo : g_cs2Logo;
         if (overlayLogo != INVALID_TEXTURE) {
-            f32 logoSz = 128;
+            f32 logoSz = 80;
             f32 lx = (W - logoSz) * 0.5f;
-            f32 ly = H * 0.32f - logoSz * 0.5f;
+            f32 ly = 24;
             dl.AddTexturedRect(Rect{lx, ly, logoSz, logoSz},
                                overlayLogo, Color{255,255,255,230});
         }
@@ -722,26 +716,29 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
         snprintf(progText, 64, "Injecterer Inventory Changer (%.0f%%)", g_injProgress);
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
-        f32 ptY = H * 0.55f;
-        // Text shadow (non-black so it doesn't become transparent)
-        Text(dl, ptX + 1, ptY + 1, Color{20, 20, 30, 200}, progText, g_fontSm);
-        Text(dl, ptX, ptY, Color{220, 225, 240, 255}, progText, g_fontSm);
+        f32 ptY = 120;
+        Text(dl, ptX, ptY, P::T1, progText, g_fontSm);
 
-        // Progress bar — Blue → Light blue gradient, half screen width
-        f32 barW = W * 0.25f;
-        f32 barH = 10;
+        // Progress bar — Blue → Light blue gradient
+        f32 barW = W * 0.6f;
+        f32 barH = 8;
         f32 barX = (W - barW) * 0.5f;
-        f32 barY = ptY + 28;
-        // Bar background (dark but NOT pure black)
-        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{15, 20, 40, 180}, 5.0f, 8);
+        f32 barY = ptY + 24;
+        // Bar background
+        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{20, 24, 40, 200}, 4.0f, 8);
         // Fill — Blue to Light blue gradient
         f32 fillW = barW * (g_injProgress / 100.0f);
         if (fillW > 1.0f) {
             Color blue{60, 120, 255, 255};
             Color lightBlue{100, 210, 255, 255};
             Color c1 = Mix(blue, lightBlue, g_injProgress / 100.0f);
-            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 5.0f, 8);
+            dl.AddFilledRoundRect(Rect{barX, barY, fillW, barH}, c1, 4.0f, 8);
         }
+
+        // Bottom accent line
+        dl.AddFilledRect(Rect{0, H - 2, W, 2},
+                         Mix(Color{60,120,255,255}, Color{100,210,255,255},
+                             0.5f + 0.5f * sinf(g_time * 2.5f)));
     }
 }
 
@@ -1905,11 +1902,7 @@ static int LoaderMain(HINSTANCE hInstance) {
         last = now;
 
         g_backend.BeginFrame();
-        // During overlay: clear to black (black = transparent via LWA_COLORKEY)
-        if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING)
-            g_backend.SetClearColor(Color{0, 0, 0, 255});
-        else
-            g_backend.SetClearColor(P::Bg);
+        g_backend.SetClearColor(P::Bg);
 
         // Update injection flow (Steam/CS2 state machine)
         UpdateInjectionFlow();
