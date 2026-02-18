@@ -11,6 +11,7 @@
 #define NOMINMAX
 #include <Windows.h>
 #include <TlHelp32.h>
+#include <Shlobj.h>
 #endif
 
 #include "../engine/ace_engine_v2.h"
@@ -32,6 +33,27 @@
 #ifdef _WIN32
 
 using namespace ace;
+
+// ============================================================================
+// DEBUG LOG — writes to ac_loader.log next to the exe
+// ============================================================================
+static FILE* g_logFile = nullptr;
+
+static void LogInit() {
+    char p[MAX_PATH]; GetModuleFileNameA(nullptr, p, MAX_PATH);
+    std::string s = p;
+    size_t i = s.find_last_of('\\');
+    std::string dir = (i != std::string::npos) ? s.substr(0, i + 1) : "";
+    g_logFile = fopen((dir + "ac_loader.log").c_str(), "w");
+}
+static void Log(const char* fmt, ...) {
+    if (!g_logFile) return;
+    va_list args; va_start(args, fmt);
+    vfprintf(g_logFile, fmt, args);
+    fprintf(g_logFile, "\n");
+    fflush(g_logFile);
+    va_end(args);
+}
 
 // ============================================================================
 // GLOBALS
@@ -875,12 +897,16 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
 static int LoaderMain(HINSTANCE hInstance);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
+    LogInit();
+    Log("=== AC Loader starting ===");
     __try {
         return LoaderMain(hInstance);
     }
     __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("CRASH: unhandled exception 0x%08X", GetExceptionCode());
         MessageBoxA(nullptr,
             "AC Loader crashed unexpectedly.\n\n"
+            "Check ac_loader.log for details.\n"
             "Try running as Administrator.",
             "AC Loader - Error", MB_OK | MB_ICONERROR);
         return 1;
@@ -888,8 +914,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 }
 
 static int LoaderMain(HINSTANCE hInstance) {
+    Log("Step 1: Init");
     srand((unsigned)time(nullptr));
     LoadUsers();
+    Log("Step 2: Users loaded (%d)", (int)g_users.size());
 
     WNDCLASSEXA wc = {};
     wc.cbSize = sizeof(wc);
@@ -899,25 +927,32 @@ static int LoaderMain(HINSTANCE hInstance) {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = "ACLoaderV4";
     RegisterClassExA(&wc);
+    Log("Step 3: Window class registered");
 
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
 
-    g_hwnd = CreateWindowExA(0, wc.lpszClassName, "AC Loader",
+    g_hwnd = CreateWindowExA(WS_EX_APPWINDOW, wc.lpszClassName, "AC Loader",
         WS_POPUP | WS_VISIBLE,
         (sw - g_width) / 2, (sh - g_height) / 2, g_width, g_height,
         nullptr, nullptr, hInstance, nullptr);
 
     if (!g_hwnd) {
+        Log("FAIL: CreateWindowExA error=%lu", GetLastError());
         MessageBoxA(nullptr, "Failed to create window", "Error", MB_OK); return 1;
     }
+    Log("Step 4: Window created %dx%d", g_width, g_height);
 
     HRGN rgn = CreateRoundRectRgn(0, 0, g_width+1, g_height+1, CORNER*2, CORNER*2);
     SetWindowRgn(g_hwnd, rgn, TRUE);
 
+    Log("Step 5: Initializing DX11...");
     if (!g_backend.Initialize(g_hwnd, (u32)g_width, (u32)g_height)) {
-        MessageBoxA(nullptr, "DX11 init failed", "Error", MB_OK); return 1;
+        Log("FAIL: DX11 init failed");
+        MessageBoxA(nullptr, "DX11 init failed.\n\nCheck ac_loader.log", "Error", MB_OK);
+        return 1;
     }
+    Log("Step 6: DX11 OK");
 
     // Load fonts — try multiple paths
     const char* fontFiles[] = {
@@ -938,12 +973,15 @@ static int LoaderMain(HINSTANCE hInstance) {
         }
     }
     if (!loaded) {
-        MessageBoxA(nullptr, "No system font found", "Error", MB_OK);
+        Log("FAIL: No system font found");
+        MessageBoxA(nullptr, "No system font found.\nCheck ac_loader.log", "Error", MB_OK);
         g_backend.Shutdown(); return 1;
     }
+    Log("Step 7: Fonts loaded");
 
     ShowWindow(g_hwnd, SW_SHOWDEFAULT);
     UpdateWindow(g_hwnd);
+    Log("Step 8: Window shown — entering render loop");
 
     LARGE_INTEGER freq, last;
     QueryPerformanceFrequency(&freq);
@@ -986,6 +1024,8 @@ static int LoaderMain(HINSTANCE hInstance) {
     g_backend.Shutdown();
     DestroyWindow(g_hwnd);
     UnregisterClassA(wc.lpszClassName, hInstance);
+    Log("Shutdown complete");
+    if (g_logFile) fclose(g_logFile);
     return 0;
 }
 

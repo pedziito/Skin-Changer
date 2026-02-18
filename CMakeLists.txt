@@ -211,7 +211,6 @@ endif()
 target_link_libraries(ace_engine_v2 PUBLIC
     d3d11
     dxgi
-    d3dcompiler
     user32
     gdi32
 )

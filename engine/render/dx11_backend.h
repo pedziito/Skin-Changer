@@ -13,6 +13,7 @@
 #define NOMINMAX
 #endif
 #include <d3d11.h>
+// d3dcompiler.h for ID3DBlob types — D3DCompile loaded dynamically at runtime
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <unordered_map>

@@ -7,8 +7,25 @@
 #ifdef _WIN32
 
 #pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxgi.lib")
+
+// D3DCompile loaded dynamically to avoid hard dependency on d3dcompiler_47.dll
+typedef HRESULT(WINAPI* pD3DCompile)(
+    LPCVOID pSrcData, SIZE_T SrcDataSize, LPCSTR pSourceName,
+    const D3D_SHADER_MACRO* pDefines, ID3DInclude* pInclude,
+    LPCSTR pEntrypoint, LPCSTR pTarget, UINT Flags1, UINT Flags2,
+    ID3DBlob** ppCode, ID3DBlob** ppErrorMsgs);
+
+static pD3DCompile g_pfnD3DCompile = nullptr;
+
+static bool LoadD3DCompiler() {
+    HMODULE hMod = LoadLibraryA("d3dcompiler_47.dll");
+    if (!hMod) hMod = LoadLibraryA("d3dcompiler_46.dll");
+    if (!hMod) hMod = LoadLibraryA("d3dcompiler_43.dll");
+    if (!hMod) return false;
+    g_pfnD3DCompile = (pD3DCompile)GetProcAddress(hMod, "D3DCompile");
+    return g_pfnD3DCompile != nullptr;
+}
 
 namespace ace {
 
@@ -392,6 +409,30 @@ bool DX11Backend::CreateDeviceAndSwapChain(HWND hwnd, u32 w, u32 h) {
         _context.GetAddressOf()
     );
 
+    // Fallback: FLIP_DISCARD requires Win10+, try DISCARD for older systems
+    if (FAILED(hr)) {
+        scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        scd.BufferCount = 1;
+        hr = D3D11CreateDeviceAndSwapChain(
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
+            nullptr, 0, D3D11_SDK_VERSION,
+            &scd, _swapChain.GetAddressOf(),
+            _device.GetAddressOf(), &featureLevel,
+            _context.GetAddressOf()
+        );
+    }
+
+    // Last resort: try WARP software renderer
+    if (FAILED(hr)) {
+        hr = D3D11CreateDeviceAndSwapChain(
+            nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0,
+            nullptr, 0, D3D11_SDK_VERSION,
+            &scd, _swapChain.GetAddressOf(),
+            _device.GetAddressOf(), &featureLevel,
+            _context.GetAddressOf()
+        );
+    }
+
     return SUCCEEDED(hr);
 }
 
@@ -403,9 +444,11 @@ bool DX11Backend::CreateRenderTargetView() {
 }
 
 bool DX11Backend::CreateShaders() {
+    if (!g_pfnD3DCompile && !LoadD3DCompiler()) return false;
+
     // Compile vertex shader
     ComPtr<ID3DBlob> vsBlob, errorBlob;
-    HRESULT hr = D3DCompile(g_vertexShaderSrc, strlen(g_vertexShaderSrc),
+    HRESULT hr = g_pfnD3DCompile(g_vertexShaderSrc, strlen(g_vertexShaderSrc),
         "VS", nullptr, nullptr, "main", "vs_5_0", 0, 0,
         vsBlob.GetAddressOf(), errorBlob.GetAddressOf());
     if (FAILED(hr)) return false;
@@ -427,7 +470,7 @@ bool DX11Backend::CreateShaders() {
 
     // Compile pixel shader
     ComPtr<ID3DBlob> psBlob;
-    hr = D3DCompile(g_pixelShaderSrc, strlen(g_pixelShaderSrc),
+    hr = g_pfnD3DCompile(g_pixelShaderSrc, strlen(g_pixelShaderSrc),
         "PS", nullptr, nullptr, "main", "ps_5_0", 0, 0,
         psBlob.GetAddressOf(), errorBlob.ReleaseAndGetAddressOf());
     if (FAILED(hr)) return false;
