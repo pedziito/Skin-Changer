@@ -1332,41 +1332,6 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         }
     }
 
-    // ============================================================
-    // RUN BUTTON (bottom, popup-style with play icon)
-    // ============================================================
-    {
-        bool enabled;
-        if (g_injected) { enabled = false; }
-        else if (g_injecting) { enabled = false; }
-        else { enabled = true; }
-
-        f32 btnW = cW * 0.5f;
-        f32 btnH = 36;
-        f32 btnX = cX + (cW - btnW) * 0.5f;
-        f32 btnY = H - 52;
-
-        u32 rId = Hash("_dash_run");
-        bool rH = enabled && Hit(btnX, btnY, btnW, btnH);
-        bool rC = rH && g_input.IsMousePressed(MouseButton::Left);
-        f32 rA = Anim(rId, rH ? 1.0f : 0.0f);
-
-        f32 op = enabled ? (0.85f + 0.15f * rA) : 0.3f;
-        Color bc = Fade(Mix(P::Accent1, P::Accent2, 0.4f), op);
-        Rect btnR{btnX, btnY, btnW, btnH};
-        dl.AddFilledRoundRect(btnR, bc, 8.0f, 10);
-
-        // Play triangle icon
-        f32 triX = btnR.x + btnR.w * 0.5f - 4;
-        f32 triYc = btnR.y + btnR.h * 0.5f;
-        Color tc = enabled ? Color{255,255,255,255} : Color{200,200,210,140};
-        dl.AddLine(Vec2{triX - 4, triYc - 6}, Vec2{triX + 6, triYc}, tc, 2.0f);
-        dl.AddLine(Vec2{triX + 6, triYc}, Vec2{triX - 4, triYc + 6}, tc, 2.0f);
-        dl.AddLine(Vec2{triX - 4, triYc + 6}, Vec2{triX - 4, triYc - 6}, tc, 2.0f);
-
-        if (rC && enabled) DoInject();
-    }
-
     DrawToast(dl, W, H);
 
     // Popup overlay (drawn on top of everything)
