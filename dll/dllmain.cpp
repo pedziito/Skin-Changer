@@ -92,9 +92,9 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
             G::shouldUnload = true;
         }
 
-        // Check config file every 2 seconds for changes from loader
+        // Check config file every 250ms for changes from loader (fast response)
         auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastConfigCheck).count() >= 2) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastConfigCheck).count() >= 250) {
             lastConfigCheck = now;
             std::string cfgPath = Config::GetConfigDir() + "\\active.acpreset";
             try {

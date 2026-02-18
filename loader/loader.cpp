@@ -779,11 +779,101 @@ static void WriteEquippedConfig() {
     }
 }
 
-// CS2 Menu — Configs tab state
-static int g_configSelected = 0;
-static char g_configName[64] = "";
-static const char* g_configSlots[] = {"Config 1", "Config 2", "Config 3", "Config 4", "Config 5"};
-static bool g_configSaved[5] = {false, false, false, false, false};
+// Save current loadout to a named preset file
+static void SaveLoadout(const char* name = "loadout") {
+    char appData[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) {
+        std::string dir = std::string(appData) + "\\AC_Changer\\presets";
+        CreateDirectoryA((std::string(appData) + "\\AC_Changer").c_str(), nullptr);
+        CreateDirectoryA(dir.c_str(), nullptr);
+        std::string path = dir + "\\" + name + ".acpreset";
+        FILE* f = fopen(path.c_str(), "w");
+        if (f) {
+            for (auto& item : g_invItems) {
+                if (item.weaponIdx < 0 || item.weaponIdx >= g_weaponDBCount) continue;
+                const auto& wpn = g_weaponDB[item.weaponIdx];
+                if (item.skinIdx < 0 || item.skinIdx >= wpn.skinCount) continue;
+                const auto& sk = wpn.skins[item.skinIdx];
+                fprintf(f, "%s|%s|%d|%d|0|%.4f|%d\n",
+                    wpn.name, sk.name, wpn.id, sk.paintKit,
+                    item.wear, item.statTrak ? 0 : -1);
+            }
+            fclose(f);
+        }
+    }
+}
+
+// Load a saved loadout from a named preset file into g_invItems, then write active.acpreset
+static bool LoadLoadout(const char* name = "loadout") {
+    char appData[MAX_PATH];
+    if (FAILED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) return false;
+    std::string path = std::string(appData) + "\\AC_Changer\\presets\\" + name + ".acpreset";
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+
+    g_invItems.clear();
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+        if (len == 0) continue;
+
+        // Parse: weaponName|skinName|weaponId|paintKit|seed|wear|statTrak
+        char buf[512];
+        strncpy(buf, line, 511); buf[511] = '\0';
+        char* fields[7] = {};
+        int fi = 0;
+        fields[0] = buf;
+        for (char* p = buf; *p && fi < 6; p++) {
+            if (*p == '|') { *p = '\0'; fields[++fi] = p + 1; }
+        }
+        if (fi < 6) continue;
+
+        const char* wpnName  = fields[0];
+        const char* skinName = fields[1];
+        float wear = (float)atof(fields[5]);
+        int statTrak = atoi(fields[6]);
+
+        // Find weapon and skin index in g_weaponDB
+        int weaponIdx = -1, skinIdx = -1;
+        for (int w = 0; w < g_weaponDBCount; w++) {
+            if (strcmp(g_weaponDB[w].name, wpnName) == 0) {
+                weaponIdx = w;
+                for (int s = 0; s < g_weaponDB[w].skinCount; s++) {
+                    if (strcmp(g_weaponDB[w].skins[s].name, skinName) == 0) {
+                        skinIdx = s;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        if (weaponIdx >= 0 && skinIdx >= 0) {
+            InvItem item;
+            item.weaponIdx = weaponIdx;
+            item.skinIdx = skinIdx;
+            item.wear = (wear > 0.0001f) ? wear : 0.0001f;
+            item.statTrak = (statTrak >= 0);
+            item.customName[0] = '\0';
+            item.applied = false;
+            g_invItems.push_back(item);
+        }
+    }
+    fclose(f);
+
+    // Write to active.acpreset so the DLL picks it up immediately
+    if (!g_invItems.empty()) WriteEquippedConfig();
+    return !g_invItems.empty();
+}
+
+// Check if a saved loadout file exists
+static bool HasSavedLoadout(const char* name = "loadout") {
+    char appData[MAX_PATH];
+    if (FAILED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) return false;
+    std::string path = std::string(appData) + "\\AC_Changer\\presets\\" + name + ".acpreset";
+    return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
 
 // (World/View/Profile/Misc settings removed — skin changer only)
 
@@ -1546,9 +1636,52 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         if (clsH && g_input.IsMousePressed(MouseButton::Left)) g_running = false;
     }
 
-    // === TITLE — "Skin Changer" ===
+    // === TITLE — "Skin Changer" + Save/Load buttons ===
     f32 y = 18;
     Text(dl, cX, y, P::T1, "Skin Changer", g_fontMd);
+
+    // Save button (top right)
+    {
+        f32 btnW2 = 60, btnH2 = 24;
+        f32 saveX = cX + cW - btnW2 * 2 - 10;
+        u32 savId = Hash("_cs2_save");
+        bool savHov = Hit(saveX, y - 2, btnW2, btnH2);
+        f32 savAn = Anim(savId, savHov ? 1.0f : 0.0f);
+        Color savBg = g_invItems.empty() ? Fade(P::Surface, 0.5f) :
+                      Mix(Color{40, 140, 60, 220}, Color{50, 180, 70, 255}, savAn);
+        dl.AddFilledRoundRect(Rect{saveX, y - 2, btnW2, btnH2}, savBg, 6, 8);
+        Vec2 svTs = Measure("Save", g_fontSm);
+        Text(dl, saveX + (btnW2 - svTs.x) * 0.5f, y + (btnH2 - svTs.y) * 0.5f - 2,
+             g_invItems.empty() ? P::T3 : P::T1, "Save", g_fontSm);
+        if (savHov && !g_invItems.empty() && g_input.IsMousePressed(MouseButton::Left)) {
+            SaveLoadout();
+            g_toastMsg = "Loadout saved!"; g_toastCol = P::Green; g_toastTimer = 2;
+        }
+    }
+
+    // Load button (top right, next to save)
+    {
+        f32 btnW2 = 60, btnH2 = 24;
+        f32 loadX = cX + cW - btnW2;
+        bool hasFile = HasSavedLoadout();
+        u32 lodId = Hash("_cs2_load");
+        bool lodHov = hasFile && Hit(loadX, y - 2, btnW2, btnH2);
+        f32 lodAn = Anim(lodId, lodHov ? 1.0f : 0.0f);
+        Color lodBg = !hasFile ? Fade(P::Surface, 0.5f) :
+                      Mix(Color{80, 60, 180, 220}, Color{100, 80, 220, 255}, lodAn);
+        dl.AddFilledRoundRect(Rect{loadX, y - 2, btnW2, btnH2}, lodBg, 6, 8);
+        Vec2 ldTs = Measure("Load", g_fontSm);
+        Text(dl, loadX + (btnW2 - ldTs.x) * 0.5f, y + (btnH2 - ldTs.y) * 0.5f - 2,
+             !hasFile ? P::T3 : P::T1, "Load", g_fontSm);
+        if (lodHov && g_input.IsMousePressed(MouseButton::Left)) {
+            if (LoadLoadout()) {
+                g_toastMsg = "Loadout loaded!"; g_toastCol = P::Green; g_toastTimer = 2;
+            } else {
+                g_toastMsg = "Failed to load"; g_toastCol = P::Red; g_toastTimer = 2;
+            }
+        }
+    }
+
     y += 26;
     char countStr[48];
     snprintf(countStr, 48, "%d skins equipped", (int)g_invItems.size());
