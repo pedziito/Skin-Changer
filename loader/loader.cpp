@@ -70,8 +70,8 @@ static u32  g_fontXl   = 0;   // 32pt
 
 static HWND g_hwnd    = nullptr;
 static bool g_running = true;
-static int  g_width   = 520;
-static int  g_height  = 680;
+static int  g_width   = 380;
+static int  g_height  = 460;
 static constexpr int CORNER = 16;
 
 // ============================================================================
@@ -180,6 +180,13 @@ static bool g_injected  = false;
 static std::string g_toastMsg;
 static f32 g_toastTimer = 0;
 static Color g_toastCol = P::Green;
+
+// Dashboard sidebar nav
+static int g_navIndex = 0; // 0=Home, 1=Website, 2=Support, 3=Market
+
+// CS2 detail popup
+static bool g_showPopup = false;
+static f32  g_popupAnim = 0.0f;
 
 // ============================================================================
 // USER DATABASE
@@ -334,7 +341,14 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOUSEMOVE: {
         f32 x = (f32)(short)LOWORD(lp), y = (f32)(short)HIWORD(lp);
         g_input.OnMouseMove(x, y);
-        if (g_dragging) { POINT pt; GetCursorPos(&pt);
+        // Drag: title bar on login/signup, top area on dashboard (right of sidebar)
+        bool canDrag = false;
+        if (g_screen == DASHBOARD) {
+            canDrag = (pt.y < 40 && pt.x > 90 && pt.x < g_width - 60);
+        } else {
+            canDrag = (pt.y < 48 && pt.x < g_width - 90);
+        }
+        if (canDragrPos(&pt);
             SetWindowPos(hw, nullptr, pt.x - g_dragPt.x, pt.y - g_dragPt.y, 0, 0, SWP_NOSIZE|SWP_NOZORDER); }
         return 0;
     }
@@ -588,33 +602,34 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
     DrawBg(dl, W, H);
     DrawTitleBar(dl, W);
 
-    // Centered glass card
-    f32 cardW = 380, cardH = 380;
+    // Centered glass card — fits 380px window
+    f32 cardW = (std::min)(W - 20.0f, 356.0f);
+    f32 cardH = 340;
     f32 cardX = (W - cardW) * 0.5f;
-    f32 cardY = 80;
+    f32 cardY = 60;
     GlassCard(dl, Rect{cardX, cardY, cardW, cardH});
 
-    f32 cx = cardX + 30;
-    f32 cw = cardW - 60;
-    f32 cy = cardY + 28;
+    f32 cx = cardX + 24;
+    f32 cw = cardW - 48;
+    f32 cy = cardY + 22;
 
     // Title
     Vec2 titleSz = Measure("Welcome back", g_fontLg);
     Text(dl, cardX + (cardW - titleSz.x) * 0.5f, cy, P::T1, "Welcome back", g_fontLg);
-    cy += titleSz.y + 4;
+    cy += titleSz.y + 2;
 
     Vec2 subSz = Measure("Sign in to continue", g_fontSm);
     Text(dl, cardX + (cardW - subSz.x) * 0.5f, cy, P::T2, "Sign in to continue", g_fontSm);
-    cy += subSz.y + 28;
+    cy += subSz.y + 20;
 
     // Fields
     InputField(dl, "Username", g_loginUser, sizeof(g_loginUser),
-               Rect{cx, cy, cw, 44});
-    cy += 56;
+               Rect{cx, cy, cw, 40});
+    cy += 50;
 
     InputField(dl, "Password", g_loginPass, sizeof(g_loginPass),
-               Rect{cx, cy, cw, 44}, true);
-    cy += 56;
+               Rect{cx, cy, cw, 40}, true);
+    cy += 50;
 
     // Error
     if (g_authErrorTimer > 0) {
@@ -623,28 +638,28 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
         Vec2 es = Measure(g_authError.c_str(), g_fontSm);
         Text(dl, cardX + (cardW - es.x) * 0.5f, cy, Fade(P::Red, ea), g_authError.c_str(), g_fontSm);
     }
-    cy += 20;
+    cy += 16;
 
     // Sign in button
-    if (GradientButton(dl, "SIGN IN", Rect{cx, cy, cw, 46})) {
-        if (DoLogin(g_loginUser, g_loginPass)) { g_screen = DASHBOARD; }
+    if (GradientButton(dl, "SIGN IN", Rect{cx, cy, cw, 42})) {
+        if (DoLogin(g_loginUser, g_loginPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
     }
-    cy += 58;
+    cy += 52;
 
     // Enter key shortcut
     if (g_input.IsKeyPressed(Key::Enter) && strlen(g_loginUser) > 0 && strlen(g_loginPass) > 0) {
-        if (DoLogin(g_loginUser, g_loginPass)) g_screen = DASHBOARD;
+        if (DoLogin(g_loginUser, g_loginPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
     }
 
     // Divider
-    f32 divY = cy + 4;
+    f32 divY = cy;
     dl.AddGradientRect(Rect{cx, divY, cw * 0.42f, 1},
         Color{35,35,55,0}, Color{35,35,55,0}, P::Border, P::Border);
     Text(dl, cx + cw * 0.42f + 8, divY - 6, P::T3, "or", g_fontSm);
     dl.AddGradientRect(Rect{cx + cw * 0.58f, divY, cw * 0.42f, 1},
         P::Border, P::Border, Color{35,35,55,0}, Color{35,35,55,0});
 
-    cy += 24;
+    cy += 18;
 
     // Create account link
     const char* caText = "Create new account";
@@ -661,7 +676,7 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
 
     // Footer
     Vec2 fts = Measure("AC Loader v4.0", g_fontSm);
-    Text(dl, (W - fts.x) * 0.5f, H - 30, P::T3, "AC Loader v4.0", g_fontSm);
+    Text(dl, (W - fts.x) * 0.5f, H - 22, P::T3, "AC Loader v4.0", g_fontSm);
 
     DrawToast(dl, W, H);
 }
@@ -673,27 +688,28 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     DrawBg(dl, W, H);
     DrawTitleBar(dl, W);
 
-    f32 cardW = 380, cardH = 440;
-    f32 cardX = (W - cardW) * 0.5f, cardY = 72;
+    f32 cardW = (std::min)(W - 20.0f, 356.0f);
+    f32 cardH = 380;
+    f32 cardX = (W - cardW) * 0.5f, cardY = 56;
     GlassCard(dl, Rect{cardX, cardY, cardW, cardH});
 
-    f32 cx = cardX + 30, cw = cardW - 60;
-    f32 cy = cardY + 28;
+    f32 cx = cardX + 24, cw = cardW - 48;
+    f32 cy = cardY + 20;
 
     Vec2 ts = Measure("Create account", g_fontLg);
     Text(dl, cardX + (cardW - ts.x) * 0.5f, cy, P::T1, "Create account", g_fontLg);
-    cy += ts.y + 4;
+    cy += ts.y + 2;
 
     Vec2 ss = Measure("Get started with a free trial", g_fontSm);
     Text(dl, cardX + (cardW - ss.x) * 0.5f, cy, P::T2, "Get started with a free trial", g_fontSm);
-    cy += ss.y + 28;
+    cy += ss.y + 18;
 
-    InputField(dl, "Username", g_signupUser, sizeof(g_signupUser), Rect{cx, cy, cw, 44});
-    cy += 54;
-    InputField(dl, "Password", g_signupPass, sizeof(g_signupPass), Rect{cx, cy, cw, 44}, true);
-    cy += 54;
-    InputField(dl, "Confirm password", g_signupPass2, sizeof(g_signupPass2), Rect{cx, cy, cw, 44}, true);
-    cy += 54;
+    InputField(dl, "Username", g_signupUser, sizeof(g_signupUser), Rect{cx, cy, cw, 40});
+    cy += 48;
+    InputField(dl, "Password", g_signupPass, sizeof(g_signupPass), Rect{cx, cy, cw, 40}, true);
+    cy += 48;
+    InputField(dl, "Confirm password", g_signupPass2, sizeof(g_signupPass2), Rect{cx, cy, cw, 40}, true);
+    cy += 48;
 
     if (g_authErrorTimer > 0) {
         g_authErrorTimer -= g_dt;
@@ -703,19 +719,19 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     }
     cy += 18;
 
-    if (GradientButton(dl, "CREATE ACCOUNT", Rect{cx, cy, cw, 46})) {
+    if (GradientButton(dl, "CREATE ACCOUNT", Rect{cx, cy, cw, 42})) {
         if (strcmp(g_signupPass, g_signupPass2) != 0) { g_authError = "Passwords don't match"; g_authErrorTimer = 3; }
         else if (DoSignup(g_signupUser, g_signupPass)) {
-            if (DoLogin(g_signupUser, g_signupPass)) g_screen = DASHBOARD;
+            if (DoLogin(g_signupUser, g_signupPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
         }
     }
     if (g_input.IsKeyPressed(Key::Enter) && strlen(g_signupUser) > 0 && strlen(g_signupPass) > 0) {
         if (strcmp(g_signupPass, g_signupPass2) != 0) { g_authError = "Passwords don't match"; g_authErrorTimer = 3; }
         else if (DoSignup(g_signupUser, g_signupPass)) {
-            if (DoLogin(g_signupUser, g_signupPass)) g_screen = DASHBOARD;
+            if (DoLogin(g_signupUser, g_signupPass)) { g_screen = DASHBOARD; g_navIndex = 0; }
         }
     }
-    cy += 58;
+    cy += 52;
 
     // Back link
     const char* bl = "Already have an account? Sign in";
@@ -730,106 +746,358 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     }
 
     Vec2 fts = Measure("AC Loader v4.0", g_fontSm);
-    Text(dl, (W - fts.x) * 0.5f, H - 30, P::T3, "AC Loader v4.0", g_fontSm);
+    Text(dl, (W - fts.x) * 0.5f, H - 22, P::T3, "AC Loader v4.0", g_fontSm);
     DrawToast(dl, W, H);
 }
 
 // ============================================================================
-// SCREEN: DASHBOARD
+// CS2 DETAIL POPUP (modal overlay)
+// ============================================================================
+static void DrawPopup(DrawList& dl, f32 W, f32 H) {
+    g_popupAnim += (g_showPopup ? 1.0f - g_popupAnim : -g_popupAnim) * (std::min)(1.0f, 14.0f * g_dt);
+    if (g_popupAnim < 0.01f) { g_popupAnim = 0; return; }
+    f32 a = g_popupAnim;
+
+    // Dim overlay — click outside to close
+    dl.AddFilledRect(Rect{0, 0, W, H}, Fade(Color{0,0,0,255}, 0.55f * a));
+    if (g_input.IsMousePressed(MouseButton::Left) && !Hit(30, 50, W - 60, H - 100))
+        g_showPopup = false;
+
+    // Popup card
+    f32 pw = W - 40, ph = H - 80;
+    f32 px = (W - pw) * 0.5f;
+    f32 py = 40 + (1.0f - a) * 20.0f;
+
+    // Shadow
+    dl.AddFilledRoundRect(Rect{px + 3, py + 5, pw - 6, ph},
+                          Fade(Color{0,0,0,255}, 0.4f * a), 16.0f, 12);
+    // Border
+    dl.AddFilledRoundRect(Rect{px - 1, py - 1, pw + 2, ph + 2},
+                          Fade(P::Border, a), 17.0f, 12);
+    // Background
+    dl.AddFilledRoundRect(Rect{px, py, pw, ph}, Fade(P::Card, a), 16.0f, 12);
+
+    // Top accent line
+    dl.AddGradientRect(Rect{px + 16, py, pw - 32, 2},
+        Fade(P::Accent1, 0.0f), Fade(P::Accent1, 0.6f * a),
+        Fade(P::Accent2, 0.6f * a), Fade(P::Accent2, 0.0f));
+
+    f32 cx = px + 20, cw = pw - 40;
+    f32 cy = py + 16;
+
+    // Close button (X)
+    {
+        f32 xbX = px + pw - 32, xbY = py + 12;
+        u32 xbId = Hash("_popup_close");
+        bool xbH = Hit(xbX - 4, xbY - 4, 20, 20);
+        f32 xbA = Anim(xbId, xbH ? 1.0f : 0.0f);
+        dl.AddFilledRoundRect(Rect{xbX - 6, xbY - 6, 24, 24},
+                              Fade(P::Red, 0.12f * xbA * a), 6.0f, 8);
+        f32 s = 5.0f;
+        Color xcc = Fade(Color{160, 165, 190, (u8)(140 + 115 * xbA)}, a);
+        dl.AddLine(Vec2{xbX, xbY}, Vec2{xbX + s*2, xbY + s*2}, xcc, 1.5f);
+        dl.AddLine(Vec2{xbX + s*2, xbY}, Vec2{xbX, xbY + s*2}, xcc, 1.5f);
+        if (xbH && g_input.IsMousePressed(MouseButton::Left)) g_showPopup = false;
+    }
+
+    // Game icon + title
+    f32 iconSz = 42;
+    dl.AddFilledRoundRect(Rect{cx, cy, iconSz, iconSz},
+                          Fade(Color{220, 160, 40, 255}, a), 12.0f, 10);
+    TextCenter(dl, Rect{cx, cy, iconSz, iconSz},
+               Fade(Color{255,255,255,240}, a), "CS2", g_font);
+
+    Text(dl, cx + iconSz + 12, cy + 4, Fade(P::T1, a), "Counter-Strike 2", g_fontMd);
+    Text(dl, cx + iconSz + 12, cy + 24, Fade(P::T2, a), "Skin Changer", g_fontSm);
+    cy += iconSz + 16;
+
+    // Divider
+    dl.AddFilledRect(Rect{cx, cy, cw, 1}, Fade(P::Border, a));
+    cy += 12;
+
+    // Info rows
+    struct InfoRow { const char* label; const char* value; };
+    InfoRow rows[] = {
+        {"Status",    g_sub.active ? "Active" : "Inactive"},
+        {"Version",   "4.0.0"},
+        {"Released",  "Feb 2026"},
+        {"Expires",   g_sub.expiry.c_str()},
+    };
+    for (auto& row : rows) {
+        Text(dl, cx, cy, Fade(P::T3, a), row.label, g_fontSm);
+        Vec2 vs = Measure(row.value, g_fontSm);
+        Text(dl, cx + cw - vs.x, cy, Fade(P::T1, a), row.value, g_fontSm);
+        cy += 20;
+    }
+    cy += 6;
+
+    // Divider
+    dl.AddFilledRect(Rect{cx, cy, cw, 1}, Fade(P::Border, a));
+    cy += 12;
+
+    // Changelog header
+    Text(dl, cx, cy, Fade(P::Accent1, a), "Changelog", g_font);
+    cy += 22;
+
+    // Changelog entries
+    const char* changelog[] = {
+        "+ Added Butterfly Knife skins",
+        "+ StatTrak support for all weapons",
+        "+ Improved anti-detection",
+        "+ Glove skin support",
+        "* Fixed rare crash on map change",
+    };
+    for (auto* entry : changelog) {
+        Color ec = (entry[0] == '+') ? Fade(P::Green, a) : Fade(P::Yellow, a);
+        Text(dl, cx + 4, cy, ec, entry, g_fontSm);
+        cy += 17;
+    }
+
+    // Launch button at bottom
+    f32 btnY = py + ph - 52;
+    {
+        const char* btnText;
+        bool enabled;
+        if (g_injected) { btnText = "LAUNCHED"; enabled = false; }
+        else if (g_injecting) { btnText = "INJECTING..."; enabled = false; }
+        else { btnText = "LAUNCH"; enabled = true; }
+
+        // Simple accent button
+        u32 lbId = Hash("_popup_launch");
+        bool lbH = enabled && Hit(cx, btnY, cw, 38);
+        bool lbC = lbH && g_input.IsMousePressed(MouseButton::Left);
+        f32 lbA = Anim(lbId, lbH ? 1.0f : 0.0f);
+
+        f32 op = enabled ? (0.85f + 0.15f * lbA) : 0.3f;
+        Color bc = Fade(Mix(P::Accent1, P::Accent2, 0.4f), op * a);
+        dl.AddFilledRoundRect(Rect{cx, btnY, cw, 38}, bc, 10.0f, 12);
+        Color tc = enabled ? Fade(Color{255,255,255,255}, a) : Fade(Color{200,200,210,140}, a);
+        TextCenter(dl, Rect{cx, btnY, cw, 38}, tc, btnText, g_font);
+        if (lbC && enabled) DoInject();
+    }
+}
+
+// ============================================================================
+// SCREEN: DASHBOARD — Sidebar + Content + Popup
 // ============================================================================
 static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     DrawBg(dl, W, H);
-    DrawTitleBar(dl, W);
 
-    // User avatar in top-right
+    // ===== SIDEBAR (left 90px) =====
+    f32 sideW = 90;
+    dl.AddFilledRect(Rect{0, 0, sideW, H}, Color{12, 12, 20, 240});
+    // Sidebar right border
+    dl.AddFilledRect(Rect{sideW - 1, 0, 1, H}, P::Border);
+
+    // Logo
+    Vec2 logoSz = Measure("AC", g_fontMd);
+    Text(dl, (sideW - logoSz.x) * 0.5f, 16, P::Accent1, "AC", g_fontMd);
+    Vec2 verSz = Measure("v4.0", g_fontSm);
+    Text(dl, (sideW - verSz.x) * 0.5f, 16 + logoSz.y + 2, P::T3, "v4.0", g_fontSm);
+
+    // Navigation items
+    const char* navLabels[] = { "Home", "Website", "Support", "Market" };
+    const char* navIcons[]  = { "#",    "W",      "?",       "M" };
+    f32 navY = 70;
+    for (int i = 0; i < 4; i++) {
+        u32 nid = Hash(navLabels[i]);
+        f32 nY = navY + i * 44;
+        bool nH = Hit(0, nY, sideW, 40);
+        bool active = (g_navIndex == i);
+        f32 nA = Anim(nid, (nH || active) ? 1.0f : 0.0f);
+
+        // Highlight bg
+        if (nA > 0.01f) {
+            dl.AddFilledRoundRect(Rect{6, nY, sideW - 12, 40},
+                                  Fade(P::CardHi, 0.7f * nA), 8.0f, 8);
+        }
+        // Active indicator bar
+        if (active) {
+            dl.AddFilledRoundRect(Rect{2, nY + 10, 3, 20},
+                                  P::Accent1, 1.5f, 4);
+        }
+
+        // Icon
+        Vec2 icoSz = Measure(navIcons[i], g_font);
+        Text(dl, (sideW - icoSz.x) * 0.5f, nY + 4,
+             Mix(P::T3, active ? P::Accent1 : P::T1, nA), navIcons[i], g_font);
+        // Label
+        Vec2 lblSz = Measure(navLabels[i], g_fontSm);
+        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22,
+             Mix(P::T3, active ? P::Accent1 : P::T2, nA), navLabels[i], g_fontSm);
+
+        if (nH && g_input.IsMousePressed(MouseButton::Left)) {
+            if (i == 0) {
+                g_navIndex = 0;
+            } else if (i == 1) {
+                // Open website
+                ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer", nullptr, nullptr, SW_SHOW);
+            } else if (i == 2) {
+                // Open support
+                ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer/issues", nullptr, nullptr, SW_SHOW);
+            } else if (i == 3) {
+                // Open market
+                ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
+            }
+        }
+    }
+
+    // User avatar + name at bottom of sidebar
     {
-        f32 avX = W - 52, avY = 12, avR = 12;
-        dl.AddFilledRoundRect(Rect{avX, avY, avR*2, avR*2},
-                              Color{30, 35, 60, 255}, avR, 16);
+        f32 avY = H - 58;
+        // Avatar circle
+        f32 avSz = 28;
+        f32 avX = (sideW - avSz) * 0.5f;
+        dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
+                              Color{30, 35, 65, 255}, avSz * 0.5f, 16);
         if (!g_loggedUser.empty()) {
             char ini[2] = {(char)toupper(g_loggedUser[0]), '\0'};
-            Vec2 is = Measure(ini, g_fontSm);
-            Text(dl, avX + avR - is.x * 0.5f, avY + avR - is.y * 0.5f, P::Accent1, ini, g_fontSm);
+            Vec2 iSz = Measure(ini, g_fontSm);
+            Text(dl, avX + (avSz - iSz.x) * 0.5f, avY + (avSz - iSz.y) * 0.5f,
+                 P::Accent1, ini, g_fontSm);
         }
         // Online dot
-        dl.AddFilledRoundRect(Rect{avX + avR*2 - 5, avY + avR*2 - 5, 7, 7},
-                              P::Green, 3.5f, 8);
+        dl.AddFilledRoundRect(Rect{avX + avSz - 5, avY + avSz - 5, 8, 8},
+                              P::Green, 4.0f, 8);
+        // Username
+        Vec2 unSz = Measure(g_loggedUser.c_str(), g_fontSm);
+        f32 unX = (sideW - unSz.x) * 0.5f;
+        if (unX < 4) unX = 4; // clamp
+        Text(dl, unX, avY + avSz + 4, P::T2, g_loggedUser.c_str(), g_fontSm);
+
+        // Logout icon
+        u32 loId = Hash("_sidebar_logout");
+        f32 loY = H - 20;
+        Vec2 loSz = Measure("Logout", g_fontSm);
+        f32 loX = (sideW - loSz.x) * 0.5f;
+        bool loH = Hit(loX - 4, loY - 2, loSz.x + 8, loSz.y + 4);
+        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
+        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
+        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
+            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
+            g_injected = false; g_injecting = false;
+            g_showPopup = false;
+            memset(g_loginPass, 0, 64);
+        }
     }
 
-    f32 pad = 28;
-    f32 contentW = W - pad * 2;
-    f32 y = 68;
+    // ===== CONTENT AREA (right side) =====
+    f32 cX = sideW + 16;
+    f32 cW = W - sideW - 32;
+
+    // Title bar area (min/close) — right-aligned
+    {
+        f32 btnSz = 10.0f, btnY = 14;
+        // Minimize
+        f32 minX = W - 52;
+        u32 minId = Hash("_min");
+        bool minH = Hit(minX - 4, btnY - 4, btnSz + 8, btnSz + 8);
+        f32 minA = Anim(minId, minH ? 1.0f : 0.0f);
+        dl.AddLine(Vec2{minX, btnY + btnSz*0.5f}, Vec2{minX + btnSz, btnY + btnSz*0.5f},
+                   Color{160, 165, 190, (u8)(130 + 125 * minA)}, 1.5f);
+        if (minH && g_input.IsMousePressed(MouseButton::Left)) ShowWindow(g_hwnd, SW_MINIMIZE);
+
+        // Close
+        f32 clsX = W - 30;
+        u32 clsId = Hash("_cls");
+        bool clsH = Hit(clsX - 4, btnY - 4, btnSz + 8, btnSz + 8);
+        f32 clsA = Anim(clsId, clsH ? 1.0f : 0.0f);
+        f32 cx2 = clsX + btnSz*0.5f, cy2 = btnY + btnSz*0.5f, s = 4.0f;
+        Color xc2{160, 165, 190, (u8)(130 + 125 * clsA)};
+        dl.AddLine(Vec2{cx2-s, cy2-s}, Vec2{cx2+s, cy2+s}, xc2, 1.5f);
+        dl.AddLine(Vec2{cx2+s, cy2-s}, Vec2{cx2-s, cy2+s}, xc2, 1.5f);
+        if (clsH && g_input.IsMousePressed(MouseButton::Left)) g_running = false;
+    }
+
+    f32 y = 18;
 
     // Greeting
-    std::string greeting = "Hey, " + g_loggedUser;
-    Text(dl, pad, y, P::T1, greeting.c_str(), g_fontLg);
-    y += 32;
-    Text(dl, pad, y, P::T2, "Your dashboard", g_fontSm);
-    y += 32;
+    Text(dl, cX, y, P::T1, "Subscriptions", g_fontMd);
+    y += 30;
+
+    // Subtitle
+    Text(dl, cX, y, P::T3, "Your active products", g_fontSm);
+    y += 24;
 
     // ============================================================
-    // GAME HERO CARD
+    // CS2 SUBSCRIPTION CARD (clickable → opens popup)
     // ============================================================
     {
-        f32 heroH = 140;
-        Rect heroR{pad, y, contentW, heroH};
+        f32 cardH = 100;
+        Rect cardR{cX, y, cW, cardH};
+
+        u32 cid = Hash("_cs2_card");
+        bool cH = Hit(cardR.x, cardR.y, cardR.w, cardR.h);
+        f32 cA = Anim(cid, cH ? 1.0f : 0.0f);
 
         // Shadow
-        dl.AddFilledRoundRect(Rect{heroR.x + 4, heroR.y + 6, heroR.w - 8, heroR.h},
-                              Fade(Color{0,0,0,255}, 0.25f), 14.0f, 12);
-
-        // Border
-        dl.AddFilledRoundRect(Rect{heroR.x - 1, heroR.y - 1, heroR.w + 2, heroR.h + 2},
-                              P::Border, 15.0f, 12);
-
+        dl.AddFilledRoundRect(Rect{cardR.x + 2, cardR.y + 3, cardR.w - 4, cardR.h},
+                              Fade(Color{0,0,0,255}, 0.2f), 12.0f, 10);
+        // Border (highlight on hover)
+        Color borderCol = Mix(P::Border, P::Accent1, cA * 0.5f);
+        dl.AddFilledRoundRect(Rect{cardR.x - 1, cardR.y - 1, cardR.w + 2, cardR.h + 2},
+                              borderCol, 13.0f, 10);
         // Card bg
-        dl.AddFilledRoundRect(heroR, P::Card, 14.0f, 12);
+        dl.AddFilledRoundRect(cardR, Mix(P::Card, P::CardHi, cA * 0.4f), 12.0f, 10);
 
-        // Top gradient overlay
-        dl.AddGradientRect(Rect{heroR.x + 1, heroR.y + 1, heroR.w - 2, heroH * 0.4f},
-            Fade(P::Accent1, 0.10f), Fade(P::Accent2, 0.10f),
-            Fade(P::Accent2, 0.0f),  Fade(P::Accent1, 0.0f));
+        // Top gradient
+        dl.AddGradientRect(Rect{cardR.x + 1, cardR.y + 1, cardR.w - 2, cardH * 0.35f},
+            Fade(P::Accent1, 0.06f + 0.04f * cA), Fade(P::Accent2, 0.06f + 0.04f * cA),
+            Fade(P::Accent2, 0.0f), Fade(P::Accent1, 0.0f));
 
-        // Game icon box
-        f32 iconSz = 56;
-        f32 iconX = heroR.x + 20;
-        f32 iconY = heroR.y + (heroH - iconSz) * 0.5f;
-        dl.AddFilledRoundRect(Rect{iconX, iconY, iconSz, iconSz},
-                              Color{220, 160, 40, 255}, 14.0f, 10);
-        TextCenter(dl, Rect{iconX, iconY, iconSz, iconSz},
-                   Color{255,255,255,240}, "CS2", g_fontMd);
+        // Icon
+        f32 icoSz = 44;
+        f32 icoX = cardR.x + 14;
+        f32 icoY = cardR.y + (cardH - icoSz) * 0.5f;
+        dl.AddFilledRoundRect(Rect{icoX, icoY, icoSz, icoSz},
+                              Color{220, 160, 40, 255}, 11.0f, 10);
+        TextCenter(dl, Rect{icoX, icoY, icoSz, icoSz},
+                   Color{255,255,255,240}, "CS2", g_font);
 
-        // Game title + details
-        f32 textX = iconX + iconSz + 20;
-        Text(dl, textX, heroR.y + 30, P::T1, "Counter-Strike 2", g_fontMd);
-        Text(dl, textX, heroR.y + 55, P::T2, "Skin Changer — Full Access", g_fontSm);
+        // Title + subtitle
+        f32 txX = icoX + icoSz + 12;
+        Text(dl, txX, cardR.y + 22, P::T1, "Counter-Strike 2", g_font);
+        Text(dl, txX, cardR.y + 40, P::T2, "Skin Changer", g_fontSm);
 
-        // Status badge
+        // Status + days
         if (g_sub.active) {
-            f32 badgeY = heroR.y + 82;
-            dl.AddFilledRoundRect(Rect{textX, badgeY, 62, 22},
-                                  Fade(P::Green, 0.15f), 6.0f, 8);
-            TextCenter(dl, Rect{textX, badgeY, 62, 22}, P::Green, "ACTIVE", g_fontSm);
-            Text(dl, textX + 72, badgeY + 4, P::T3, g_sub.expiry.c_str(), g_fontSm);
+            f32 badgeY = cardR.y + 62;
+            dl.AddFilledRoundRect(Rect{txX, badgeY, 50, 18},
+                                  Fade(P::Green, 0.15f), 4.0f, 6);
+            TextCenter(dl, Rect{txX, badgeY, 50, 18}, P::Green, "Active", g_fontSm);
+
+            char dStr[32]; snprintf(dStr, 32, "%dd left", g_sub.daysLeft);
+            Text(dl, txX + 56, badgeY + 2, P::T3, dStr, g_fontSm);
         }
 
-        y += heroH + 20;
+        // Arrow indicator
+        f32 arX = cardR.Right() - 20;
+        f32 arY = cardR.y + cardH * 0.5f;
+        Color arC = Mix(P::T3, P::Accent1, cA);
+        dl.AddLine(Vec2{arX - 3, arY - 5}, Vec2{arX + 3, arY}, arC, 1.5f);
+        dl.AddLine(Vec2{arX + 3, arY}, Vec2{arX - 3, arY + 5}, arC, 1.5f);
+
+        // Click → open popup
+        if (cH && g_input.IsMousePressed(MouseButton::Left))
+            g_showPopup = true;
+
+        y += cardH + 14;
     }
 
     // ============================================================
-    // STATUS PILLS ROW
+    // STATUS ROW (compact)
     // ============================================================
     {
-        char daysStr[16]; snprintf(daysStr, 16, "%d", g_sub.daysLeft);
-        Pill(dl, pad, y, "DAYS LEFT", daysStr, P::Accent1);
-
+        // Status pill
         const char* statusStr = g_injected ? "Injected" : "Ready";
         Color statusCol = g_injected ? P::Green : P::Yellow;
-        Pill(dl, pad + 100, y, "STATUS", statusStr, statusCol);
+        dl.AddFilledRoundRect(Rect{cX, y, 8, 8}, statusCol, 4.0f, 8);
+        Text(dl, cX + 14, y - 2, P::T2, statusStr, g_fontSm);
 
-        Pill(dl, pad + 200, y, "VERSION", "4.0", P::Accent2);
-
-        y += 68;
+        // Version pill
+        Vec2 vSz = Measure("v4.0", g_fontSm);
+        Text(dl, cX + cW - vSz.x, y - 2, P::T3, "v4.0", g_fontSm);
+        y += 22;
     }
 
     // ============================================================
@@ -842,53 +1110,16 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         else if (g_injecting) { btnText = "INJECTING..."; enabled = false; }
         else { btnText = "LAUNCH CHEAT"; enabled = true; }
 
-        if (GradientButton(dl, btnText, Rect{pad, y, contentW, 50}, enabled)) {
+        if (GradientButton(dl, btnText, Rect{cX, y, cW, 40}, enabled)) {
             DoInject();
-        }
-        y += 64;
-    }
-
-    // ============================================================
-    // QUICK LINKS ROW
-    // ============================================================
-    {
-        const char* links[] = {"Changelog", "Support", "Settings"};
-        f32 lx = pad;
-        for (int i = 0; i < 3; i++) {
-            u32 lid = Hash(links[i]);
-            Vec2 ls = Measure(links[i], g_fontSm);
-            f32 lw = ls.x + 24;
-            bool lh = Hit(lx, y, lw, 32);
-            f32 la = Anim(lid, lh ? 1.0f : 0.0f);
-
-            dl.AddFilledRoundRect(Rect{lx, y, lw, 32},
-                                  Mix(P::Surface, P::CardHi, la), 8.0f, 8);
-            TextCenter(dl, Rect{lx, y, lw, 32},
-                       Mix(P::T2, P::T1, la), links[i], g_fontSm);
-            lx += lw + 10;
-        }
-        y += 48;
-    }
-
-    // ============================================================
-    // LOGOUT
-    // ============================================================
-    {
-        const char* lo = "Sign out";
-        Vec2 los = Measure(lo, g_fontSm);
-        f32 loX = (W - los.x) * 0.5f;
-        u32 loId = Hash("_signout");
-        bool loH = Hit(loX, y, los.x, los.y + 4);
-        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
-        Text(dl, loX, y, Mix(P::T3, P::Red, loA * 0.7f), lo, g_fontSm);
-        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
-            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
-            g_injected = false; g_injecting = false;
-            memset(g_loginPass, 0, 64);
         }
     }
 
     DrawToast(dl, W, H);
+
+    // Popup overlay (drawn on top of everything)
+    if (g_showPopup || g_popupAnim > 0.01f)
+        DrawPopup(dl, W, H);
 }
 
 // ============================================================================
