@@ -623,6 +623,9 @@ static char g_detailCustomName[32] = "";
 static std::unordered_map<std::string, TextureHandle> g_skinTexCache;
 static std::unordered_map<std::string, bool> g_skinTexFailed; // mark failed loads
 
+// Forward declaration — defined later in file
+static std::string GetBasePath();
+
 static TextureHandle LoadSkinImage(const char* weaponName, const char* skinName) {
     // Build filename: WeaponName_SkinName (spaces → underscores, remove apostrophes)
     std::string key = weaponName;
