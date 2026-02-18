@@ -587,9 +587,10 @@ static void UpdateInjectionFlow() {
             int ovX = cr.left + (cs2w - panelW) / 2;
             int ovY = cr.top  + (cs2h - panelH) / 2;
 
-            // Make window transparent: magenta (1,0,1) = invisible via LWA_COLORKEY
+            // Make window layered for color-key transparency
+            // NOTE: Do NOT use WS_EX_TRANSPARENT — it prevents DX11 rendering
             LONG exStyle = GetWindowLongA(g_hwnd, GWL_EXSTYLE);
-            SetWindowLongA(g_hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT);
+            SetWindowLongA(g_hwnd, GWL_EXSTYLE, (exStyle | WS_EX_LAYERED) & ~WS_EX_TRANSPARENT);
             SetLayeredWindowAttributes(g_hwnd, RGB(1, 0, 1), 0, LWA_COLORKEY);
             SetWindowRgn(g_hwnd, nullptr, TRUE); // Remove rounded region for overlay
             SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, panelW, panelH, SWP_SHOWWINDOW);
