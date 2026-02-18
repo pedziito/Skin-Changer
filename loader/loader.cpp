@@ -626,7 +626,8 @@ static bool GradientButton(DrawList& dl, const char* label, Rect r, bool enabled
 
 // --- Input field ---
 static void InputField(DrawList& dl, const char* label, char* buf, int sz,
-                        Rect r, bool password = false) {
+                        Rect r, bool password = false,
+                        const char* nextFieldLabel = nullptr) {
     u32 id = Hash(label);
     bool focused = g_focusedField == id;
     bool hov = Hit(r.x, r.y, r.w, r.h);
@@ -657,6 +658,29 @@ static void InputField(DrawList& dl, const char* label, char* buf, int sz,
         for (char c : inp)
             if (c >= 32 && c < 127 && len < sz - 1) { buf[len++] = c; buf[len] = '\0'; }
         if (g_input.IsKeyPressed(Key::Backspace) && len > 0) buf[len - 1] = '\0';
+
+        // Ctrl+V paste from clipboard
+        if (g_input.Ctrl() && g_input.IsKeyPressed((Key)'V')) {
+            if (OpenClipboard(nullptr)) {
+                HANDLE hData = GetClipboardData(CF_TEXT);
+                if (hData) {
+                    const char* clip = (const char*)GlobalLock(hData);
+                    if (clip) {
+                        len = (int)strlen(buf);
+                        for (int i = 0; clip[i] && len < sz - 1; i++) {
+                            if (clip[i] >= 32 && clip[i] < 127) { buf[len++] = clip[i]; buf[len] = '\0'; }
+                        }
+                        GlobalUnlock(hData);
+                    }
+                }
+                CloseClipboard();
+            }
+        }
+
+        // Tab → focus next field
+        if (g_input.IsKeyPressed(Key::Tab) && nextFieldLabel) {
+            g_focusedField = Hash(nextFieldLabel);
+        }
     }
 
     // Measure line height
@@ -849,11 +873,11 @@ static void ScreenLogin(DrawList& dl, f32 W, f32 H) {
 
     // Fields
     InputField(dl, "Username", g_loginUser, sizeof(g_loginUser),
-               Rect{cx, cy, cw, 40});
+               Rect{cx, cy, cw, 40}, false, "Password");
     cy += 50;
 
     InputField(dl, "Password", g_loginPass, sizeof(g_loginPass),
-               Rect{cx, cy, cw, 40}, true);
+               Rect{cx, cy, cw, 40}, true, "Username");
     cy += 50;
 
     // Error
@@ -929,13 +953,13 @@ static void ScreenSignup(DrawList& dl, f32 W, f32 H) {
     Text(dl, cardX + (cardW - ss.x) * 0.5f, cy, P::T2, "Enter your license key to register", g_fontSm);
     cy += ss.y + 14;
 
-    InputField(dl, "License Key", g_signupKey, sizeof(g_signupKey), Rect{cx, cy, cw, 40});
+    InputField(dl, "License Key", g_signupKey, sizeof(g_signupKey), Rect{cx, cy, cw, 40}, false, "Username");
     cy += 46;
-    InputField(dl, "Username", g_signupUser, sizeof(g_signupUser), Rect{cx, cy, cw, 40});
+    InputField(dl, "Username", g_signupUser, sizeof(g_signupUser), Rect{cx, cy, cw, 40}, false, "Password");
     cy += 46;
-    InputField(dl, "Password", g_signupPass, sizeof(g_signupPass), Rect{cx, cy, cw, 40}, true);
+    InputField(dl, "Password", g_signupPass, sizeof(g_signupPass), Rect{cx, cy, cw, 40}, true, "Confirm password");
     cy += 46;
-    InputField(dl, "Confirm password", g_signupPass2, sizeof(g_signupPass2), Rect{cx, cy, cw, 40}, true);
+    InputField(dl, "Confirm password", g_signupPass2, sizeof(g_signupPass2), Rect{cx, cy, cw, 40}, true, "License Key");
     cy += 44;
 
     if (g_authErrorTimer > 0) {
@@ -1309,19 +1333,38 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     }
 
     // ============================================================
-    // LAUNCH BUTTON (bottom)
+    // RUN BUTTON (bottom, popup-style with play icon)
     // ============================================================
     {
-        const char* btnText;
         bool enabled;
-        if (g_injected) { btnText = "LAUNCHED"; enabled = false; }
-        else if (g_injecting) { btnText = "INJECTING..."; enabled = false; }
-        else { btnText = "LAUNCH CHEAT"; enabled = true; }
+        if (g_injected) { enabled = false; }
+        else if (g_injecting) { enabled = false; }
+        else { enabled = true; }
 
-        f32 btnY = H - 56;
-        if (GradientButton(dl, btnText, Rect{cX, btnY, cW, 38}, enabled)) {
-            DoInject();
-        }
+        f32 btnW = cW * 0.5f;
+        f32 btnH = 36;
+        f32 btnX = cX + (cW - btnW) * 0.5f;
+        f32 btnY = H - 52;
+
+        u32 rId = Hash("_dash_run");
+        bool rH = enabled && Hit(btnX, btnY, btnW, btnH);
+        bool rC = rH && g_input.IsMousePressed(MouseButton::Left);
+        f32 rA = Anim(rId, rH ? 1.0f : 0.0f);
+
+        f32 op = enabled ? (0.85f + 0.15f * rA) : 0.3f;
+        Color bc = Fade(Mix(P::Accent1, P::Accent2, 0.4f), op);
+        Rect btnR{btnX, btnY, btnW, btnH};
+        dl.AddFilledRoundRect(btnR, bc, 8.0f, 10);
+
+        // Play triangle icon
+        f32 triX = btnR.x + btnR.w * 0.5f - 4;
+        f32 triYc = btnR.y + btnR.h * 0.5f;
+        Color tc = enabled ? Color{255,255,255,255} : Color{200,200,210,140};
+        dl.AddLine(Vec2{triX - 4, triYc - 6}, Vec2{triX + 6, triYc}, tc, 2.0f);
+        dl.AddLine(Vec2{triX + 6, triYc}, Vec2{triX - 4, triYc + 6}, tc, 2.0f);
+        dl.AddLine(Vec2{triX - 4, triYc + 6}, Vec2{triX - 4, triYc - 6}, tc, 2.0f);
+
+        if (rC && enabled) DoInject();
     }
 
     DrawToast(dl, W, H);
