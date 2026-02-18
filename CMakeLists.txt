@@ -68,10 +68,11 @@ add_custom_command(TARGET skin_changer POST_BUILD
     COMMENT "Copying DLL for embedding into loader..."
 )
 
-# Generate resource script that references the copied DLL
+# Generate resource script that embeds the DLL binary
+set(EMBED_DLL_PATH "${CMAKE_CURRENT_BINARY_DIR}/skin_changer.dll")
+string(REPLACE "\\" "/" EMBED_DLL_PATH "${EMBED_DLL_PATH}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/loader_embed.rc"
-    "#include \"${CMAKE_CURRENT_SOURCE_DIR}/loader/resource.h\"\n"
-    "IDR_SKIN_DLL RCDATA \"${CMAKE_CURRENT_BINARY_DIR}/skin_changer.dll\"\n"
+    "101 RCDATA \"${EMBED_DLL_PATH}\"\n"
 )
 
 # ============================================================================
