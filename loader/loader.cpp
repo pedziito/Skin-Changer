@@ -676,6 +676,82 @@ static void InputField(DrawList& dl, const char* label, char* buf, int sz,
     }
 }
 
+// --- Icon drawing helpers (drawn with lines/shapes) ---
+
+// Globe icon — circle with horizontal/vertical lines
+static void DrawIconGlobe(DrawList& dl, f32 cx, f32 cy, f32 r, Color c) {
+    // Outer circle
+    dl.AddFilledRoundRect(Rect{cx - r, cy - r, r*2, r*2}, Fade(c, 0.0f), r, 16);
+    // Ring (approximated with thick lines)
+    int segs = 20;
+    for (int i = 0; i < segs; i++) {
+        f32 a1 = (f32)i / segs * 6.2832f;
+        f32 a2 = (f32)(i+1) / segs * 6.2832f;
+        dl.AddLine(Vec2{cx + cosf(a1)*r, cy + sinf(a1)*r},
+                   Vec2{cx + cosf(a2)*r, cy + sinf(a2)*r}, c, 1.5f);
+    }
+    // Horizontal line (equator)
+    dl.AddLine(Vec2{cx - r, cy}, Vec2{cx + r, cy}, c, 1.0f);
+    // Vertical meridian
+    for (int i = 0; i < segs; i++) {
+        f32 a1 = (f32)i / segs * 6.2832f;
+        f32 a2 = (f32)(i+1) / segs * 6.2832f;
+        dl.AddLine(Vec2{cx + cosf(a1)*r*0.5f, cy + sinf(a1)*r},
+                   Vec2{cx + cosf(a2)*r*0.5f, cy + sinf(a2)*r}, c, 1.0f);
+    }
+}
+
+// Shopping cart icon
+static void DrawIconCart(DrawList& dl, f32 x, f32 y, f32 sz, Color c) {
+    f32 s = sz * 0.5f;
+    // Handle
+    dl.AddLine(Vec2{x - s*0.8f, y - s*0.7f}, Vec2{x - s*0.4f, y - s*0.7f}, c, 1.5f);
+    // Cart body
+    dl.AddLine(Vec2{x - s*0.4f, y - s*0.7f}, Vec2{x - s*0.2f, y + s*0.3f}, c, 1.5f);
+    dl.AddLine(Vec2{x - s*0.2f, y + s*0.3f}, Vec2{x + s*0.6f, y + s*0.3f}, c, 1.5f);
+    dl.AddLine(Vec2{x + s*0.6f, y + s*0.3f}, Vec2{x + s*0.7f, y - s*0.5f}, c, 1.5f);
+    dl.AddLine(Vec2{x + s*0.7f, y - s*0.5f}, Vec2{x - s*0.3f, y - s*0.5f}, c, 1.5f);
+    // Wheels
+    dl.AddFilledRoundRect(Rect{x - s*0.1f, y + s*0.5f, s*0.3f, s*0.3f}, c, s*0.15f, 8);
+    dl.AddFilledRoundRect(Rect{x + s*0.35f, y + s*0.5f, s*0.3f, s*0.3f}, c, s*0.15f, 8);
+}
+
+// Person with headphones icon
+static void DrawIconSupport(DrawList& dl, f32 cx, f32 cy, f32 sz, Color c) {
+    f32 r = sz * 0.5f;
+    // Head (circle)
+    f32 headR = r * 0.42f;
+    int segs = 16;
+    for (int i = 0; i < segs; i++) {
+        f32 a1 = (f32)i / segs * 6.2832f;
+        f32 a2 = (f32)(i+1) / segs * 6.2832f;
+        dl.AddLine(Vec2{cx + cosf(a1)*headR, cy - r*0.15f + sinf(a1)*headR},
+                   Vec2{cx + cosf(a2)*headR, cy - r*0.15f + sinf(a2)*headR}, c, 1.5f);
+    }
+    // Body/shoulders (arc at bottom)
+    f32 bodyR = r * 0.75f;
+    for (int i = 0; i < segs/2; i++) {
+        f32 a1 = 3.14159f + (f32)i / (segs/2) * 3.14159f;
+        f32 a2 = 3.14159f + (f32)(i+1) / (segs/2) * 3.14159f;
+        dl.AddLine(Vec2{cx + cosf(a1)*bodyR, cy + r*0.75f + sinf(a1)*bodyR*0.5f},
+                   Vec2{cx + cosf(a2)*bodyR, cy + r*0.75f + sinf(a2)*bodyR*0.5f}, c, 1.5f);
+    }
+    // Headphone band (arc over head)
+    f32 bandR = headR * 1.3f;
+    for (int i = 0; i < segs/2; i++) {
+        f32 a1 = 3.14159f + (f32)i / (segs/2) * 3.14159f;
+        f32 a2 = 3.14159f + (f32)(i+1) / (segs/2) * 3.14159f;
+        dl.AddLine(Vec2{cx + cosf(a1)*bandR, cy - r*0.15f + sinf(a1)*bandR},
+                   Vec2{cx + cosf(a2)*bandR, cy - r*0.15f + sinf(a2)*bandR}, c, 2.0f);
+    }
+    // Earpieces (small filled rects on sides)
+    dl.AddFilledRoundRect(Rect{cx - bandR - 2, cy - r*0.3f, 5, r*0.4f}, c, 2.0f, 4);
+    dl.AddFilledRoundRect(Rect{cx + bandR - 3, cy - r*0.3f, 5, r*0.4f}, c, 2.0f, 4);
+    // Mic (small line from right earpiece)
+    dl.AddLine(Vec2{cx + bandR, cy + r*0.05f}, Vec2{cx + bandR - 2, cy + r*0.35f}, c, 1.5f);
+    dl.AddFilledRoundRect(Rect{cx + bandR - 5, cy + r*0.32f, 6, 4}, c, 2.0f, 4);
+}
+
 // --- Glass card container ---
 static void GlassCard(DrawList& dl, Rect r) {
     // Shadow layers
@@ -1037,32 +1113,54 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
     Vec2 logoSz = Measure("NL", g_fontLg);
     Text(dl, (sideW - logoSz.x) * 0.5f, 18, P::Accent1, "NL", g_fontLg);
 
-    // Navigation items — text only (Website, Support, Market) — no Home icon
-    const char* navLabels[] = { "Website", "Support", "Market" };
-    f32 navY = 80;
-    for (int i = 0; i < 3; i++) {
-        u32 nid = Hash(navLabels[i]);
-        f32 nY = navY + i * 32;
-        bool nH = Hit(0, nY, sideW, 28);
+    // Navigation items with icons
+    f32 navY = 76;
+    // --- Website (globe icon) ---
+    {
+        u32 nid = Hash("Website");
+        f32 nY = navY;
+        bool nH = Hit(0, nY, sideW, 36);
         f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
-
-        // Label only — clean sidebar like reference
-        Vec2 lblSz = Measure(navLabels[i], g_fontSm);
-        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 4,
-             Mix(P::T2, P::T1, nA), navLabels[i], g_fontSm);
-
-        if (nH && g_input.IsMousePressed(MouseButton::Left)) {
-            if (i == 0) ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer", nullptr, nullptr, SW_SHOW);
-            else if (i == 1) ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer/issues", nullptr, nullptr, SW_SHOW);
-            else if (i == 2) ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
-        }
+        Color nc = Mix(P::T2, P::T1, nA);
+        DrawIconGlobe(dl, sideW * 0.5f, nY + 10, 7.0f, nc);
+        Vec2 lblSz = Measure("Website", g_fontSm);
+        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Website", g_fontSm);
+        if (nH && g_input.IsMousePressed(MouseButton::Left))
+            ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer", nullptr, nullptr, SW_SHOW);
+    }
+    // --- Support (person with headphones) ---
+    {
+        u32 nid = Hash("Support");
+        f32 nY = navY + 42;
+        bool nH = Hit(0, nY, sideW, 36);
+        f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
+        Color nc = Mix(P::T2, P::T1, nA);
+        DrawIconSupport(dl, sideW * 0.5f, nY + 10, 18.0f, nc);
+        Vec2 lblSz = Measure("Support", g_fontSm);
+        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Support", g_fontSm);
+        if (nH && g_input.IsMousePressed(MouseButton::Left))
+            ShellExecuteA(nullptr, "open", "https://github.com/pedziito/Skin-Changer/issues", nullptr, nullptr, SW_SHOW);
+    }
+    // --- Market (shopping cart) ---
+    {
+        u32 nid = Hash("Market");
+        f32 nY = navY + 84;
+        bool nH = Hit(0, nY, sideW, 36);
+        f32 nA = Anim(nid, nH ? 1.0f : 0.0f);
+        Color nc = Mix(P::T2, P::T1, nA);
+        DrawIconCart(dl, sideW * 0.5f, nY + 10, 20.0f, nc);
+        Vec2 lblSz = Measure("Market", g_fontSm);
+        Text(dl, (sideW - lblSz.x) * 0.5f, nY + 22, nc, "Market", g_fontSm);
+        if (nH && g_input.IsMousePressed(MouseButton::Left))
+            ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
     }
 
-    // User avatar + name at bottom of sidebar
+    // User avatar + name + logout — all inside sidebar
     {
-        f32 avSz = 34;
-        f32 avX = (sideW - avSz) * 0.5f;
-        f32 avY = H - 52;
+        f32 avSz = 30;
+        f32 avX = 10;
+        f32 avY = H - 64;
+        // Avatar circle
         dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
                               Color{45, 48, 65, 255}, avSz * 0.5f, 16);
         if (!g_loggedUser.empty()) {
@@ -1071,9 +1169,23 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
             Text(dl, avX + (avSz - iSz.x) * 0.5f, avY + (avSz - iSz.y) * 0.5f,
                  P::T1, ini, g_font);
         }
-        // Username next to avatar
-        Vec2 unSz = Measure(g_loggedUser.c_str(), g_fontSm);
-        Text(dl, avX + avSz + 6, avY + (avSz - unSz.y) * 0.5f, P::T2, g_loggedUser.c_str(), g_fontSm);
+        // Username — next to avatar, clipped to sidebar width
+        Text(dl, avX + avSz + 6, avY + (avSz - 12) * 0.5f, P::T2, g_loggedUser.c_str(), g_fontSm);
+
+        // Logout — below avatar
+        u32 loId = Hash("_sidebar_logout");
+        f32 loY = avY + avSz + 4;
+        Vec2 loSz = Measure("Logout", g_fontSm);
+        f32 loX = avX;
+        bool loH = Hit(loX - 2, loY - 2, loSz.x + 8, loSz.y + 4);
+        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
+        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
+        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
+            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
+            g_injected = false; g_injecting = false;
+            g_showPopup = false;
+            memset(g_loginPass, 0, 64);
+        }
     }
 
     // ===== CONTENT AREA (right side) =====
@@ -1196,23 +1308,6 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         f32 btnY = H - 56;
         if (GradientButton(dl, btnText, Rect{cX, btnY, cW, 38}, enabled)) {
             DoInject();
-        }
-    }
-
-    // Logout (small text, bottom-right corner)
-    {
-        u32 loId = Hash("_sidebar_logout");
-        Vec2 loSz = Measure("Logout", g_fontSm);
-        f32 loX = W - loSz.x - 16;
-        f32 loY = H - 18;
-        bool loH = Hit(loX - 4, loY - 2, loSz.x + 8, loSz.y + 4);
-        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
-        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
-        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
-            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
-            g_injected = false; g_injecting = false;
-            g_showPopup = false;
-            memset(g_loginPass, 0, 64);
         }
     }
 
