@@ -472,7 +472,8 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_RBUTTONDOWN: g_input.OnMouseDown(MouseButton::Right); return 0;
     case WM_RBUTTONUP:   g_input.OnMouseUp(MouseButton::Right); return 0;
     case WM_MOUSEWHEEL:  g_input.OnMouseScroll((f32)GET_WHEEL_DELTA_WPARAM(wp) / 120.0f); return 0;
-    case WM_KEYDOWN: {
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN: {
         // Map Win32 VK codes → ACE Key enum
         Key k = Key::None;
         int vk = (int)wp;
@@ -493,7 +494,8 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         g_input.OnKeyDown(k);
         return 0;
     }
-    case WM_KEYUP: {
+    case WM_KEYUP:
+    case WM_SYSKEYUP: {
         Key k = Key::None;
         int vk = (int)wp;
         if (vk == VK_BACK)    k = Key::Backspace;
@@ -1195,28 +1197,11 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
             ShellExecuteA(nullptr, "open", "https://csfloat.com", nullptr, nullptr, SW_SHOW);
     }
 
-    // Logout — centered in sidebar nav area
-    {
-        u32 loId = Hash("_sidebar_logout");
-        Vec2 loSz = Measure("Logout", g_fontSm);
-        f32 loX = (sideW - loSz.x) * 0.5f;
-        f32 loY = H * 0.5f + 40;
-        bool loH = Hit(loX - 4, loY - 4, loSz.x + 8, loSz.y + 8);
-        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
-        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
-        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
-            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
-            g_injected = false; g_injecting = false;
-            g_showPopup = false;
-            memset(g_loginPass, 0, 64);
-        }
-    }
-
-    // User avatar + name — bottom of sidebar
+    // User avatar + name + logout — bottom of sidebar
     {
         f32 avSz = 30;
         f32 avX = 10;
-        f32 avY = H - 44;
+        f32 avY = H - 64;
         // Avatar circle
         dl.AddFilledRoundRect(Rect{avX, avY, avSz, avSz},
                               Color{45, 48, 65, 255}, avSz * 0.5f, 16);
@@ -1228,6 +1213,21 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         }
         // Username — next to avatar
         Text(dl, avX + avSz + 6, avY + (avSz - 12) * 0.5f, P::T2, g_loggedUser.c_str(), g_fontSm);
+
+        // Logout — below avatar
+        u32 loId = Hash("_sidebar_logout");
+        f32 loY = avY + avSz + 4;
+        Vec2 loSz = Measure("Logout", g_fontSm);
+        f32 loX = avX;
+        bool loH = Hit(loX - 2, loY - 2, loSz.x + 8, loSz.y + 4);
+        f32 loA = Anim(loId, loH ? 1.0f : 0.0f);
+        Text(dl, loX, loY, Mix(P::T3, P::Red, loA * 0.7f), "Logout", g_fontSm);
+        if (loH && g_input.IsMousePressed(MouseButton::Left)) {
+            g_screen = LOGIN; g_loggedUser.clear(); g_hasSub = false;
+            g_injected = false; g_injecting = false;
+            g_showPopup = false;
+            memset(g_loginPass, 0, 64);
+        }
     }
 
     // ===== CONTENT AREA (right side) =====
@@ -1325,7 +1325,7 @@ static void ScreenDashboard(DrawList& dl, f32 W, f32 H) {
         StatusItem items[] = {
             {"Status",       "Undetected",  Color{80, 200, 120, 255}},
             {"Game Version", "Latest",      Color{100, 160, 255, 255}},
-            {"Last Updated", "27.03.2023",  P::T2},
+            {"Last Updated", __DATE__,       P::T2},
         };
         for (auto& item : items) {
             Text(dl, cX, y, P::T3, item.label, g_fontSm);
