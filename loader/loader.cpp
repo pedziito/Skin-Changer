@@ -211,7 +211,17 @@ static char g_savedUser[64] = "";
 static char g_savedPass[64] = "";
 
 // Injection flow state
-enum InjectionPhase { INJ_IDLE, INJ_CLOSING_STEAM, INJ_STARTING_STEAM, INJ_WAIT_CS2, INJ_INJECTING, INJ_OVERLAY, INJ_DONE, INJ_CS2_MENU };
+enum InjectionPhase {
+    INJ_IDLE,
+    INJ_CLOSING_STEAM,
+    INJ_STARTING_STEAM,
+    INJ_WAIT_CS2,          // waiting for cs2.exe process
+    INJ_WAIT_CS2_READY,    // cs2.exe found, waiting for main menu (window visible)
+    INJ_OVERLAY,           // fullscreen overlay with AC logo + progress
+    INJ_INJECTING,         // actually injecting DLL
+    INJ_DONE,
+    INJ_CS2_MENU           // in-game menu
+};
 static InjectionPhase g_injPhase = INJ_IDLE;
 static f32  g_injProgress = 0.0f;
 static f32  g_injTimer    = 0.0f;
@@ -522,55 +532,71 @@ static void UpdateInjectionFlow() {
         DWORD pid = FindProc("cs2.exe");
         if (pid != 0) {
             g_cs2Pid = pid;
+            g_injPhase = INJ_WAIT_CS2_READY;
+            g_injTimer = 0;
+            g_toastMsg = "CS2 fundet — venter p\xc3\xa5 hovedmenu..."; g_toastCol = P::Yellow; g_toastTimer = 10;
+            Log("CS2 process found (PID %lu), waiting for main menu...", pid);
+        } else if (g_injTimer > 120.0f) {
+            g_toastMsg = "Timeout: CS2 ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
+            g_injecting = false;
+            g_injPhase = INJ_IDLE;
+        }
+        break;
+    }
+
+    case INJ_WAIT_CS2_READY: {
+        // Wait for CS2 window to appear and be visible (main menu loaded)
+        // CS2 takes ~15-30s to reach main menu after process starts
+        g_cs2Hwnd = nullptr;
+        struct EnumData { DWORD pid; HWND result; };
+        EnumData ed{g_cs2Pid, nullptr};
+        EnumWindows([](HWND hw, LPARAM lp) -> BOOL {
+            auto* d = (EnumData*)lp;
+            DWORD wp = 0; GetWindowThreadProcessId(hw, &wp);
+            if (wp == d->pid && IsWindowVisible(hw)) {
+                char cls[64]; GetClassNameA(hw, cls, 64);
+                if (strstr(cls, "SDL") || GetWindow(hw, GW_OWNER) == nullptr) {
+                    RECT r; GetWindowRect(hw, &r);
+                    if ((r.right - r.left) > 800 && (r.bottom - r.top) > 600) {
+                        d->result = hw;
+                        return FALSE;
+                    }
+                }
+            }
+            return TRUE;
+        }, (LPARAM)&ed);
+
+        bool windowReady = (ed.result != nullptr);
+
+        // Need CS2 window AND at least 15 seconds for main menu to load
+        if (windowReady && g_injTimer > 15.0f) {
+            g_cs2Hwnd = ed.result;
 
             // Save original loader position
             GetWindowRect(g_hwnd, &g_origWindowRect);
 
-            // Find CS2 window to get its monitor/position
-            g_cs2Hwnd = nullptr;
-            struct EnumData { DWORD pid; HWND result; };
-            EnumData ed{pid, nullptr};
-            EnumWindows([](HWND hw, LPARAM lp) -> BOOL {
-                auto* d = (EnumData*)lp;
-                DWORD wp = 0; GetWindowThreadProcessId(hw, &wp);
-                if (wp == d->pid && IsWindowVisible(hw)) {
-                    char cls[64]; GetClassNameA(hw, cls, 64);
-                    if (strstr(cls, "SDL") || GetWindow(hw, GW_OWNER) == nullptr) {
-                        RECT r; GetWindowRect(hw, &r);
-                        if ((r.right - r.left) > 400 && (r.bottom - r.top) > 300) {
-                            d->result = hw;
-                            return FALSE;
-                        }
-                    }
-                }
-                return TRUE;
-            }, (LPARAM)&ed);
-            g_cs2Hwnd = ed.result;
-
-            // Make loader fullscreen on top of CS2
+            // Go fullscreen on top of CS2 for the overlay
             int scrW = GetSystemMetrics(SM_CXSCREEN);
             int scrH = GetSystemMetrics(SM_CYSCREEN);
             int ovX = 0, ovY = 0;
-            if (g_cs2Hwnd) {
-                RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
-                ovX = cr.left; ovY = cr.top;
-                scrW = cr.right - cr.left;
-                scrH = cr.bottom - cr.top;
-            }
-            // Remove rounded region so we truly cover full screen
+            RECT cr; GetWindowRect(g_cs2Hwnd, &cr);
+            ovX = cr.left; ovY = cr.top;
+            scrW = cr.right - cr.left;
+            scrH = cr.bottom - cr.top;
+
             SetWindowRgn(g_hwnd, nullptr, TRUE);
             SetWindowPos(g_hwnd, HWND_TOPMOST, ovX, ovY, scrW, scrH, SWP_SHOWWINDOW);
             g_width = scrW; g_height = scrH;
             g_backend.Resize((u32)scrW, (u32)scrH);
-            Log("Overlay: fullscreen %dx%d at (%d,%d)", scrW, scrH, ovX, ovY);
             SetForegroundWindow(g_hwnd);
+            Log("Overlay: fullscreen %dx%d on CS2", scrW, scrH);
 
             g_injPhase = INJ_OVERLAY;
             g_injTimer = 0;
             g_injProgress = 0;
-        } else if (g_injTimer > 120.0f) {
-            // Timeout after 2 minutes
-            g_toastMsg = "Timeout: CS2 ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
+        } else if (g_injTimer > 90.0f) {
+            // Timeout waiting for CS2 window
+            g_toastMsg = "Timeout: CS2 hovedmenu ikke fundet"; g_toastCol = P::Red; g_toastTimer = 4;
             g_injecting = false;
             g_injPhase = INJ_IDLE;
         }
@@ -616,44 +642,36 @@ static void UpdateInjectionFlow() {
 
         if (Inject(pid, dllPath.c_str())) {
             g_toastMsg = "Injected successfully!"; g_toastCol = P::Green; g_injected = true;
+            Log("Injection successful into PID %lu", pid);
+        } else {
+            g_toastMsg = "Injection fejlede"; g_toastCol = P::Orange;
+            Log("Injection FAILED into PID %lu (GetLastError=%lu)", pid, GetLastError());
+        }
+        g_toastTimer = 4;
 
-            // CS2 window already found in INJ_WAIT_CS2 phase
-            // Resize loader down from fullscreen overlay to CS2 menu size
+        // Always transition to CS2 menu (resize from fullscreen to centered menu)
+        {
+            int menuW = 420, menuH = 340;
+            int mx, my;
             if (g_cs2Hwnd) {
                 RECT cs2r; GetWindowRect(g_cs2Hwnd, &cs2r);
                 int cs2w = cs2r.right - cs2r.left;
                 int cs2h = cs2r.bottom - cs2r.top;
-                int menuW = 420, menuH = 340;
-                int mx = cs2r.left + (cs2w - menuW) / 2;
-                int my = cs2r.top  + (cs2h - menuH) / 2;
-                SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
-                g_width = menuW; g_height = menuH;
-                g_backend.Resize((u32)menuW, (u32)menuH);
-                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
-                SetWindowRgn(g_hwnd, rgn2, TRUE);
-                Log("CS2 menu: centered on CS2 window %dx%d at (%d,%d)", menuW, menuH, mx, my);
+                mx = cs2r.left + (cs2w - menuW) / 2;
+                my = cs2r.top  + (cs2h - menuH) / 2;
             } else {
-                int sw2 = GetSystemMetrics(SM_CXSCREEN);
-                int sh2 = GetSystemMetrics(SM_CYSCREEN);
-                int menuW = 420, menuH = 340;
-                SetWindowPos(g_hwnd, HWND_TOPMOST,
-                    (sw2 - menuW) / 2, (sh2 - menuH) / 2, menuW, menuH, SWP_SHOWWINDOW);
-                g_width = menuW; g_height = menuH;
-                g_backend.Resize((u32)menuW, (u32)menuH);
-                HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
-                SetWindowRgn(g_hwnd, rgn2, TRUE);
-                Log("CS2 menu: centered on screen (CS2 HWND not found)");
+                mx = (GetSystemMetrics(SM_CXSCREEN) - menuW) / 2;
+                my = (GetSystemMetrics(SM_CYSCREEN) - menuH) / 2;
             }
-
-            g_injPhase = INJ_CS2_MENU;
-            g_showPopup = false;
-        } else {
-            g_toastMsg = "Injection failed - k\xc3\xb8r som administrator"; g_toastCol = P::Orange;
+            SetWindowPos(g_hwnd, HWND_TOPMOST, mx, my, menuW, menuH, SWP_SHOWWINDOW);
+            g_width = menuW; g_height = menuH;
+            g_backend.Resize((u32)menuW, (u32)menuH);
+            HRGN rgn2 = CreateRoundRectRgn(0, 0, menuW+1, menuH+1, CORNER*2, CORNER*2);
+            SetWindowRgn(g_hwnd, rgn2, TRUE);
+            Log("CS2 menu: %dx%d at (%d,%d)", menuW, menuH, mx, my);
         }
-        g_toastTimer = 4;
-        if (g_injPhase != INJ_CS2_MENU) {
-            g_injPhase = INJ_DONE;
-        }
+        g_injPhase = INJ_CS2_MENU;
+        g_showPopup = false;
         g_injecting = false;
         break;
     }
@@ -1534,6 +1552,8 @@ static void DrawPopup(DrawList& dl, f32 W, f32 H) {
         const char* btnText;
         bool enabled;
         if (g_injected) { btnText = "LAUNCHED"; enabled = false; }
+        else if (g_injPhase == INJ_WAIT_CS2) { btnText = "STARTER CS2..."; enabled = false; }
+        else if (g_injPhase == INJ_WAIT_CS2_READY) { btnText = "VENTER P\xc3\x85 MENU..."; enabled = false; }
         else if (g_injecting) { btnText = "INJECTING..."; enabled = false; }
         else { btnText = "LAUNCH"; enabled = true; }
 
