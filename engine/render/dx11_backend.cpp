@@ -34,7 +34,7 @@ struct PS_INPUT {
 
 PS_INPUT main(VS_INPUT input) {
     PS_INPUT output;
-    output.pos = mul(projection, float4(input.pos, 0.0f, 1.0f));
+    output.pos = mul(float4(input.pos, 0.0f, 1.0f), projection);
     output.uv = input.uv;
 
     // Unpack ABGR u32 → float4 RGBA
