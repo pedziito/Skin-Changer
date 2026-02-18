@@ -717,23 +717,27 @@ static void DrawInjectionOverlay(DrawList& dl, f32 W, f32 H) {
                                overlayLogo, Color{255,255,255,255});
         }
 
-        // Progress text
+        // Progress text — outline glow for readability (no dark shadow boxes)
         char progText[64];
         snprintf(progText, 64, "Injecterer Inventory Changer (%.0f%%)", g_injProgress);
         Vec2 pts = Measure(progText, g_fontSm);
         f32 ptX = (W - pts.x) * 0.5f;
         f32 ptY = 108;
-        // Shadow for readability (use dark non-key color)
-        Text(dl, ptX + 1, ptY + 1, Color{10, 10, 20, 220}, progText, g_fontSm);
+        // Multi-direction outline (2px) for readability without dark box — all offsets use non-key colors
+        Color outline{20, 15, 40, 180};
+        for (int ox = -1; ox <= 1; ox++)
+            for (int oy = -1; oy <= 1; oy++)
+                if (ox || oy)
+                    Text(dl, ptX + ox, ptY + oy, outline, progText, g_fontSm);
         Text(dl, ptX, ptY, Color{220, 225, 245, 255}, progText, g_fontSm);
 
-        // Progress bar — Blue → Light blue gradient
+        // Progress bar — floating (no background container)
         f32 barW = W * 0.6f;
         f32 barH = 8;
         f32 barX = (W - barW) * 0.5f;
         f32 barY = ptY + 22;
-        // Bar background (dark, NOT the key color)
-        dl.AddFilledRoundRect(Rect{barX, barY, barW, barH}, Color{15, 18, 35, 200}, 4.0f, 8);
+        // Thin outline instead of solid background — non-key color
+        dl.AddRect(Rect{barX - 1, barY - 1, barW + 2, barH + 2}, Color{80, 100, 180, 120});
         // Fill
         f32 fillW = barW * (g_injProgress / 100.0f);
         if (fillW > 1.0f) {
@@ -841,17 +845,7 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         else if (vk == VK_END)    k = Key::End;
         else if (vk == VK_SHIFT)  k = Key::LeftShift;
         else if (vk == VK_CONTROL) k = Key::LeftCtrl;
-        else if (vk == VK_INSERT) {
-            // Toggle CS2 menu visibility with Insert key
-            if (g_injPhase == INJ_CS2_MENU) {
-                g_cs2MenuVisible = !g_cs2MenuVisible;
-                ShowWindow(g_hwnd, g_cs2MenuVisible ? SW_SHOWNOACTIVATE : SW_HIDE);
-                if (g_cs2MenuVisible) {
-                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                }
-            }
-        }
+        // INSERT handled in render loop with debounce — not here (avoids double-toggle race)
         else k = (Key)vk;
         g_input.OnKeyDown(k);
         return 0;
@@ -1928,7 +1922,7 @@ static int LoaderMain(HINSTANCE hInstance) {
 
         // Set clear color BEFORE BeginFrame (BeginFrame clears the RT)
         if (g_injPhase == INJ_OVERLAY || g_injPhase == INJ_INJECTING)
-            g_backend.SetClearColor(Color{1, 0, 1, 255}); // Magenta key = transparent
+            g_backend.SetClearColor(Color{1, 0, 1, 0}); // Magenta key = transparent, alpha 0
         else
             g_backend.SetClearColor(P::Bg);
 
@@ -1937,36 +1931,45 @@ static int LoaderMain(HINSTANCE hInstance) {
         // Update injection flow (Steam/CS2 state machine)
         UpdateInjectionFlow();
 
-        // CS2 menu visibility: toggle with Insert key, hide when CS2 not focused
+        // CS2 menu visibility: debounced Insert toggle, hide when CS2 not focused
         // Also close loader if CS2 has exited
+        static bool s_pendingShow = false; // Defer ShowWindow until after frame is drawn
         if (g_injPhase == INJ_CS2_MENU) {
             if (FindProc("cs2.exe") == 0) {
                 g_running = false;
                 break;
             }
-            // Poll Insert key globally (WM_KEYDOWN won't fire when window is hidden)
+
+            // Debounced Insert key polling (200ms cooldown prevents flicker)
             static bool s_insertWasDown = false;
+            static LARGE_INTEGER s_lastToggleTime = {};
             bool insertDown = (GetAsyncKeyState(VK_INSERT) & 0x8000) != 0;
             if (insertDown && !s_insertWasDown) {
-                g_cs2MenuVisible = !g_cs2MenuVisible;
-                if (g_cs2MenuVisible) {
-                    ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
-                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                } else {
-                    ShowWindow(g_hwnd, SW_HIDE);
+                LARGE_INTEGER now2; QueryPerformanceCounter(&now2);
+                double msSinceToggle = (double)(now2.QuadPart - s_lastToggleTime.QuadPart)
+                                       / (double)freq.QuadPart * 1000.0;
+                if (msSinceToggle > 200.0) { // 200ms debounce
+                    g_cs2MenuVisible = !g_cs2MenuVisible;
+                    s_lastToggleTime = now2;
+                    if (!g_cs2MenuVisible) {
+                        // Hiding: immediate
+                        ShowWindow(g_hwnd, SW_HIDE);
+                    } else {
+                        // Showing: defer until frame is drawn (prevents ghost frame)
+                        s_pendingShow = true;
+                    }
                 }
             }
             s_insertWasDown = insertDown;
 
             if (!g_cs2MenuVisible) {
-                // Menu hidden (Insert to show)
+                // Menu hidden — sleep and skip draw
                 if (IsWindowVisible(g_hwnd)) ShowWindow(g_hwnd, SW_HIDE);
                 Sleep(50);
                 g_backend.EndFrame();
                 continue;
             }
-            // Menu visible — check CS2 focus
+            // Menu visible — check CS2 focus (auto-hide when CS2 not foreground)
             if (g_cs2Hwnd) {
                 HWND fg = GetForegroundWindow();
                 bool cs2Active = (fg == g_cs2Hwnd || fg == g_hwnd);
@@ -1975,10 +1978,9 @@ static int LoaderMain(HINSTANCE hInstance) {
                     Sleep(50);
                     g_backend.EndFrame();
                     continue;
-                } else if (!IsWindowVisible(g_hwnd)) {
-                    ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
-                    SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                } else if (!IsWindowVisible(g_hwnd) && !s_pendingShow) {
+                    // CS2 regained focus — defer show until after draw
+                    s_pendingShow = true;
                 }
             }
         }
@@ -2005,6 +2007,15 @@ static int LoaderMain(HINSTANCE hInstance) {
         g_backend.RenderDrawList(dl, (u32)vp.x, (u32)vp.y);
         g_backend.EndFrame();
         g_backend.Present();
+
+        // Deferred ShowWindow — only show AFTER frame is fully drawn & presented
+        // This eliminates the "ghost frame" (stale content flash) on menu toggle
+        if (s_pendingShow) {
+            s_pendingShow = false;
+            ShowWindow(g_hwnd, SW_SHOWNOACTIVATE);
+            SetWindowPos(g_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
     }
 
     g_backend.Shutdown();
