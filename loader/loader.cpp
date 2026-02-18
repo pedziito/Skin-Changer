@@ -571,8 +571,8 @@ static void UpdateInjectionFlow() {
 
         bool windowReady = (ed.result != nullptr);
 
-        // Need CS2 window AND at least 10 seconds after process start
-        if (windowReady && g_injTimer > 10.0f) {
+        // Need CS2 window AND at least 25 seconds (15s load + 10s buffer)
+        if (windowReady && g_injTimer > 25.0f) {
             g_cs2Hwnd = ed.result;
 
             // Save original loader position
@@ -612,6 +612,10 @@ static void UpdateInjectionFlow() {
     }
 
     case INJ_OVERLAY:
+        // Beep once when overlay starts
+        if (g_injProgress == 0.0f && g_injTimer < 0.1f) {
+            Beep(800, 200);
+        }
         // Transparent overlay: AC logo + progress bar floating on CS2
         // Animate progress 0% → 100% over ~4 seconds, then inject
         g_injProgress += g_dt * 25.0f; // ~4s to 100%
@@ -814,22 +818,6 @@ static void DrawCS2Menu(DrawList& dl, f32 W, f32 H) {
         dl.AddTexturedRect(Rect{logoX, logoY, logoSz, logoSz},
                            menuLogo, Color{255, 255, 255, globalAlpha});
     }
-
-    // "AC" branding text below logo
-    Vec2 acSz = Measure("AC", g_fontLg);
-    f32 acX = ox + (sW - acSz.x) * 0.5f;
-    f32 acY = oy + (menuLogo != INVALID_TEXTURE ? 68.0f : 20.0f) * scale;
-    // Blue glow layers
-    for (int layer = 3; layer >= 1; layer--) {
-        f32 spread = (f32)layer * 1.5f * scale;
-        u8 ga = (u8)(20.0f * (1.0f - (f32)layer / 4.0f) * a);
-        Color gc{60, 130, 246, ga};
-        Text(dl, acX - spread, acY, gc, "AC", g_fontLg);
-        Text(dl, acX + spread, acY, gc, "AC", g_fontLg);
-        Text(dl, acX, acY - spread, gc, "AC", g_fontLg);
-        Text(dl, acX, acY + spread, gc, "AC", g_fontLg);
-    }
-    Text(dl, acX, acY, Color{255, 255, 255, globalAlpha}, "AC", g_fontLg);
 }
 
 // ============================================================================
